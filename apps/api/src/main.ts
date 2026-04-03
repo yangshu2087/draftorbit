@@ -9,6 +9,8 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
   assertApiEnv();
   assertAuthModeSafety();
+  const port = Number(process.env.PORT ?? 4000);
+  const appUrl = process.env.APP_URL ?? 'http://localhost:3000';
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -21,13 +23,13 @@ async function bootstrap() {
   app.useGlobalFilters(new AppExceptionFilter());
 
   app.enableCors({
-    origin: [process.env.APP_URL ?? 'http://localhost:3000'],
+    origin: [appUrl],
     credentials: true
   });
 
-  await app.listen(4000);
+  await app.listen(port);
   // eslint-disable-next-line no-console
-  console.log('DraftOrbit API running at http://localhost:4000');
+  console.log(`DraftOrbit API running at http://localhost:${port}`);
 }
 
 bootstrap();
