@@ -1,0 +1,829 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SubscriptionPlan {
+  FREE
+  PRO
+  PREMIUM
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  PAST_DUE
+}
+
+enum GenerationType {
+  TWEET
+  THREAD
+  LONG
+}
+
+enum GenerationStatus {
+  RUNNING
+  DONE
+  FAILED
+}
+
+enum StepName {
+  HOTSPOT
+  OUTLINE
+  DRAFT
+  HUMANIZE
+  IMAGE
+  PACKAGE
+}
+
+enum StepStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum AuthProvider {
+  X
+  GOOGLE
+  LOCAL
+}
+
+enum XAccountStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+  ERROR
+}
+
+enum TopicStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum DraftStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  QUEUED
+  PUBLISHED
+  FAILED
+}
+
+enum PublishJobStatus {
+  PENDING
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+enum PublishChannel {
+  X_TWEET
+  X_THREAD
+}
+
+enum ReplyJobStatus {
+  PENDING
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ProviderType {
+  OPENROUTER
+  OPENAI
+  ANTHROPIC
+  GEMINI
+  MOCK
+}
+
+enum LearningSourceType {
+  X_TIMELINE
+  X_BOOKMARKS
+  IMPORT_CSV
+  URL
+}
+
+enum UsageEventType {
+  GENERATION
+  NATURALIZATION
+  IMAGE
+  REPLY
+  PUBLISH
+}
+
+enum AuditActionType {
+  CREATE
+  UPDATE
+  DELETE
+  APPROVE
+  REJECT
+  PUBLISH
+  REPLY
+  LOGIN
+  BIND
+  SYNC
+}
+
+enum ReplyRiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum CreditDirection {
+  CREDIT
+  DEBIT
+}
+
+enum MediaAssetKind {
+  IMAGE
+  VIDEO
+}
+
+enum MediaSourceType {
+  UPLOAD
+  GENERATED
+  URL_IMPORT
+}
+
+enum MediaAssetStatus {
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum WorkflowRunStatus {
+  PENDING
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+model User {
+  id                  String   @id @default(uuid())
+  email               String?  @unique
+  twitterId           String?  @unique
+  handle              String   @default("")
+  displayName         String?
+  avatarUrl           String?
+  accessTokenEnc      String?
+  refreshTokenEnc     String?
+  tokenExpiresAt      DateTime?
+  defaultWorkspaceId  String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  subscription                Subscription?
+  generations                 Generation[]
+  tweetStyle                  TweetStyle?
+  usageLogs                   UsageLog[]
+  publishRecords              PublishRecord[]
+  publishJobs                 PublishJob[]
+  ownedWorkspaces             Workspace[]         @relation("WorkspaceOwner")
+  workspaceMembers            WorkspaceMember[]
+  authIdentities              AuthIdentity[]
+  xAccounts                   XAccount[]
+  topicsCreated               Topic[]             @relation("TopicCreator")
+  drafts                      Draft[]
+  draftVersions               DraftVersion[]      @relation("DraftVersionAuthor")
+  mediaAssets                 MediaAsset[]
+  workflowRuns                WorkflowRun[]       @relation("WorkflowRunTriggerer")
+  approvalRequestsRequested   ApprovalRequest[]   @relation("ApprovalRequester")
+  approvalRequestsReviewed    ApprovalRequest[]   @relation("ApprovalReviewer")
+  replyCandidatesApproved     ReplyCandidate[]    @relation("ReplyCandidateApprover")
+  auditLogs                   AuditLog[]
+
+  @@index([handle])
+}
+
+model Workspace {
+  id                 String   @id @default(uuid())
+  slug               String   @unique
+  name               String
+  ownerId            String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  owner              User               @relation("WorkspaceOwner", fields: [ownerId], references: [id])
+  members            WorkspaceMember[]
+  topics             Topic[]
+  contentProjects    ContentProject[]
+  drafts             Draft[]
+  mediaAssets        MediaAsset[]
+  voiceProfiles      VoiceProfile[]
+  accountPlaybooks   AccountPlaybook[]
+  learningSources    LearningSource[]
+  postHistory        PostHistory[]
+  duplicateGuardRule DuplicateGuardRule?
+  publishJobs        PublishJob[]
+  scheduledPosts     ScheduledPost[]
+  replyJobs          ReplyJob[]
+  approvalRequests   ApprovalRequest[]
+  providerConnections ProviderConnection[]
+  usageLogs          UsageLog[]
+  tokenCostLogs      TokenCostLog[]
+  billingAccount     BillingAccount?
+  creditLedgers      CreditLedger[]
+  auditLogs          AuditLog[]
+  xAccounts          XAccount[]
+  generations        Generation[]
+  tweetStyles        TweetStyle[]
+  publishRecords     PublishRecord[]
+  workflowTemplates  WorkflowTemplate[]
+  workflowRuns       WorkflowRun[]
+}
+
+model WorkspaceMember {
+  id          String        @id @default(uuid())
+  workspaceId String
+  userId      String
+  role        WorkspaceRole @default(EDITOR)
+  isDefault   Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId, isDefault])
+}
+
+model AuthIdentity {
+  id              String       @id @default(uuid())
+  userId          String
+  provider        AuthProvider
+  providerUserId  String
+  accessTokenEnc  String?
+  refreshTokenEnc String?
+  tokenExpiresAt  DateTime?
+  metadata        Json?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  user            User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([userId, provider])
+}
+
+model XAccount {
+  id              String         @id @default(uuid())
+  workspaceId     String
+  userId          String
+  twitterUserId   String
+  handle          String
+  status          XAccountStatus @default(ACTIVE)
+  accessTokenEnc  String?
+  refreshTokenEnc String?
+  tokenExpiresAt  DateTime?
+  profile         Json?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  workspace       Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  voiceProfiles   VoiceProfile[]
+  playbooks       AccountPlaybook[]
+  learningSources LearningSource[]
+  postHistory     PostHistory[]
+  replyJobs       ReplyJob[]
+
+  @@unique([workspaceId, twitterUserId])
+  @@index([userId, status])
+}
+
+model ProviderConnection {
+  id             String       @id @default(uuid())
+  workspaceId    String
+  name           String
+  providerType   ProviderType
+  apiKeyEnc      String?
+  baseUrl        String?
+  modelAllowlist Json?
+  isEnabled      Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, isEnabled])
+}
+
+model Topic {
+  id           String      @id @default(uuid())
+  workspaceId  String
+  createdById  String
+  title        String
+  description  String?
+  status       TopicStatus @default(ACTIVE)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  workspace    Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy    User              @relation("TopicCreator", fields: [createdById], references: [id])
+  projects     ContentProject[]
+  drafts       Draft[]
+
+  @@index([workspaceId, status, createdAt])
+}
+
+model ContentProject {
+  id            String    @id @default(uuid())
+  workspaceId   String
+  topicId       String?
+  name          String
+  description   String?
+  metadata      Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  topic         Topic?    @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  drafts        Draft[]
+
+  @@index([workspaceId, createdAt])
+}
+
+model Draft {
+  id              String      @id @default(uuid())
+  workspaceId     String
+  userId          String
+  topicId         String?
+  contentProjectId String?
+  title           String?
+  language        String      @default("zh")
+  status          DraftStatus @default(DRAFT)
+  latestContent   String?
+  currentVersion  Int         @default(0)
+  approvedAt      DateTime?
+  publishedAt     DateTime?
+  lastError       String?
+  metadata        Json?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  workspace       Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic           Topic?         @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  contentProject  ContentProject? @relation(fields: [contentProjectId], references: [id], onDelete: SetNull)
+  versions        DraftVersion[]
+  publishJobs     PublishJob[]
+  postHistory     PostHistory[]
+  mediaAssets     MediaAsset[]
+
+  @@index([workspaceId, status, createdAt])
+}
+
+model DraftVersion {
+  id           String   @id @default(uuid())
+  draftId      String
+  versionNo    Int
+  content      String
+  tone         String?
+  metadata     Json?
+  createdById  String
+  createdAt    DateTime @default(now())
+
+  draft        Draft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  createdBy    User  @relation("DraftVersionAuthor", fields: [createdById], references: [id])
+
+  @@unique([draftId, versionNo])
+}
+
+model VoiceProfile {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  xAccountId    String?
+  name          String
+  profile       Json
+  sampleCount   Int      @default(0)
+  lastLearnedAt DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  xAccount      XAccount? @relation(fields: [xAccountId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId, createdAt])
+}
+
+model AccountPlaybook {
+  id           String   @id @default(uuid())
+  workspaceId  String
+  xAccountId   String?
+  name         String
+  rules        Json
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  xAccount     XAccount? @relation(fields: [xAccountId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+}
+
+model LearningSource {
+  id           String             @id @default(uuid())
+  workspaceId  String
+  xAccountId   String?
+  sourceType   LearningSourceType
+  sourceRef    String
+  isEnabled    Boolean            @default(true)
+  metadata     Json?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  xAccount     XAccount? @relation(fields: [xAccountId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, sourceType, isEnabled])
+}
+
+model PostHistory {
+  id              String   @id @default(uuid())
+  workspaceId     String
+  xAccountId      String?
+  draftId         String?
+  externalPostId  String
+  url             String?
+  postedAt        DateTime @default(now())
+  metrics         Json?
+  rawPayload      Json?
+  createdAt       DateTime @default(now())
+
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  xAccount        XAccount? @relation(fields: [xAccountId], references: [id], onDelete: SetNull)
+  draft           Draft?    @relation(fields: [draftId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, postedAt])
+}
+
+model DuplicateGuardRule {
+  id                  String   @id @default(uuid())
+  workspaceId         String   @unique
+  enabled             Boolean  @default(true)
+  similarityThreshold Decimal  @default(0.82) @db.Decimal(5, 4)
+  windowDays          Int      @default(30)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  workspace           Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model PublishJob {
+  id             String           @id @default(uuid())
+  workspaceId    String
+  userId         String
+  draftId        String?
+  generationId   String?
+  channel        PublishChannel   @default(X_TWEET)
+  payload        Json
+  status         PublishJobStatus @default(PENDING)
+  scheduledFor   DateTime?
+  attempts       Int              @default(0)
+  maxAttempts    Int              @default(3)
+  lastError      String?
+  externalPostId String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  workspace      Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  draft          Draft?     @relation(fields: [draftId], references: [id], onDelete: SetNull)
+  generation     Generation? @relation(fields: [generationId], references: [id], onDelete: SetNull)
+  scheduledPost  ScheduledPost?
+
+  @@index([workspaceId, status, createdAt])
+  @@index([generationId])
+}
+
+model ScheduledPost {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  publishJobId  String   @unique
+  scheduledAt   DateTime
+  timezone      String   @default("UTC")
+  createdAt     DateTime @default(now())
+
+  workspace     Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  publishJob    PublishJob @relation(fields: [publishJobId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, scheduledAt])
+}
+
+model ReplyJob {
+  id            String         @id @default(uuid())
+  workspaceId   String
+  xAccountId    String?
+  sourcePostId  String?
+  payload       Json?
+  status        ReplyJobStatus @default(PENDING)
+  scheduledFor  DateTime?
+  attempts      Int            @default(0)
+  maxAttempts   Int            @default(3)
+  lastError     String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  xAccount      XAccount?        @relation(fields: [xAccountId], references: [id], onDelete: SetNull)
+  candidates    ReplyCandidate[]
+
+  @@index([workspaceId, status, createdAt])
+}
+
+model ReplyCandidate {
+  id              String         @id @default(uuid())
+  replyJobId      String
+  content         String
+  riskLevel       ReplyRiskLevel @default(LOW)
+  riskScore       Decimal        @default(0) @db.Decimal(5, 4)
+  approvalStatus  ApprovalStatus @default(PENDING)
+  approvedById    String?
+  approvedAt      DateTime?
+  createdAt       DateTime       @default(now())
+
+  replyJob        ReplyJob @relation(fields: [replyJobId], references: [id], onDelete: Cascade)
+  approvedBy      User?    @relation("ReplyCandidateApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  @@index([replyJobId, approvalStatus])
+}
+
+model ApprovalRequest {
+  id             String         @id @default(uuid())
+  workspaceId    String
+  resourceType   String
+  resourceId     String
+  requesterId    String
+  approverId     String?
+  status         ApprovalStatus @default(PENDING)
+  note           String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  requester      User      @relation("ApprovalRequester", fields: [requesterId], references: [id])
+  approver       User?     @relation("ApprovalReviewer", fields: [approverId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status, createdAt])
+}
+
+model Subscription {
+  id                    String             @id @default(uuid())
+  userId                String             @unique
+  plan                  SubscriptionPlan   @default(FREE)
+  status                SubscriptionStatus @default(ACTIVE)
+  stripeCustomerId      String?
+  stripeSubscriptionId  String?
+  currentPeriodEnd      DateTime?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Generation {
+  id          String           @id @default(uuid())
+  userId      String
+  workspaceId String?
+  prompt      String
+  type        GenerationType   @default(TWEET)
+  language    String           @default("zh")
+  style       String?
+  status      GenerationStatus @default(RUNNING)
+  result      Json?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace     Workspace?       @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  steps         GenerationStep[]
+  usageLogs     UsageLog[]
+  publishRecord PublishRecord?
+  publishJobs   PublishJob[]
+
+  @@index([userId, createdAt])
+  @@index([workspaceId, createdAt])
+}
+
+model GenerationStep {
+  id           String     @id @default(uuid())
+  generationId String
+  step         StepName
+  status       StepStatus @default(PENDING)
+  content      String?
+  startedAt    DateTime?
+  completedAt  DateTime?
+
+  generation Generation @relation(fields: [generationId], references: [id], onDelete: Cascade)
+
+  @@unique([generationId, step])
+}
+
+model TweetStyle {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  workspaceId    String?
+  analysisResult Json?
+  sampleCount    Int      @default(0)
+  lastAnalyzedAt DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace      Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+}
+
+model UsageLog {
+  id           String         @id @default(uuid())
+  userId       String
+  workspaceId  String?
+  generationId String?
+  eventType    UsageEventType @default(GENERATION)
+  model        String
+  inputTokens  Int            @default(0)
+  outputTokens Int            @default(0)
+  costUsd      Decimal        @default(0) @db.Decimal(10, 6)
+  createdAt    DateTime       @default(now())
+
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace    Workspace?  @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  generation   Generation? @relation(fields: [generationId], references: [id], onDelete: SetNull)
+  tokenCosts   TokenCostLog[]
+
+  @@index([userId, createdAt])
+  @@index([workspaceId, eventType, createdAt])
+}
+
+model TokenCostLog {
+  id           String   @id @default(uuid())
+  workspaceId  String
+  usageLogId   String?
+  providerType ProviderType
+  model        String
+  inputTokens  Int      @default(0)
+  outputTokens Int      @default(0)
+  costUsd      Decimal  @default(0) @db.Decimal(10, 6)
+  createdAt    DateTime @default(now())
+
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  usageLog     UsageLog? @relation(fields: [usageLogId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+}
+
+model BillingAccount {
+  id               String             @id @default(uuid())
+  workspaceId      String             @unique
+  plan             SubscriptionPlan   @default(FREE)
+  status           SubscriptionStatus @default(ACTIVE)
+  monthlyQuota     Int                @default(100)
+  remainingCredits Int                @default(100)
+  cycleStart       DateTime?
+  cycleEnd         DateTime?
+  stripeCustomerId String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  ledgers          CreditLedger[]
+}
+
+model CreditLedger {
+  id               String          @id @default(uuid())
+  workspaceId      String
+  billingAccountId String?
+  direction        CreditDirection
+  amount           Int
+  balanceAfter     Int?
+  reason           String
+  metadata         Json?
+  createdAt        DateTime        @default(now())
+
+  workspace        Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  billingAccount   BillingAccount? @relation(fields: [billingAccountId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+}
+
+model MediaAsset {
+  id            String           @id @default(uuid())
+  workspaceId   String
+  userId        String
+  draftId       String?
+  kind          MediaAssetKind   @default(IMAGE)
+  sourceType    MediaSourceType
+  status        MediaAssetStatus @default(PROCESSING)
+  name          String?
+  prompt        String?
+  sourceUrl     String?
+  outputUrl     String?
+  metadata      Json?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  draft         Draft?           @relation(fields: [draftId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status, createdAt])
+  @@index([draftId])
+}
+
+model WorkflowTemplate {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  name          String
+  key           String
+  config        Json
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace     Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  runs          WorkflowRun[]
+
+  @@unique([workspaceId, key])
+  @@index([workspaceId, isActive, createdAt])
+}
+
+model WorkflowRun {
+  id              String             @id @default(uuid())
+  workspaceId     String
+  templateId      String?
+  triggerUserId   String?
+  status          WorkflowRunStatus  @default(PENDING)
+  input           Json?
+  output          Json?
+  lastError       String?
+  createdAt       DateTime           @default(now())
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  updatedAt       DateTime           @updatedAt
+
+  workspace       Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  template        WorkflowTemplate?  @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  triggerUser     User?              @relation("WorkflowRunTriggerer", fields: [triggerUserId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status, createdAt])
+  @@index([templateId, createdAt])
+}
+
+model PublishRecord {
+  id              String   @id @default(uuid())
+  userId          String
+  workspaceId     String?
+  generationId    String   @unique
+  externalTweetId String?
+  publishedAt     DateTime @default(now())
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace  Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  generation Generation @relation(fields: [generationId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, publishedAt])
+}
+
+model AuditLog {
+  id            String          @id @default(uuid())
+  workspaceId   String
+  userId        String?
+  action        AuditActionType
+  resourceType  String
+  resourceId    String?
+  payload       Json?
+  createdAt     DateTime        @default(now())
+
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user          User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, action, createdAt])
+}

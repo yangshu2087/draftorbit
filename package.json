@@ -1,0 +1,36 @@
+{
+  "name": "draftorbit",
+  "private": true,
+  "version": "0.2.0",
+  "description": "DraftOrbit - 面向 X 的 AI 内容运营工作台",
+  "packageManager": "pnpm@10.23.0",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "test": "turbo test",
+    "clean": "turbo clean && rm -rf node_modules",
+    "db:generate": "pnpm --filter @draftorbit/db prisma:generate",
+    "db:push": "pnpm --filter @draftorbit/db prisma:push",
+    "db:migrate": "pnpm --filter @draftorbit/db prisma:migrate",
+    "db:seed": "pnpm --filter @draftorbit/db db:seed",
+    "dev:api": "pnpm --filter @draftorbit/api dev",
+    "dev:web": "pnpm --filter @draftorbit/web dev",
+    "dev:worker": "pnpm --filter @draftorbit/worker dev",
+    "smoke:p0": "bash ./scripts/smoke-p0.sh",
+    "smoke:v1": "bash ./scripts/smoke-v1.sh"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.8",
+    "typescript": "^5.8.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "path-to-regexp": "^8.4.0"
+    }
+  }
+}

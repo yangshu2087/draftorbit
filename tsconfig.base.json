@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@draftorbit/shared": ["packages/shared/src"],
+      "@draftorbit/db": ["packages/db/src"],
+      "@draftorbit/provider-hub": ["packages/provider-hub/src"]
+    }
+  }
+}
