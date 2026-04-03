@@ -44,3 +44,9 @@ CMD ["sh", "-c", "pnpm db:generate && pnpm db:migrate && pnpm --filter @draftorb
 FROM runtime AS web
 EXPOSE 3000
 CMD ["pnpm", "--filter", "@draftorbit/web", "start"]
+
+# Render 默认使用 Dockerfile 最后一阶段。
+# 该阶段用于生产 API + Worker 同机启动（Web 仍在 Vercel）。
+FROM runtime AS render_api_worker
+EXPOSE 10000
+CMD ["sh", "-c", "pnpm db:generate && pnpm db:migrate && if [ \"${RUN_DB_SEED_ON_START:-true}\" = \"true\" ]; then pnpm db:seed; fi; pnpm --filter @draftorbit/worker start & exec pnpm --filter @draftorbit/api start"]
