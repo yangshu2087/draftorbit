@@ -48,6 +48,20 @@ export async function fetchSubscription() {
   return apiFetch<Record<string, unknown>>('/billing/subscription');
 }
 
+export async function fetchBillingPlans() {
+  return apiFetch<{
+    currency: string;
+    trialDays: number;
+    plans: Array<{
+      key: 'PRO' | 'PREMIUM';
+      name: string;
+      priceMonthlyUsd: number;
+      priceMonthlyUsdCents: number;
+      features: string[];
+    }>;
+  }>('/billing/plans');
+}
+
 export async function fetchUsage() {
   return apiFetch<Record<string, unknown>>('/billing/usage');
 }
