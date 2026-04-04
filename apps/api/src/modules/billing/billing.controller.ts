@@ -45,7 +45,7 @@ export class BillingController {
   @UseGuards(AuthGuard)
   async checkout(@Req() req: RequestWithUser, @Body() body: CheckoutBodyDto) {
     const user = req.user as AuthUser;
-    return this.billing.createCheckoutSession(user.userId, body.plan);
+    return this.billing.createCheckoutSession(user.userId, body.plan, body.cycle);
   }
 
   @Post('webhook')

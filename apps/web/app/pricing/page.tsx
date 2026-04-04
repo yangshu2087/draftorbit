@@ -6,26 +6,39 @@ import { Button } from '../../components/ui/button';
 import { createCheckout, fetchBillingPlans, startXOAuth } from '../../lib/queries';
 import { getToken, getUserFromToken } from '../../lib/api';
 
+type PlanKey = 'STARTER' | 'PRO' | 'PREMIUM';
+type BillingCycle = 'MONTHLY' | 'YEARLY';
+
 type PlanItem = {
-  key: 'PRO' | 'PREMIUM';
+  key: PlanKey;
   name: string;
-  priceMonthlyUsd: number;
-  priceMonthlyUsdCents: number;
+  monthly: {
+    usd: number;
+    usdCents: number;
+  };
+  yearly: {
+    usd: number;
+    usdCents: number;
+  };
   features: string[];
+  limits: {
+    daily: number;
+    monthly: number;
+  };
 };
 
 const faqItems = [
   {
     q: '试用结束后会怎样？',
-    a: '试用期为 7 天。到期后会按你选择的方案自动转为月付订阅，随时可在账单页取消。'
+    a: '默认试用期为 3 天。试用到期后会按你选择的月付或年付方案自动转为订阅，随时可在账单页取消。'
   },
   {
     q: '支持哪些付款方式？',
-    a: '默认通过 PayPal 结账；当 Stripe 通道已配置时，也支持 Stripe Checkout（信用卡/Apple Pay/Google Pay）。'
+    a: '统一通过 Stripe Checkout（信用卡/Apple Pay/Google Pay）进行 USD 结算。'
   },
   {
-    q: '可以随时取消吗？',
-    a: '可以。取消后当前计费周期内仍可继续使用，到期后不再续费。'
+    q: '为什么推荐年付？',
+    a: '年付按月付总价 8 折，适合需要稳定内容产能和持续运营的团队。'
   }
 ];
 
@@ -55,12 +68,18 @@ function TopNav() {
 
 function PriceCard(props: {
   plan: PlanItem;
+  cycle: BillingCycle;
   trialDays: number;
   recommended?: boolean;
   loading: boolean;
-  onCheckout: (plan: 'PRO' | 'PREMIUM') => Promise<void>;
+  onCheckout: (plan: PlanKey, cycle: BillingCycle) => Promise<void>;
 }) {
-  const plan = props.plan;
+  const { plan, cycle, trialDays } = props;
+  const isYearly = cycle === 'YEARLY';
+  const price = isYearly ? plan.yearly.usd : plan.monthly.usd;
+  const displayPrice = Number.isInteger(price) ? String(price) : price.toFixed(2);
+  const hasTrial = trialDays > 0;
+
   return (
     <section
       className={`relative flex flex-col rounded-3xl border bg-white p-6 shadow-sm ${
@@ -72,10 +91,19 @@ function PriceCard(props: {
       ) : null}
       <h2 className="text-lg font-semibold text-slate-900">{plan.name}</h2>
       <p className="mt-2 text-4xl font-bold tracking-tight text-slate-900">
-        ${plan.priceMonthlyUsd}
-        <span className="ml-1 text-base font-medium text-slate-500">/月</span>
+        ${displayPrice}
+        <span className="ml-1 text-base font-medium text-slate-500">/{isYearly ? '年' : '月'}</span>
       </p>
-      <p className="mt-2 text-sm text-slate-500">先试用 {props.trialDays} 天，再开始订阅。</p>
+      {isYearly ? (
+        <p className="mt-2 text-xs text-emerald-700">年付对比月付节省 20%</p>
+      ) : null}
+      <p className="mt-2 text-sm text-slate-500">
+        {hasTrial ? `先试用 ${trialDays} 天，再开始订阅。` : '立即订阅，支付后立即生效。'}
+      </p>
+      <p className="mt-2 text-xs text-slate-500">
+        配额：每日 {plan.limits.daily} 次 / 每月 {plan.limits.monthly} 次
+      </p>
+
       <ul className="mt-5 flex flex-1 flex-col gap-2 text-sm text-slate-600">
         {plan.features.map((feature) => (
           <li key={feature} className="flex items-start gap-2">
@@ -88,9 +116,9 @@ function PriceCard(props: {
         className="mt-6 w-full"
         variant={props.recommended ? 'default' : 'outline'}
         disabled={props.loading}
-        onClick={() => void props.onCheckout(plan.key)}
+        onClick={() => void props.onCheckout(plan.key, cycle)}
       >
-        {props.loading ? '跳转结账中…' : `开始 ${props.trialDays} 天试用`}
+        {props.loading ? '跳转结账中…' : hasTrial ? `开始 ${trialDays} 天试用` : '立即订阅'}
       </Button>
     </section>
   );
@@ -98,10 +126,11 @@ function PriceCard(props: {
 
 export default function PricingPage() {
   const [openFaq, setOpenFaq] = useState<number | null>(0);
-  const [checkoutLoading, setCheckoutLoading] = useState<'PRO' | 'PREMIUM' | null>(null);
+  const [checkoutLoading, setCheckoutLoading] = useState<PlanKey | null>(null);
   const [plans, setPlans] = useState<PlanItem[]>([]);
-  const [trialDays, setTrialDays] = useState(7);
+  const [trialDays, setTrialDays] = useState(3);
   const [loadingPlans, setLoadingPlans] = useState(true);
+  const [cycle, setCycle] = useState<BillingCycle>('MONTHLY');
 
   useEffect(() => {
     (async () => {
@@ -112,21 +141,31 @@ export default function PricingPage() {
       } catch {
         setPlans([
           {
+            key: 'STARTER',
+            name: 'Starter',
+            monthly: { usd: 19, usdCents: 1900 },
+            yearly: { usd: 182.4, usdCents: 18240 },
+            features: ['每月 500 次内容生成', 'X 内容生产与发布主链路', '基础审批与发布队列'],
+            limits: { daily: 80, monthly: 500 }
+          },
+          {
             key: 'PRO',
-            name: 'Pro',
-            priceMonthlyUsd: 19,
-            priceMonthlyUsdCents: 1900,
-            features: ['每月 300 次内容生成', '完整生产与发布链路', 'X 账号运营工作台']
+            name: 'Growth',
+            monthly: { usd: 49, usdCents: 4900 },
+            yearly: { usd: 470.4, usdCents: 47040 },
+            features: ['每月 2000 次内容生成', '风格学习 + 自然化 + 自动配图', '回复助手与审批流增强'],
+            limits: { daily: 300, monthly: 2000 }
           },
           {
             key: 'PREMIUM',
-            name: 'Premium',
-            priceMonthlyUsd: 59,
-            priceMonthlyUsdCents: 5900,
-            features: ['不限量内容生成', '全链路运营能力', '优先处理与高级分析']
+            name: 'Max',
+            monthly: { usd: 99, usdCents: 9900 },
+            yearly: { usd: 950.4, usdCents: 95040 },
+            features: ['每月 5000 次内容生成', '高级自动化与多工作流编排', '优先支持与高优先级队列'],
+            limits: { daily: 1000, monthly: 5000 }
           }
         ]);
-        setTrialDays(7);
+        setTrialDays(3);
       } finally {
         setLoadingPlans(false);
       }
@@ -134,11 +173,11 @@ export default function PricingPage() {
   }, []);
 
   const orderedPlans = useMemo(() => {
-    const score = { PRO: 1, PREMIUM: 2 } as const;
+    const score = { STARTER: 1, PRO: 2, PREMIUM: 3 } as const;
     return [...plans].sort((a, b) => score[a.key] - score[b.key]);
   }, [plans]);
 
-  const goCheckout = useCallback(async (plan: 'PRO' | 'PREMIUM') => {
+  const goCheckout = useCallback(async (plan: PlanKey, selectedCycle: BillingCycle) => {
     if (!getToken()) {
       try {
         const { url } = await startXOAuth();
@@ -150,7 +189,7 @@ export default function PricingPage() {
     }
     setCheckoutLoading(plan);
     try {
-      const { url } = await createCheckout(plan);
+      const { url } = await createCheckout(plan, selectedCycle);
       window.location.href = url;
     } catch (e) {
       alert(e instanceof Error ? e.message : '创建结账失败，请稍后重试。');
@@ -165,24 +204,46 @@ export default function PricingPage() {
 
       <main className="mx-auto max-w-6xl px-4 py-10">
         <div className="text-center">
-          <h1 className="text-4xl font-bold tracking-tight text-slate-900">按月订阅，统一美元计费</h1>
-          <p className="mt-3 text-slate-600">不再提供永久免费版，仅提供 7 天试用后转订阅。</p>
+          <h1 className="text-4xl font-bold tracking-tight text-slate-900">按月或年订阅，统一 USD 计费</h1>
+          <p className="mt-3 text-slate-600">三档方案覆盖从创作者到团队的 X 内容运营需求。</p>
+
+          <div className="mt-6 inline-flex items-center rounded-full border border-slate-200 bg-white p-1">
+            <button
+              type="button"
+              className={`rounded-full px-4 py-1.5 text-sm ${
+                cycle === 'MONTHLY' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-900'
+              }`}
+              onClick={() => setCycle('MONTHLY')}
+            >
+              月付
+            </button>
+            <button
+              type="button"
+              className={`rounded-full px-4 py-1.5 text-sm ${
+                cycle === 'YEARLY' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-900'
+              }`}
+              onClick={() => setCycle('YEARLY')}
+            >
+              年付（省 20%）
+            </button>
+          </div>
         </div>
 
         {loadingPlans ? (
-          <div className="mt-10 grid gap-6 md:grid-cols-2">
-            {[0, 1].map((i) => (
+          <div className="mt-10 grid gap-6 md:grid-cols-3">
+            {[0, 1, 2].map((i) => (
               <div key={i} className="h-80 animate-pulse rounded-3xl border border-slate-900/10 bg-white" />
             ))}
           </div>
         ) : (
-          <div className="mt-10 grid gap-6 md:grid-cols-2">
-            {orderedPlans.map((plan, i) => (
+          <div className="mt-10 grid gap-6 md:grid-cols-3">
+            {orderedPlans.map((plan) => (
               <PriceCard
                 key={plan.key}
                 plan={plan}
+                cycle={cycle}
                 trialDays={trialDays}
-                recommended={i === 0}
+                recommended={plan.key === 'PRO'}
                 loading={checkoutLoading === plan.key}
                 onCheckout={goCheckout}
               />

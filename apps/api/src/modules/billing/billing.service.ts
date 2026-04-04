@@ -5,8 +5,23 @@ import {
   InternalServerErrorException,
   Logger
 } from '@nestjs/common';
-import { SubscriptionPlan, SubscriptionStatus } from '@draftorbit/db';
+import { BillingInterval, SubscriptionPlan, SubscriptionStatus } from '@draftorbit/db';
 import { PrismaService } from '../../common/prisma.service';
+import {
+  BILLING_CURRENCY,
+  type BillingCycle,
+  type BillingPlanKey,
+  getBillingTrialDays,
+  getPlanCatalogView,
+  getPlanLimits,
+  parseBillingCycle,
+  parseBillingPlan,
+  planKeyFromSubscriptionPlan,
+  PLAN_CATALOG,
+  resolveStripePriceId,
+  stripePriceEnvKey,
+  subscriptionPlanFromPlanKey
+} from './plan-catalog';
 
 let stripe: any = null;
 try {
@@ -18,26 +33,10 @@ try {
   // stripe optional at runtime
 }
 
-const BILLING_CURRENCY = 'USD';
-const TRIAL_DAYS = 7;
 const PAYPAL_API_BASE = (process.env.PAYPAL_API_BASE ?? 'https://api-m.sandbox.paypal.com').replace(
   /\/$/,
   ''
 );
-const PLAN_PRICING_USD_CENTS: Record<'PRO' | 'PREMIUM', number> = {
-  PRO: 1900,
-  PREMIUM: 5900
-};
-
-const DAILY_LIMITS: Record<string, number> = {
-  PRO: 999999,
-  PREMIUM: 999999
-};
-
-const MONTHLY_LIMITS: Record<string, number> = {
-  PRO: 300,
-  PREMIUM: 999999
-};
 
 function mapStripeSubscriptionStatus(status: string): SubscriptionStatus {
   switch (status) {
@@ -67,6 +66,10 @@ function mapPayPalSubscriptionStatus(status: string): SubscriptionStatus {
     default:
       return SubscriptionStatus.ACTIVE;
   }
+}
+
+function mapStripeIntervalToBillingInterval(interval: unknown): BillingInterval {
+  return interval === 'year' ? BillingInterval.YEARLY : BillingInterval.MONTHLY;
 }
 
 function pickHeader(
@@ -195,21 +198,29 @@ export class BillingService {
 
   private resolvePlanByPayPalResource(resource: PayPalWebhookEvent['resource']) {
     const planId = resource?.plan_id ?? '';
+    const starterPlanId = process.env.PAYPAL_PLAN_ID_STARTER ?? '';
     const proPlanId = process.env.PAYPAL_PLAN_ID_PRO ?? '';
     const premiumPlanId = process.env.PAYPAL_PLAN_ID_PREMIUM ?? '';
+    if (planId && starterPlanId && planId === starterPlanId) return SubscriptionPlan.STARTER;
     if (planId && premiumPlanId && planId === premiumPlanId) return SubscriptionPlan.PREMIUM;
     if (planId && proPlanId && planId === proPlanId) return SubscriptionPlan.PRO;
     return undefined;
   }
 
   private trialWindowEnd(from = new Date()) {
-    return new Date(from.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
+    const trialDays = getBillingTrialDays();
+    return new Date(from.getTime() + trialDays * 24 * 60 * 60 * 1000);
+  }
+
+  private isPayPalFallbackEnabled() {
+    return (process.env.BILLING_PAYPAL_FALLBACK_ENABLED ?? '').trim() === 'true';
   }
 
   private toSubscriptionView(sub: {
     id: string;
     userId: string;
     plan: SubscriptionPlan;
+    billingInterval: BillingInterval;
     status: SubscriptionStatus;
     stripeCustomerId: string | null;
     stripeSubscriptionId: string | null;
@@ -231,6 +242,7 @@ export class BillingService {
       status: sub.status,
       stripeCustomerId: sub.stripeCustomerId,
       stripeSubscriptionId: sub.stripeSubscriptionId,
+      billingInterval: sub.billingInterval,
       currentPeriodEnd,
       currency: BILLING_CURRENCY,
       isTrialing,
@@ -249,7 +261,8 @@ export class BillingService {
       sub = await this.prisma.db.subscription.create({
         data: {
           userId,
-          plan: SubscriptionPlan.PRO,
+          plan: SubscriptionPlan.STARTER,
+          billingInterval: BillingInterval.MONTHLY,
           status: SubscriptionStatus.TRIALING,
           trialEndsAt: this.trialWindowEnd(now),
           currentPeriodEnd: this.trialWindowEnd(now)
@@ -262,7 +275,8 @@ export class BillingService {
       sub = await this.prisma.db.subscription.update({
         where: { id: sub.id },
         data: {
-          plan: SubscriptionPlan.PRO,
+          plan: SubscriptionPlan.STARTER,
+          billingInterval: sub.billingInterval ?? BillingInterval.MONTHLY,
           status: SubscriptionStatus.TRIALING,
           trialEndsAt: sub.trialEndsAt ?? this.trialWindowEnd(now),
           currentPeriodEnd: sub.currentPeriodEnd ?? this.trialWindowEnd(now)
@@ -290,23 +304,8 @@ export class BillingService {
   getPlans() {
     return {
       currency: BILLING_CURRENCY,
-      trialDays: TRIAL_DAYS,
-      plans: [
-        {
-          key: 'PRO',
-          name: 'Pro',
-          priceMonthlyUsd: 19,
-          priceMonthlyUsdCents: PLAN_PRICING_USD_CENTS.PRO,
-          features: ['每月 300 次内容生成', '完整生产与发布链路', 'X 账号运营工作台']
-        },
-        {
-          key: 'PREMIUM',
-          name: 'Premium',
-          priceMonthlyUsd: 59,
-          priceMonthlyUsdCents: PLAN_PRICING_USD_CENTS.PREMIUM,
-          features: ['不限量内容生成', '全链路运营能力', '优先处理与高级分析']
-        }
-      ]
+      trialDays: getBillingTrialDays(),
+      plans: getPlanCatalogView()
     };
   }
 
@@ -317,7 +316,8 @@ export class BillingService {
 
   async getUsageSummary(userId: string) {
     const sub = await this.ensureTrialOrPaidSubscription(userId);
-    const planKey = sub.plan;
+    const planKey = planKeyFromSubscriptionPlan(sub.plan);
+    const limits = getPlanLimits(planKey);
 
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -338,58 +338,94 @@ export class BillingService {
     return {
       dailyCount,
       monthlyCount,
-      plan: planKey,
+      plan: sub.plan,
       status: sub.status,
-      limits: {
-        daily: DAILY_LIMITS[planKey] ?? DAILY_LIMITS.PRO,
-        monthly: MONTHLY_LIMITS[planKey] ?? MONTHLY_LIMITS.PRO
-      },
+      limits,
       isTrialing: sub.status === SubscriptionStatus.TRIALING,
       trialEndsAt: sub.trialEndsAt?.toISOString() ?? null
     };
   }
 
-  async createCheckoutSession(userId: string, plan: 'PRO' | 'PREMIUM'): Promise<{ url: string }> {
-    const payPalCheckout = await this.createPayPalCheckoutSession(userId, plan);
-    if (payPalCheckout) {
-      return payPalCheckout;
+  async createCheckoutSession(
+    userId: string,
+    planInput: 'STARTER' | 'PRO' | 'PREMIUM',
+    cycleInput: 'MONTHLY' | 'YEARLY'
+  ): Promise<{ url: string }> {
+    const plan = parseBillingPlan(planInput);
+    const cycle = parseBillingCycle(cycleInput);
+    if (!plan || !cycle) {
+      throw new BadRequestException('无效的订阅方案或计费周期');
     }
 
     if (!stripe) {
+      if (this.isPayPalFallbackEnabled()) {
+        const payPalCheckout = await this.createPayPalCheckoutSession(userId, plan, cycle);
+        if (payPalCheckout) {
+          return payPalCheckout;
+        }
+      }
       throw new BadRequestException('支付通道未完成配置，请联系管理员');
     }
 
     const appUrl =
       process.env.APP_URL ?? ((process.env.NODE_ENV ?? 'development') === 'production' ? 'https://draftorbit.ai' : 'http://localhost:3000');
-    const unitAmount = PLAN_PRICING_USD_CENTS[plan];
-    const name = plan === 'PRO' ? 'DraftOrbit PRO' : 'DraftOrbit PREMIUM';
+    const trialDays = getBillingTrialDays();
+    const planConfig = PLAN_CATALOG[plan];
+    const configuredPriceId = resolveStripePriceId(plan, cycle);
+    const strictPriceIdRequired =
+      (process.env.NODE_ENV ?? 'development') === 'production' ||
+      (process.env.STRIPE_SECRET_KEY ?? '').trim().startsWith('sk_live_');
+
+    if (!configuredPriceId && strictPriceIdRequired) {
+      const envKey = stripePriceEnvKey(plan, cycle);
+      throw new InternalServerErrorException(`Missing required env: ${envKey}`);
+    }
 
     const existing = await this.prisma.db.subscription.findUnique({ where: { userId } });
+    const user = await this.prisma.db.user.findUnique({
+      where: { id: userId },
+      select: { email: true }
+    });
+
+    const lineItem = configuredPriceId
+      ? {
+          price: configuredPriceId,
+          quantity: 1
+        }
+      : {
+          price_data: {
+            currency: BILLING_CURRENCY.toLowerCase(),
+            product_data: { name: `DraftOrbit ${planConfig.publicName}` },
+            recurring: { interval: cycle === BillingInterval.YEARLY ? ('year' as const) : ('month' as const) },
+            unit_amount:
+              cycle === BillingInterval.YEARLY ? planConfig.yearlyUsdCents : planConfig.monthlyUsdCents
+          },
+          quantity: 1
+        };
+
+    const subscriptionData: Record<string, unknown> = {
+      metadata: { userId, plan, cycle }
+    };
+
+    if (trialDays > 0) {
+      subscriptionData.trial_period_days = trialDays;
+    }
 
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       payment_method_types: ['card'],
       ...(existing?.stripeCustomerId
         ? { customer: existing.stripeCustomerId }
-        : { customer_creation: 'always' as const }),
-      line_items: [
-        {
-          price_data: {
-            currency: BILLING_CURRENCY.toLowerCase(),
-            product_data: { name },
-            recurring: { interval: 'month' },
-            unit_amount: unitAmount
-          },
-          quantity: 1
-        }
-      ],
+        : {
+            customer_creation: 'always' as const,
+            ...(user?.email ? { customer_email: user.email } : {})
+          }),
+      line_items: [lineItem],
+      allow_promotion_codes: true,
       success_url: `${appUrl}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}/billing/cancel`,
-      metadata: { userId, plan },
-      subscription_data: {
-        trial_period_days: TRIAL_DAYS,
-        metadata: { userId, plan }
-      }
+      metadata: { userId, plan, cycle },
+      subscription_data: subscriptionData
     });
 
     const url = session.url;
@@ -397,18 +433,19 @@ export class BillingService {
     return { url };
   }
 
-  private resolvePayPalPlanId(plan: 'PRO' | 'PREMIUM'): string | null {
-    if (plan === 'PRO') {
-      return process.env.PAYPAL_PLAN_ID_PRO ?? null;
-    }
+  private resolvePayPalPlanId(plan: BillingPlanKey, cycle: BillingCycle): string | null {
+    if (cycle !== BillingInterval.MONTHLY) return null;
+    if (plan === 'STARTER') return process.env.PAYPAL_PLAN_ID_STARTER ?? null;
+    if (plan === 'PRO') return process.env.PAYPAL_PLAN_ID_PRO ?? null;
     return process.env.PAYPAL_PLAN_ID_PREMIUM ?? null;
   }
 
   private async createPayPalCheckoutSession(
     userId: string,
-    plan: 'PRO' | 'PREMIUM'
+    plan: BillingPlanKey,
+    cycle: BillingCycle
   ): Promise<{ url: string } | null> {
-    const planId = this.resolvePayPalPlanId(plan);
+    const planId = this.resolvePayPalPlanId(plan, cycle);
     if (!planId) return null;
 
     const appUrl =
@@ -491,7 +528,7 @@ export class BillingService {
 
     const existing = await this.prisma.db.subscription.findUnique({ where: { userId } });
     const planFromResource = this.resolvePlanByPayPalResource(resource);
-    const plan = planFromResource ?? existing?.plan ?? SubscriptionPlan.PRO;
+    const plan = planFromResource ?? existing?.plan ?? SubscriptionPlan.STARTER;
 
     switch (eventType) {
       case 'BILLING.SUBSCRIPTION.CREATED':
@@ -516,12 +553,14 @@ export class BillingService {
           create: {
             userId,
             plan,
+            billingInterval: BillingInterval.MONTHLY,
             status: statusOverride,
             trialEndsAt: statusOverride === SubscriptionStatus.TRIALING ? this.trialWindowEnd() : null,
             currentPeriodEnd: nextBillingTime
           },
           update: {
             plan,
+            billingInterval: BillingInterval.MONTHLY,
             status: statusOverride,
             currentPeriodEnd: nextBillingTime
           }
@@ -582,8 +621,9 @@ export class BillingService {
       case 'checkout.session.completed': {
         const session = event.data.object;
         const userId = session.metadata?.userId as string | undefined;
-        const plan = session.metadata?.plan as string | undefined;
-        if (!userId || (plan !== 'PRO' && plan !== 'PREMIUM')) break;
+        const plan = parseBillingPlan(session.metadata?.plan);
+        const cycleFromMeta = parseBillingCycle(session.metadata?.cycle);
+        if (!userId || !plan) break;
 
         const stripeSubId =
           typeof session.subscription === 'string'
@@ -593,10 +633,11 @@ export class BillingService {
           typeof session.customer === 'string' ? session.customer : session.customer?.id;
         if (!stripeSubId || !customerId) break;
 
-        const prismaPlan = plan === 'PREMIUM' ? SubscriptionPlan.PREMIUM : SubscriptionPlan.PRO;
+        const prismaPlan = subscriptionPlanFromPlanKey(plan);
         let mappedStatus: SubscriptionStatus = SubscriptionStatus.TRIALING;
         let trialEndsAt: Date | null = null;
         let periodEnd: Date | null = null;
+        let billingInterval: BillingInterval = cycleFromMeta ?? BillingInterval.MONTHLY;
 
         if (stripeSubId) {
           try {
@@ -606,6 +647,9 @@ export class BillingService {
             periodEnd = stripeSub.current_period_end
               ? new Date(stripeSub.current_period_end * 1000)
               : null;
+            billingInterval = mapStripeIntervalToBillingInterval(
+              stripeSub.items?.data?.[0]?.price?.recurring?.interval
+            );
           } catch {
             mappedStatus = SubscriptionStatus.TRIALING;
           }
@@ -616,6 +660,7 @@ export class BillingService {
           create: {
             userId,
             plan: prismaPlan,
+            billingInterval,
             status: mappedStatus,
             stripeCustomerId: customerId,
             stripeSubscriptionId: stripeSubId,
@@ -624,6 +669,7 @@ export class BillingService {
           },
           update: {
             plan: prismaPlan,
+            billingInterval,
             status: mappedStatus,
             stripeCustomerId: customerId,
             stripeSubscriptionId: stripeSubId,
@@ -641,18 +687,17 @@ export class BillingService {
         });
         if (!dbSub) break;
 
-        const planMeta = sub.metadata?.plan as string | undefined;
-        const plan =
-          planMeta === 'PREMIUM'
-            ? SubscriptionPlan.PREMIUM
-            : planMeta === 'PRO'
-              ? SubscriptionPlan.PRO
-              : dbSub.plan;
+        const planMeta = parseBillingPlan(sub.metadata?.plan);
+        const plan = planMeta ? subscriptionPlanFromPlanKey(planMeta) : dbSub.plan;
+        const billingInterval = mapStripeIntervalToBillingInterval(
+          sub.items?.data?.[0]?.price?.recurring?.interval
+        );
 
         await this.prisma.db.subscription.update({
           where: { id: dbSub.id },
           data: {
             plan,
+            billingInterval,
             status: mapStripeSubscriptionStatus(String(sub.status)),
             trialEndsAt: sub.trial_end ? new Date(sub.trial_end * 1000) : null,
             currentPeriodEnd: sub.current_period_end
@@ -673,7 +718,8 @@ export class BillingService {
         await this.prisma.db.subscription.update({
           where: { id: dbSub.id },
           data: {
-            plan: dbSub.plan === SubscriptionPlan.PREMIUM ? SubscriptionPlan.PREMIUM : SubscriptionPlan.PRO,
+            plan: dbSub.plan,
+            billingInterval: dbSub.billingInterval,
             status: SubscriptionStatus.CANCELED,
             stripeSubscriptionId: null,
             trialEndsAt: null,

@@ -1,34 +1,93 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Inject, Injectable } from '@nestjs/common';
+import { SubscriptionPlan, SubscriptionStatus } from '@draftorbit/db';
 import { PrismaService } from './prisma.service';
 import type { AuthUser } from '@draftorbit/shared';
-
-const DAILY_LIMITS: Record<string, number> = {
-  FREE: 3,
-  PRO: 999999,
-  PREMIUM: 999999
-};
-
-const MONTHLY_LIMITS: Record<string, number> = {
-  FREE: 999999,
-  PRO: 100,
-  PREMIUM: 999999
-};
+import { getBillingTrialDays, getPlanLimits, planDisplayLabel } from '../modules/billing/plan-catalog';
 
 @Injectable()
 export class SubscriptionGuard implements CanActivate {
   constructor(@Inject(PrismaService) private prisma: PrismaService) {}
 
-  async assertCanGenerate(user: AuthUser): Promise<void> {
-    const plan = user.plan ?? 'FREE';
-    const dailyLimit = DAILY_LIMITS[plan] ?? 3;
-    const monthlyLimit = MONTHLY_LIMITS[plan] ?? 100;
+  private trialWindowEnd() {
+    const trialDays = getBillingTrialDays();
+    return new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000);
+  }
 
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+  private isBypassMode() {
+    return (process.env.AUTH_MODE ?? '').trim() === 'self_host_no_login';
+  }
+
+  private async resolveSubscription(user: AuthUser) {
+    const now = new Date();
+    let sub = await this.prisma.db.subscription.findUnique({ where: { userId: user.userId } });
+
+    if (!sub) {
+      const trialEndsAt = this.trialWindowEnd();
+      sub = await this.prisma.db.subscription.create({
+        data: {
+          userId: user.userId,
+          plan: SubscriptionPlan.STARTER,
+          status: SubscriptionStatus.TRIALING,
+          trialEndsAt,
+          currentPeriodEnd: trialEndsAt
+        }
+      });
+      return sub;
+    }
+
+    if (sub.plan === SubscriptionPlan.FREE) {
+      const trialEndsAt = sub.trialEndsAt ?? this.trialWindowEnd();
+      sub = await this.prisma.db.subscription.update({
+        where: { id: sub.id },
+        data: {
+          plan: SubscriptionPlan.STARTER,
+          status: SubscriptionStatus.TRIALING,
+          trialEndsAt,
+          currentPeriodEnd: sub.currentPeriodEnd ?? trialEndsAt
+        }
+      });
+      return sub;
+    }
+
+    if (
+      sub.status === SubscriptionStatus.TRIALING &&
+      sub.trialEndsAt &&
+      sub.trialEndsAt.getTime() <= now.getTime()
+    ) {
+      sub = await this.prisma.db.subscription.update({
+        where: { id: sub.id },
+        data: {
+          status: SubscriptionStatus.CANCELED
+        }
+      });
+    }
+
+    return sub;
+  }
+
+  async assertCanGenerate(user: AuthUser): Promise<void> {
+    if (this.isBypassMode()) return;
+
+    const sub = await this.resolveSubscription(user);
+    const plan = sub.plan;
+    const limits = getPlanLimits(plan);
 
     const monthStart = new Date();
     monthStart.setDate(1);
     monthStart.setHours(0, 0, 0, 0);
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    if (sub.status === SubscriptionStatus.TRIALING) {
+      const trialEndsAt = sub.trialEndsAt;
+      if (!trialEndsAt || trialEndsAt.getTime() <= Date.now()) {
+        throw new ForbiddenException('试用已结束，请先开通订阅后继续使用。');
+      }
+    }
+
+    if (sub.status === SubscriptionStatus.CANCELED || sub.status === SubscriptionStatus.PAST_DUE) {
+      throw new ForbiddenException('当前订阅不可用，请先完成续费后继续使用。');
+    }
 
     const [dailyCount, monthlyCount] = await Promise.all([
       this.prisma.db.generation.count({
@@ -39,12 +98,12 @@ export class SubscriptionGuard implements CanActivate {
       })
     ]);
 
-    if (plan === 'FREE' && dailyCount >= dailyLimit) {
-      throw new ForbiddenException(`免费用户每日限 ${dailyLimit} 次生成，请升级订阅`);
+    if (dailyCount >= limits.daily) {
+      throw new ForbiddenException(`${planDisplayLabel(plan)} 每日限 ${limits.daily} 次生成，请升级方案后继续。`);
     }
 
-    if (plan === 'PRO' && monthlyCount >= monthlyLimit) {
-      throw new ForbiddenException(`Pro 用户每月限 ${monthlyLimit} 次生成，请升级至 Premium`);
+    if (monthlyCount >= limits.monthly) {
+      throw new ForbiddenException(`${planDisplayLabel(plan)} 每月限 ${limits.monthly} 次生成，请升级方案后继续。`);
     }
   }
 

@@ -2,7 +2,7 @@ export interface AuthUser {
   userId: string;
   twitterId?: string;
   handle: string;
-  plan: 'FREE' | 'PRO' | 'PREMIUM';
+  plan: 'FREE' | 'STARTER' | 'PRO' | 'PREMIUM';
   workspaceId?: string;
   role?: string;
 }

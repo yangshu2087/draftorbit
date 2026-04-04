@@ -106,6 +106,12 @@ RUN_ID=20260403-001 npx pnpm@10.23.0 smoke:p0
 - `X_CLIENT_ID` / `X_CLIENT_SECRET` / `X_CALLBACK_URL`
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_CALLBACK_URL`
 - `OPENROUTER_API_KEY`（平台托管调用通道）
+- `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET`
+- `STRIPE_STARTER_MONTHLY_PRICE_ID` / `STRIPE_STARTER_YEARLY_PRICE_ID`
+- `STRIPE_PRO_MONTHLY_PRICE_ID` / `STRIPE_PRO_YEARLY_PRICE_ID`
+- `STRIPE_PREMIUM_MONTHLY_PRICE_ID` / `STRIPE_PREMIUM_YEARLY_PRICE_ID`
+- `BILLING_TRIAL_DAYS`（默认 3）
+- `BILLING_PAYPAL_FALLBACK_ENABLED`（生产默认 `false`）
 - `PAYPAL_API_BASE` / `PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET` / `PAYPAL_WEBHOOK_ID`
 
 ---
@@ -123,6 +129,12 @@ RUN_ID=20260403-001 npx pnpm@10.23.0 smoke:p0
 - `X_CALLBACK_URL`（应为 `https://draftorbit.ai/auth/callback`）
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
+- `STRIPE_STARTER_MONTHLY_PRICE_ID`
+- `STRIPE_STARTER_YEARLY_PRICE_ID`
+- `STRIPE_PRO_MONTHLY_PRICE_ID`
+- `STRIPE_PRO_YEARLY_PRICE_ID`
+- `STRIPE_PREMIUM_MONTHLY_PRICE_ID`
+- `STRIPE_PREMIUM_YEARLY_PRICE_ID`
 
 ### 6.2 Stripe 钱包域名条件（Google Pay / Apple Pay）
 
@@ -193,7 +205,7 @@ curl -fsSI https://draftorbit.ai
 2. 当 `AUTH_MODE=required`（生产默认）时，`/auth/local/session` 会返回 `404`，避免线上误用本地登录。
 3. 敏感凭据采用加密存储（依赖 `BYOK_ENCRYPTION_KEY` 或 `JWT_SECRET`）。
 4. 外部平台（X/Google/支付/图像）仍保留 stub 路径，便于后续真实接入。
-5. 定价统一 USD，线上策略为 Pro $19 / Premium $59，支持 7 天试用。
+5. 定价统一 USD，线上策略为 Starter $19 / Growth $49 / Max $99，支持 3 天试用（可通过 `BILLING_TRIAL_DAYS` 临时调为 0 做真实扣款验收）。
 6. 登录页默认仅展示「X 登录」。当访问域名为 `localhost / 127.0.0.1 / *.local` 时，会自动显示「本地登录」入口；如需在自托管域名显示，可设置 `NEXT_PUBLIC_ENABLE_LOCAL_LOGIN=true`。
 
 ### X OAuth 常见报错排查（“你无法获得该应用的访问权限”）
@@ -207,7 +219,7 @@ curl -fsSI https://draftorbit.ai
    - 本地推荐：`X_CALLBACK_URL=http://localhost:3000/auth/callback`
 3. 修改 `.env` 后，已重启 API / Web 服务
 
-### PayPal Webhook 配置与测试（Sandbox）
+### PayPal Webhook 配置与测试（Sandbox，可选回退链路）
 
 1. 在 PayPal Developer 的 webhook 中将 URL 配置为：
    - `https://api.draftorbit.ai/billing/paypal/webhook`
@@ -222,7 +234,7 @@ curl -fsSI https://draftorbit.ai
    - `PAYMENT.SALE.COMPLETED`
    - `PAYMENT.SALE.REFUNDED`
    - `PAYMENT.SALE.REVERSED`
-3. API 环境变量设置：
+3. API 环境变量设置（仅当 `BILLING_PAYPAL_FALLBACK_ENABLED=true` 时需要）：
    - `PAYPAL_API_BASE=https://api-m.sandbox.paypal.com`
    - `PAYPAL_CLIENT_ID=...`
    - `PAYPAL_CLIENT_SECRET=...`

@@ -1,6 +1,9 @@
 import { IsIn } from 'class-validator';
 
 export class CheckoutBodyDto {
-  @IsIn(['PRO', 'PREMIUM'])
-  plan!: 'PRO' | 'PREMIUM';
+  @IsIn(['STARTER', 'PRO', 'PREMIUM'])
+  plan!: 'STARTER' | 'PRO' | 'PREMIUM';
+
+  @IsIn(['MONTHLY', 'YEARLY'])
+  cycle!: 'MONTHLY' | 'YEARLY';
 }

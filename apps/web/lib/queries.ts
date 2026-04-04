@@ -53,11 +53,21 @@ export async function fetchBillingPlans() {
     currency: string;
     trialDays: number;
     plans: Array<{
-      key: 'PRO' | 'PREMIUM';
+      key: 'STARTER' | 'PRO' | 'PREMIUM';
       name: string;
-      priceMonthlyUsd: number;
-      priceMonthlyUsdCents: number;
+      monthly: {
+        usd: number;
+        usdCents: number;
+      };
+      yearly: {
+        usd: number;
+        usdCents: number;
+      };
       features: string[];
+      limits: {
+        daily: number;
+        monthly: number;
+      };
     }>;
   }>('/billing/plans');
 }
@@ -66,10 +76,10 @@ export async function fetchUsage() {
   return apiFetch<Record<string, unknown>>('/billing/usage');
 }
 
-export async function createCheckout(plan: string) {
+export async function createCheckout(plan: 'STARTER' | 'PRO' | 'PREMIUM', cycle: 'MONTHLY' | 'YEARLY') {
   return apiFetch<{ url: string }>('/billing/checkout', {
     method: 'POST',
-    body: JSON.stringify({ plan })
+    body: JSON.stringify({ plan, cycle })
   });
 }
 

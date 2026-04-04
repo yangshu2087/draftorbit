@@ -1,6 +1,6 @@
 'use client';
 
-import { Clock, Loader2, Send, Sparkles, Twitter } from 'lucide-react';
+import { Clock, Loader2, Send, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { HistoryList, type HistoryItem } from '../components/workspace/history-list';
@@ -12,6 +12,7 @@ import {
 } from '../components/workspace/reasoning-panel';
 import { ResultCard, type PackageResult } from '../components/workspace/result-card';
 import { Button } from '../components/ui/button';
+import { XLogo } from '../components/icons/x-logo';
 import { clearToken, getUserFromToken, setToken } from '../lib/api';
 import { fetchGenerationStream } from '../lib/sse-stream';
 import {
@@ -19,7 +20,6 @@ import {
   fetchGeneration,
   fetchHistory,
   publishTweet,
-  startGoogleOAuth,
   startGeneration,
   startXOAuth
 } from '../lib/queries';
@@ -86,9 +86,10 @@ function normalizeResult(raw: unknown): PackageResult | null {
 
 function planLabel(plan?: string | null): string {
   const p = (plan ?? 'FREE').toUpperCase();
-  if (p === 'FREE') return '免费版';
-  if (p === 'PRO') return 'Pro';
-  if (p === 'PREMIUM') return '高级版';
+  if (p === 'FREE') return '试用中';
+  if (p === 'STARTER') return 'Starter';
+  if (p === 'PRO') return 'Growth';
+  if (p === 'PREMIUM') return 'Max';
   return p;
 }
 
@@ -106,9 +107,11 @@ export default function HomePage() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
   const [localLoading, setLocalLoading] = useState(false);
   const [publishBusy, setPublishBusy] = useState(false);
+  const [allowLocalLogin, setAllowLocalLogin] = useState(
+    process.env.NEXT_PUBLIC_ENABLE_LOCAL_LOGIN === 'true'
+  );
 
   const refreshUser = useCallback(() => {
     setUser(getUserFromToken());
@@ -120,6 +123,15 @@ export default function HomePage() {
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, [refreshUser]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const host = window.location.hostname.toLowerCase();
+    const isLocalHost = host === 'localhost' || host === '127.0.0.1' || host === '::1';
+    if (isLocalHost || host.endsWith('.local')) {
+      setAllowLocalLogin(true);
+    }
+  }, []);
 
   const loadHistory = useCallback(async () => {
     if (!getUserFromToken()) return;
@@ -243,16 +255,6 @@ export default function HomePage() {
     }
   };
 
-  const handleGoogleLogin = async () => {
-    setGoogleLoading(true);
-    try {
-      const { url } = await startGoogleOAuth();
-      window.location.href = url;
-    } catch {
-      setGoogleLoading(false);
-    }
-  };
-
   const handleLocalLogin = async () => {
     setLocalLoading(true);
     try {
@@ -279,54 +281,37 @@ export default function HomePage() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-white text-gray-900">
-        <header className="border-b border-gray-100 bg-white/90 backdrop-blur-sm">
-          <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-6">
-            <span className="text-lg font-bold tracking-tight text-gray-900">DraftOrbit</span>
-            <Button
-              type="button"
-              size="sm"
-              className="gap-2"
-              onClick={handleXLogin}
-              disabled={oauthLoading}
-            >
-              {oauthLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Twitter className="h-4 w-4" />}
-              用 Twitter 登录
-            </Button>
-          </div>
-        </header>
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top,#faf7f4_0,#f5f7fb_42%,#f2f4fa_100%)] text-slate-900">
+        <main className="mx-auto flex min-h-screen w-full max-w-xl flex-col items-center justify-center px-6">
+          <h1 className="mb-12 text-center text-4xl font-semibold tracking-tight">登录您的账户</h1>
 
-        <main className="mx-auto max-w-5xl px-6 pb-24 pt-20">
-          <div className="mx-auto max-w-2xl text-center">
-            <h1 className="text-5xl font-bold tracking-tight text-gray-900">AI 帮你写推文</h1>
-            <p className="mt-6 text-lg text-gray-500">
-              输入一句话，AI 推理生成高质量推文，一键发布到 X
-            </p>
+          <div className="w-full rounded-full border border-[#f5a48b] bg-white p-1">
             <Button
               type="button"
               size="lg"
-              className="mt-10 h-14 w-full max-w-md rounded-xl text-base shadow-md transition hover:shadow-lg"
+              className="h-14 w-full rounded-full bg-black text-base text-white transition hover:bg-black/90"
               onClick={handleXLogin}
               disabled={oauthLoading}
             >
-              {oauthLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : null}
-              用 Twitter 登录，免费试用
+              {oauthLoading ? (
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+              ) : (
+                <XLogo className="mr-2 h-4 w-4" />
+              )}
+              使用 X 登录，免费试用
             </Button>
-            <div className="mx-auto mt-3 flex w-full max-w-md gap-2">
+          </div>
+
+          <p className="mt-4 text-sm text-slate-500">新用户可直接免费试用</p>
+
+          {allowLocalLogin ? (
+            <div className="do-panel mt-8 w-full p-4">
+              <p className="text-sm font-medium text-slate-700">本地部署调试入口</p>
+              <p className="mt-1 text-xs text-slate-500">仅在本机/自托管开发环境使用</p>
               <Button
                 type="button"
                 variant="outline"
-                className="flex-1"
-                onClick={handleGoogleLogin}
-                disabled={googleLoading}
-              >
-                {googleLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                Google 登录
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="flex-1"
+                className="mt-3 w-full"
                 onClick={handleLocalLogin}
                 disabled={localLoading}
               >
@@ -334,59 +319,55 @@ export default function HomePage() {
                 本地登录
               </Button>
             </div>
-          </div>
+          ) : null}
 
-          <div className="mx-auto mt-24 grid max-w-4xl gap-8 md:grid-cols-3">
+          <div className="mt-14 grid w-full gap-4 sm:grid-cols-3">
             {[
               {
                 title: '风格学习',
-                desc: '分析你的历史推文，学习你的写作风格',
+                desc: '分析历史内容，学习写作风格',
                 icon: Sparkles
               },
               {
                 title: '推理生成',
-                desc: '热点追踪 → 大纲 → 草稿 → 去AI化，全流程可见',
+                desc: '选题到草稿，完整链路可见',
                 icon: Send
               },
               {
-                title: '一键发布',
-                desc: '生成即发布，支持推文、长推文、推文串',
-                icon: Twitter
+                title: '发布执行',
+                desc: '审批后进入发布队列执行',
+                icon: XLogo
               }
             ].map(({ title, desc, icon: Icon }) => (
               <div
                 key={title}
-                className="rounded-2xl border border-gray-100 bg-white p-8 shadow-sm transition hover:border-gray-200 hover:shadow-md"
+                className="do-card p-5 text-left"
               >
-                <Icon className="h-8 w-8 text-blue-600" />
-                <h3 className="mt-4 text-lg font-semibold text-gray-900">{title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-gray-500">{desc}</p>
+                <Icon className="h-6 w-6 text-slate-700" />
+                <h3 className="mt-3 text-sm font-semibold text-slate-900">{title}</h3>
+                <p className="mt-1 text-xs leading-relaxed text-slate-500">{desc}</p>
               </div>
             ))}
           </div>
         </main>
-
-        <footer className="border-t border-gray-100 py-8 text-center text-sm text-gray-400">
-          DraftOrbit © 2026
-        </footer>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-white text-gray-900">
-      <header className="sticky top-0 z-40 border-b border-gray-100 bg-white/95 backdrop-blur-sm">
+    <div className="min-h-screen bg-white text-slate-900">
+      <header className="sticky top-0 z-40 border-b border-slate-900/10 bg-white/95 backdrop-blur-sm">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 lg:px-6">
           <span className="text-lg font-bold tracking-tight">DraftOrbit</span>
           <div className="flex items-center gap-3 text-sm">
-            <span className="hidden text-gray-600 sm:inline">@{user.handle}</span>
-            <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700">
+            <span className="hidden text-slate-600 sm:inline">@{user.handle}</span>
+            <span className="rounded-full border border-slate-900/10 bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700">
               {planLabel(user.plan)}
             </span>
-            <Link href="/settings" className="text-gray-500 transition hover:text-gray-800">
+            <Link href="/settings" className="text-slate-500 transition hover:text-slate-800">
               设置
             </Link>
-            <Link href="/dashboard" className="text-gray-500 transition hover:text-gray-800">
+            <Link href="/dashboard" className="text-slate-500 transition hover:text-slate-800">
               工作台
             </Link>
             <Button type="button" variant="outline" size="sm" onClick={logout}>
@@ -396,9 +377,9 @@ export default function HomePage() {
         </div>
       </header>
 
-      <div className="border-b border-gray-100 bg-blue-50/60">
+      <div className="border-b border-slate-900/10 bg-slate-100/60">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-3 text-xs text-blue-900 lg:px-6">
-          <span className="rounded bg-blue-600 px-2 py-0.5 text-white">新手指引</span>
+          <span className="rounded bg-slate-900 px-2 py-0.5 text-white">新手指引</span>
           <Link href="/topics" className="underline-offset-2 hover:underline">
             1) 新建选题
           </Link>
@@ -418,7 +399,7 @@ export default function HomePage() {
       </div>
 
       <div className="mx-auto flex max-w-6xl flex-col lg:flex-row lg:gap-0">
-        <aside className="hidden w-72 shrink-0 border-r border-gray-100 bg-gray-50/30 lg:block lg:min-h-[calc(100vh-3.5rem)] lg:p-5">
+        <aside className="hidden w-72 shrink-0 border-r border-slate-900/10 bg-slate-50/40 lg:block lg:min-h-[calc(100vh-3.5rem)] lg:p-5">
           <HistoryList
             items={history}
             loading={historyLoading}
@@ -438,13 +419,13 @@ export default function HomePage() {
             />
 
             <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-              <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700">
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
                 <input
                   type="checkbox"
                   checked={useStyle}
                   onChange={(e) => setUseStyle(e.target.checked)}
                   disabled={isGenerating}
-                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
                 />
                 从历史推文学习风格
               </label>
@@ -506,17 +487,17 @@ export default function HomePage() {
         </main>
       </div>
 
-      <div className="border-t border-gray-100 bg-gray-50/50 lg:hidden">
+      <div className="border-t border-slate-900/10 bg-slate-50/60 lg:hidden">
         <button
           type="button"
           onClick={() => setHistoryOpen((o) => !o)}
-          className="flex w-full items-center justify-center gap-2 py-3 text-sm font-medium text-gray-700"
+          className="flex w-full items-center justify-center gap-2 py-3 text-sm font-medium text-slate-700"
         >
           <Clock className="h-4 w-4" />
           历史记录
         </button>
         {historyOpen && (
-          <div className="max-h-[50vh] overflow-y-auto border-t border-gray-100 bg-white px-4 pb-6 pt-2">
+          <div className="max-h-[50vh] overflow-y-auto border-t border-slate-900/10 bg-white px-4 pb-6 pt-2">
             <HistoryList
               items={history}
               loading={historyLoading}
