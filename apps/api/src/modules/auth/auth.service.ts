@@ -1,15 +1,15 @@
-import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import jwt from 'jsonwebtoken';
 import slugify from 'slugify';
 import type { AuthUser } from '@draftorbit/shared';
-import { AuthProvider, WorkspaceRole, XAccountStatus } from '@draftorbit/db';
+import { AuthProvider, SubscriptionPlan, SubscriptionStatus, WorkspaceRole, XAccountStatus } from '@draftorbit/db';
 import { encryptSecret } from '@draftorbit/shared';
 import { PrismaService } from '../../common/prisma.service';
 import { TwitterService } from '../../common/twitter.service';
 import { OAuthStateService } from '../../common/oauth-state.service';
 import { GoogleClientService } from '../../common/google-client.service';
 import { SelfHostAuthService } from '../../common/self-host-auth.service';
-import { requireEnv } from '../../common/env';
+import { getAuthMode, requireEnv } from '../../common/env';
 
 export type AuthMeDto = {
   id: string;
@@ -20,6 +20,7 @@ export type AuthMeDto = {
   subscription: {
     plan: 'FREE' | 'PRO' | 'PREMIUM';
     status: string;
+    trialEndsAt: string | null;
     currentPeriodEnd: string | null;
   };
   defaultWorkspace: {
@@ -32,6 +33,8 @@ export type AuthMeDto = {
 
 @Injectable()
 export class AuthService {
+  private static readonly TRIAL_DAYS = 7;
+
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(TwitterService) private readonly twitter: TwitterService,
@@ -122,11 +125,34 @@ export class AuthService {
   }
 
   private async ensureSubscription(userId: string) {
-    await this.prisma.db.subscription.upsert({
-      where: { userId },
-      create: { userId, plan: 'FREE', status: 'ACTIVE' },
-      update: {}
-    });
+    const now = new Date();
+    const trialEndsAt = new Date(now.getTime() + AuthService.TRIAL_DAYS * 24 * 60 * 60 * 1000);
+
+    const sub = await this.prisma.db.subscription.findUnique({ where: { userId } });
+    if (!sub) {
+      await this.prisma.db.subscription.create({
+        data: {
+          userId,
+          plan: SubscriptionPlan.PRO,
+          status: SubscriptionStatus.TRIALING,
+          trialEndsAt,
+          currentPeriodEnd: trialEndsAt
+        }
+      });
+      return;
+    }
+
+    if (sub.plan === SubscriptionPlan.FREE) {
+      await this.prisma.db.subscription.update({
+        where: { id: sub.id },
+        data: {
+          plan: SubscriptionPlan.PRO,
+          status: SubscriptionStatus.TRIALING,
+          trialEndsAt: sub.trialEndsAt ?? trialEndsAt,
+          currentPeriodEnd: sub.currentPeriodEnd ?? trialEndsAt
+        }
+      });
+    }
   }
 
   private signAuthToken(user: AuthMeDto, twitterId?: string): string {
@@ -169,6 +195,11 @@ export class AuthService {
   }
 
   async createLocalSession(): Promise<{ token: string; user: AuthMeDto }> {
+    if (getAuthMode() !== 'self_host_no_login') {
+      // 仅在自托管模式开放本地登录，线上/常规部署直接隐藏该入口
+      throw new NotFoundException('Not Found');
+    }
+
     const local = await this.selfHostAuth.ensureLocalSession();
     await this.ensureSubscription(local.userId);
     const user = await this.getMe(local.userId);
@@ -391,6 +422,7 @@ export class AuthService {
           select: {
             plan: true,
             status: true,
+            trialEndsAt: true,
             currentPeriodEnd: true
           }
         },
@@ -424,6 +456,7 @@ export class AuthService {
       subscription: {
         plan: user.subscription.plan,
         status: user.subscription.status,
+        trialEndsAt: user.subscription.trialEndsAt?.toISOString() ?? null,
         currentPeriodEnd: user.subscription.currentPeriodEnd?.toISOString() ?? null
       },
       defaultWorkspace: defaultMember

@@ -8,7 +8,7 @@
 ## 1) 当前交付范围（上线级收敛）
 
 ### 阶段 A（24h 可用闭环）
-- 本地登录会话（`/auth/local/session`）
+- 本地登录会话（`/auth/local/session`，仅 `AUTH_MODE=self_host_no_login` 可用）
 - Topic Center（`/topics`）
 - Draft Studio（`/drafts`）
 - 审批通过后入发布队列（`/drafts/:id/approve` + `/publish/draft`）
@@ -20,11 +20,10 @@
 - Google 登录骨架（`/auth/google/authorize` + `/auth/google/callback`）
 - X 账号绑定骨架（`/x-accounts`）
 - Learning Sources / Voice Profiles / Playbooks
-- Naturalization Layer（规则 + Provider 路由接口）
+- Naturalization Layer（自然化规则 + 平台托管生成通道）
 - Image & Media Center（上传占位 + 生成占位）
 - Reply Assistant（mentions sync stub + 候选审批发送）
 - Workflow Center（模板 + 运行记录）
-- Provider Hub（BYOK + 平台兜底 + 路由测试）
 - Usage/Billing、Audit Logs 页面与 API
 
 ---
@@ -106,27 +105,96 @@ RUN_ID=20260403-001 npx pnpm@10.23.0 smoke:p0
 - `AUTH_MODE`（`required` / `self_host_no_login`）
 - `X_CLIENT_ID` / `X_CLIENT_SECRET` / `X_CALLBACK_URL`
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_CALLBACK_URL`
-- `OPENROUTER_API_KEY`（平台兜底）
+- `OPENROUTER_API_KEY`（平台托管调用通道）
+- `PAYPAL_API_BASE` / `PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET` / `PAYPAL_WEBHOOK_ID`
 
 ---
 
-## 6) API 模块概览
+## 6) 生产发布前检查清单（Vercel + Stripe + Cloudflare）
+
+### 6.1 Vercel（Production）环境变量
+
+至少确保以下变量已在 `apps/web` 对应项目的 **production** 环境中配置：
+
+- `NEXT_PUBLIC_API_URL`（应指向 `https://api.draftorbit.ai`）
+- `NEXT_PUBLIC_ENABLE_LOCAL_LOGIN`（线上建议 `false`）
+- `X_CLIENT_ID`
+- `X_CLIENT_SECRET`
+- `X_CALLBACK_URL`（应为 `https://draftorbit.ai/auth/callback`）
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+
+### 6.2 Stripe 钱包域名条件（Google Pay / Apple Pay）
+
+在 Stripe Dashboard 确认：
+
+1. `Payment Method Domains` 中已添加并启用 `draftorbit.ai`
+2. Checkout 使用 HTTPS（由 Vercel + Cloudflare 证书保证）
+3. Apple Pay / Google Pay 是否显示受设备与浏览器影响（Safari/Chrome + 可用钱包）
+
+### 6.3 Cloudflare DNS / HTTPS
+
+至少满足：
+
+- `draftorbit.ai` 已解析到 Vercel
+- `api.draftorbit.ai` 已解析到你的 API 公网服务
+- 两个域名都能通过 HTTPS 访问
+
+可直接执行预检脚本（自动检查以上三类）：
+
+```bash
+npx pnpm@10.23.0 preflight:prod
+```
+
+---
+
+## 7) 一键上线指令集
+
+### 7.1 一条命令发布（推荐）
+
+```bash
+npx pnpm@10.23.0 release:prod
+```
+
+该命令会按顺序执行：
+
+1. `typecheck`
+2. `preflight:prod`
+3. `vercel deploy --prod --yes`（在 `apps/web`）
+4. 发布后基础健康检查（站点首页 + API `/health`）
+
+### 7.2 分步执行（便于排查）
+
+```bash
+npx pnpm@10.23.0 typecheck
+npx pnpm@10.23.0 preflight:prod
+cd apps/web && vercel deploy --prod --yes
+curl -fsS https://api.draftorbit.ai/health
+curl -fsSI https://draftorbit.ai
+```
+
+---
+
+## 8) API 模块概览
 
 - `auth` / `x-accounts`
 - `workspaces` / `topics`
 - `learning-sources` / `voice-profiles` / `playbooks`
 - `drafts` / `naturalization` / `media`
 - `publish` / `reply-jobs`
-- `workflow` / `providers`
+- `workflow`
 - `usage` / `audit`
 
 ---
 
-## 7) 注意事项
+## 9) 注意事项
 
 1. `AUTH_MODE=self_host_no_login` 仅限开发/自托管测试环境，生产禁用。
-2. 敏感凭据采用加密存储（依赖 `BYOK_ENCRYPTION_KEY` 或 `JWT_SECRET`）。
-3. 外部平台（X/Google/支付/图像）仍保留 stub 路径，便于后续真实接入。
+2. 当 `AUTH_MODE=required`（生产默认）时，`/auth/local/session` 会返回 `404`，避免线上误用本地登录。
+3. 敏感凭据采用加密存储（依赖 `BYOK_ENCRYPTION_KEY` 或 `JWT_SECRET`）。
+4. 外部平台（X/Google/支付/图像）仍保留 stub 路径，便于后续真实接入。
+5. 定价统一 USD，线上策略为 Pro $19 / Premium $59，支持 7 天试用。
+6. 登录页默认仅展示「X 登录」。当访问域名为 `localhost / 127.0.0.1 / *.local` 时，会自动显示「本地登录」入口；如需在自托管域名显示，可设置 `NEXT_PUBLIC_ENABLE_LOCAL_LOGIN=true`。
 
 ### X OAuth 常见报错排查（“你无法获得该应用的访问权限”）
 
@@ -138,3 +206,34 @@ RUN_ID=20260403-001 npx pnpm@10.23.0 smoke:p0
 2. 回调地址一致且已在 X 开发者后台登记
    - 本地推荐：`X_CALLBACK_URL=http://localhost:3000/auth/callback`
 3. 修改 `.env` 后，已重启 API / Web 服务
+
+### PayPal Webhook 配置与测试（Sandbox）
+
+1. 在 PayPal Developer 的 webhook 中将 URL 配置为：
+   - `https://api.draftorbit.ai/billing/paypal/webhook`
+2. 事件建议至少勾选：
+   - `BILLING.SUBSCRIPTION.CREATED`
+   - `BILLING.SUBSCRIPTION.ACTIVATED`
+   - `BILLING.SUBSCRIPTION.UPDATED`
+   - `BILLING.SUBSCRIPTION.CANCELLED`
+   - `BILLING.SUBSCRIPTION.SUSPENDED`
+   - `BILLING.SUBSCRIPTION.EXPIRED`
+   - `BILLING.SUBSCRIPTION.PAYMENT.FAILED`
+   - `PAYMENT.SALE.COMPLETED`
+   - `PAYMENT.SALE.REFUNDED`
+   - `PAYMENT.SALE.REVERSED`
+3. API 环境变量设置：
+   - `PAYPAL_API_BASE=https://api-m.sandbox.paypal.com`
+   - `PAYPAL_CLIENT_ID=...`
+   - `PAYPAL_CLIENT_SECRET=...`
+   - `PAYPAL_WEBHOOK_ID=...`
+4. 本地快速触发一次模拟回调：
+
+```bash
+PAYPAL_CLIENT_ID=... \
+PAYPAL_CLIENT_SECRET=... \
+PAYPAL_WEBHOOK_ID=... \
+bash ./scripts/test-paypal-webhook.sh
+```
+
+默认模拟事件为 `BILLING.SUBSCRIPTION.ACTIVATED`，可通过 `PAYPAL_EVENT_TYPE` 覆盖。
