@@ -22,6 +22,11 @@ import { CheckoutBodyDto } from './billing.dto';
 export class BillingController {
   constructor(@Inject(BillingService) private readonly billing: BillingService) {}
 
+  @Get('plans')
+  plans() {
+    return this.billing.getPlans();
+  }
+
   @Get('subscription')
   @UseGuards(AuthGuard)
   async subscription(@Req() req: RequestWithUser) {
@@ -54,5 +59,19 @@ export class BillingController {
       throw new BadRequestException('Expected raw body for Stripe webhook');
     }
     return this.billing.handleWebhook(raw, signature ?? '');
+  }
+
+  @Post('paypal/webhook')
+  @HttpCode(200)
+  async paypalWebhook(
+    @Req() req: RawBodyRequest<RequestWithUser>,
+    @Headers() headers: Record<string, string | string[] | undefined>
+  ) {
+    const raw = req.rawBody;
+    if (!Buffer.isBuffer(raw)) {
+      throw new BadRequestException('Expected raw body for PayPal webhook');
+    }
+
+    return this.billing.handlePayPalWebhook(raw, headers);
   }
 }
