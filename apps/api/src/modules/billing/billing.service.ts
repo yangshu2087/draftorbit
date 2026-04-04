@@ -350,11 +350,17 @@ export class BillingService {
   }
 
   async createCheckoutSession(userId: string, plan: 'PRO' | 'PREMIUM'): Promise<{ url: string }> {
-    if (!stripe) {
-      throw new BadRequestException('Stripe not configured');
+    const payPalCheckout = await this.createPayPalCheckoutSession(userId, plan);
+    if (payPalCheckout) {
+      return payPalCheckout;
     }
 
-    const appUrl = process.env.APP_URL ?? 'http://localhost:3000';
+    if (!stripe) {
+      throw new BadRequestException('支付通道未完成配置，请联系管理员');
+    }
+
+    const appUrl =
+      process.env.APP_URL ?? ((process.env.NODE_ENV ?? 'development') === 'production' ? 'https://draftorbit.ai' : 'http://localhost:3000');
     const unitAmount = PLAN_PRICING_USD_CENTS[plan];
     const name = plan === 'PRO' ? 'DraftOrbit PRO' : 'DraftOrbit PREMIUM';
 
@@ -389,6 +395,63 @@ export class BillingService {
     const url = session.url;
     if (!url) throw new InternalServerErrorException('Stripe checkout URL missing');
     return { url };
+  }
+
+  private resolvePayPalPlanId(plan: 'PRO' | 'PREMIUM'): string | null {
+    if (plan === 'PRO') {
+      return process.env.PAYPAL_PLAN_ID_PRO ?? null;
+    }
+    return process.env.PAYPAL_PLAN_ID_PREMIUM ?? null;
+  }
+
+  private async createPayPalCheckoutSession(
+    userId: string,
+    plan: 'PRO' | 'PREMIUM'
+  ): Promise<{ url: string } | null> {
+    const planId = this.resolvePayPalPlanId(plan);
+    if (!planId) return null;
+
+    const appUrl =
+      process.env.APP_URL ?? ((process.env.NODE_ENV ?? 'development') === 'production' ? 'https://draftorbit.ai' : 'http://localhost:3000');
+    const accessToken = await this.fetchPayPalAccessToken();
+    const requestId = `draftorbit-${plan.toLowerCase()}-${Date.now()}`;
+
+    const createRes = await fetch(`${PAYPAL_API_BASE}/v1/billing/subscriptions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'PayPal-Request-Id': requestId
+      },
+      body: JSON.stringify({
+        plan_id: planId,
+        custom_id: userId,
+        application_context: {
+          brand_name: 'DraftOrbit',
+          locale: 'zh-CN',
+          user_action: 'SUBSCRIBE_NOW',
+          shipping_preference: 'NO_SHIPPING',
+          return_url: `${appUrl}/billing/success?source=paypal`,
+          cancel_url: `${appUrl}/billing/cancel?source=paypal`
+        }
+      })
+    });
+
+    if (!createRes.ok) {
+      const text = await createRes.text();
+      throw new BadRequestException(`PayPal checkout create failed: ${text}`);
+    }
+
+    const json = (await createRes.json()) as {
+      links?: Array<{ href?: string; rel?: string }>;
+      status?: string;
+    };
+    const approveUrl = json.links?.find((item) => item.rel === 'approve')?.href;
+    if (!approveUrl) {
+      throw new InternalServerErrorException('PayPal checkout URL missing');
+    }
+
+    return { url: approveUrl };
   }
 
   async handlePayPalWebhook(
