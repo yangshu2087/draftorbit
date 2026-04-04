@@ -411,15 +411,16 @@ export class BillingService {
       subscriptionData.trial_period_days = trialDays;
     }
 
+    const customerTarget = existing?.stripeCustomerId
+      ? { customer: existing.stripeCustomerId }
+      : user?.email
+        ? { customer_email: user.email }
+        : {};
+
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       payment_method_types: ['card'],
-      ...(existing?.stripeCustomerId
-        ? { customer: existing.stripeCustomerId }
-        : {
-            customer_creation: 'always' as const,
-            ...(user?.email ? { customer_email: user.email } : {})
-          }),
+      ...customerTarget,
       line_items: [lineItem],
       allow_promotion_codes: true,
       success_url: `${appUrl}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
