@@ -15,6 +15,7 @@ enum SubscriptionPlan {
 
 enum SubscriptionStatus {
   ACTIVE
+  TRIALING
   CANCELED
   PAST_DUE
 }
@@ -602,6 +603,7 @@ model Subscription {
   status                SubscriptionStatus @default(ACTIVE)
   stripeCustomerId      String?
   stripeSubscriptionId  String?
+  trialEndsAt           DateTime?
   currentPeriodEnd      DateTime?
   createdAt             DateTime           @default(now())
   updatedAt             DateTime           @updatedAt
