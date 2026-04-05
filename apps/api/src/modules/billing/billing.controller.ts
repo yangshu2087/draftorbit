@@ -27,11 +27,6 @@ export class BillingController {
     return this.billing.getPlans();
   }
 
-  @Get('plans-v2')
-  plansV2() {
-    return this.billing.getPlans();
-  }
-
   @Get('subscription')
   @UseGuards(AuthGuard)
   async subscription(@Req() req: RequestWithUser) {
