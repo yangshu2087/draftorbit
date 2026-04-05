@@ -14,8 +14,11 @@ import IORedis from 'ioredis';
 
 @Injectable()
 export class QueueService implements OnModuleDestroy {
+  private readonly queueStatsTimeoutMs = Number(process.env.QUEUE_STATS_TIMEOUT_MS ?? 3000);
+
   private readonly redis = new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
-    maxRetriesPerRequest: null
+    maxRetriesPerRequest: null,
+    connectTimeout: 5000
   });
 
   private readonly publishQueue = new Queue<PublishJobPayload>(QUEUE_NAMES.PUBLISH, {
@@ -41,7 +44,22 @@ export class QueueService implements OnModuleDestroy {
   });
 
   async ping(): Promise<string> {
-    return this.redis.ping();
+    return this.withTimeout(this.redis.ping(), 1500, 'redis ping');
+  }
+
+  private async withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+    let timer: NodeJS.Timeout | null = null;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        reject(new Error(`${label} timeout after ${timeoutMs}ms`));
+      }, timeoutMs);
+    });
+
+    try {
+      return await Promise.race([promise, timeout]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   async getQueueStats() {
@@ -68,22 +86,30 @@ export class QueueService implements OnModuleDestroy {
     > = {};
 
     for (const [name, queue] of pairs) {
-      const counts = await queue.getJobCounts(
-        'waiting',
-        'active',
-        'completed',
-        'failed',
-        'delayed',
-        'paused'
-      );
-      result[name] = {
-        waiting: counts.waiting ?? 0,
-        active: counts.active ?? 0,
-        completed: counts.completed ?? 0,
-        failed: counts.failed ?? 0,
-        delayed: counts.delayed ?? 0,
-        paused: counts.paused ?? 0
-      };
+      try {
+        const counts = await this.withTimeout(
+          queue.getJobCounts('waiting', 'active', 'completed', 'failed', 'delayed', 'paused'),
+          this.queueStatsTimeoutMs,
+          `queue stats:${name}`
+        );
+        result[name] = {
+          waiting: counts.waiting ?? 0,
+          active: counts.active ?? 0,
+          completed: counts.completed ?? 0,
+          failed: counts.failed ?? 0,
+          delayed: counts.delayed ?? 0,
+          paused: counts.paused ?? 0
+        };
+      } catch {
+        result[name] = {
+          waiting: 0,
+          active: 0,
+          completed: 0,
+          failed: 0,
+          delayed: 0,
+          paused: 0
+        };
+      }
     }
 
     return result;

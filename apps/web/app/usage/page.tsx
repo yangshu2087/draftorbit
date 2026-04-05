@@ -13,24 +13,47 @@ export default function UsagePage() {
   const [points, setPoints] = useState<Array<Record<string, any>>>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  const [warning, setWarning] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
     setError(null);
+    setWarning(null);
     try {
-      const [s, e, trend] = await Promise.all([
-        fetchUsageSummary(),
+      const s = await fetchUsageSummary();
+      setSummary(s);
+      setLoading(false);
+
+      const [eventsResult, trendResult] = await Promise.allSettled([
         fetchUsageEvents(50),
         fetchUsageTrends(14)
       ]);
-      setSummary(s);
-      setEvents(e);
-      setPoints(trend.points);
+
+      let hasPartialFailure = false;
+
+      if (eventsResult.status === 'fulfilled') {
+        setEvents(eventsResult.value);
+      } else {
+        hasPartialFailure = true;
+        setEvents([]);
+      }
+
+      if (trendResult.status === 'fulfilled') {
+        setPoints(trendResult.value.points);
+      } else {
+        hasPartialFailure = true;
+        setPoints([]);
+      }
+
+      if (hasPartialFailure) {
+        setWarning('部分明细暂时不可用，已先展示可加载的数据。请稍后重试。');
+      }
     } catch (err) {
       setError(err);
       setSummary(null);
       setEvents([]);
       setPoints([]);
+      setWarning(null);
     } finally {
       setLoading(false);
     }
@@ -59,6 +82,12 @@ export default function UsagePage() {
         />
       ) : null}
 
+      {!loading && !error && warning ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          {warning}
+        </div>
+      ) : null}
+
       {!loading && !error && !summary ? (
         <EmptyState title="暂无用量数据" description="系统开始生成与发布后，这里会展示趋势。" />
       ) : null}
@@ -72,8 +101,15 @@ export default function UsagePage() {
             <MetricCard title="14日估算成本" value={`$${totalCost.toFixed(4)}`} />
           </div>
 
-          <div className="rounded-lg border border-gray-200 p-3">
-            <p className="text-sm font-semibold">近 14 日用量趋势</p>
+          {summary?.isTrialing ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              当前账号处于试用期，结束时间：
+              {summary?.trialEndsAt ? new Date(summary.trialEndsAt).toLocaleString('zh-CN') : '—'}
+            </div>
+          ) : null}
+
+          <div className="do-panel p-4">
+            <p className="do-section-title">近 14 日用量趋势</p>
             <div className="mt-3 h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={points}>
@@ -90,18 +126,16 @@ export default function UsagePage() {
           </div>
 
           <div className="space-y-2">
-            <p className="text-sm font-semibold">近期事件</p>
+            <p className="do-section-title">近期事件</p>
             {events.map((event) => (
-              <div key={String(event.id)} className="rounded-lg border border-gray-200 p-3">
-                <p className="text-sm">
-                  {String(event.eventType)} · {String(event.model ?? 'N/A')}
-                </p>
-                <p className="text-xs text-gray-500">
+              <div key={String(event.id)} className="do-card-compact">
+                <p className="text-sm">{String(event.eventType)}</p>
+                <p className="text-xs text-slate-500">
                   input={String(event.inputTokens ?? 0)} output={String(event.outputTokens ?? 0)} cost={String(event.costUsd ?? 0)}
                 </p>
               </div>
             ))}
-            {events.length === 0 ? <p className="text-sm text-gray-500">暂无用量事件</p> : null}
+            {events.length === 0 ? <p className="text-sm text-slate-500">暂无用量事件</p> : null}
           </div>
         </>
       ) : null}
@@ -111,9 +145,9 @@ export default function UsagePage() {
 
 function MetricCard(props: { title: string; value: string }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-      <p className="text-xs text-gray-500">{props.title}</p>
-      <p className="mt-1 text-lg font-semibold text-gray-900">{props.value}</p>
+    <div className="do-card-compact bg-slate-50/70">
+      <p className="do-kpi-label">{props.title}</p>
+      <p className="do-kpi-value text-lg">{props.value}</p>
     </div>
   );
 }
