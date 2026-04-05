@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException
 } from '@nestjs/common';
-import { ApprovalStatus, ReplyJobStatus, ReplyRiskLevel } from '@draftorbit/db';
+import { ApprovalStatus, ReplyJobStatus, ReplyRiskLevel, XAccountStatus } from '@draftorbit/db';
 import { PrismaService } from '../../common/prisma.service';
 import { QueueService } from '../../common/queue.service';
 import { WorkspaceContextService } from '../../common/workspace-context.service';
@@ -55,17 +55,20 @@ export class ReplyJobsService {
 
   async syncMentions(userId: string, input: { xAccountId?: string; sourcePostId?: string }) {
     const workspaceId = await this.workspaceContext.getDefaultWorkspaceId(userId);
+    const xAccount = await this.resolveReplyAccount(workspaceId, input.xAccountId);
 
     const job = await this.prisma.db.replyJob.create({
       data: {
         workspaceId,
-        xAccountId: input.xAccountId ?? null,
+        xAccountId: xAccount.id,
         sourcePostId: input.sourcePostId ?? null,
         status: ReplyJobStatus.QUEUED,
         payload: {
           mode: 'mentions-sync',
           source: 'x-api-stub',
-          syncedAt: new Date().toISOString()
+          syncedAt: new Date().toISOString(),
+          xAccountId: xAccount.id,
+          xHandle: xAccount.handle
         }
       }
     });
@@ -80,7 +83,8 @@ export class ReplyJobsService {
         resourceType: 'reply_job',
         resourceId: job.id,
         payload: {
-          mode: 'mentions-sync'
+          mode: 'mentions-sync',
+          xAccountId: xAccount.id
         }
       }
     });
@@ -214,5 +218,35 @@ export class ReplyJobsService {
     });
 
     return updated;
+  }
+
+  private async resolveReplyAccount(workspaceId: string, xAccountId?: string) {
+    if (xAccountId) {
+      const account = await this.prisma.db.xAccount.findFirst({
+        where: {
+          id: xAccountId,
+          workspaceId
+        }
+      });
+      if (!account) throw new NotFoundException('指定的 X 账号不存在');
+      if (account.status !== XAccountStatus.ACTIVE) {
+        throw new BadRequestException('指定的 X 账号不可用，请先恢复为 ACTIVE');
+      }
+      return account;
+    }
+
+    const fallback = await this.prisma.db.xAccount.findFirst({
+      where: {
+        workspaceId,
+        status: XAccountStatus.ACTIVE
+      },
+      orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }]
+    });
+
+    if (!fallback) {
+      throw new BadRequestException('当前工作区未绑定可用 X 账号，请先完成账号绑定');
+    }
+
+    return fallback;
   }
 }

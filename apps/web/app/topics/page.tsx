@@ -5,12 +5,24 @@ import type { TopicEntity } from '@draftorbit/shared';
 import { WorkbenchShell } from '../../components/shell/workbench-shell';
 import { EmptyState, ErrorState, LoadingState } from '../../components/ui/page-states';
 import { useToast } from '../../components/ui/toast';
-import { WorkspaceRecovery, isWorkspaceMissing, normalizeErrorMessage } from '../../components/ui/workspace-recovery';
+import { buildRecoveryExtra, normalizeErrorMessage } from '../../components/ui/workspace-recovery';
 import { createTopic, fetchTopics } from '../../lib/queries';
+
+const DIRECTION_OPTIONS = [
+  'AI 工具实测',
+  '模型趋势解读',
+  '运营增长方法',
+  '案例复盘拆解',
+  '热点事件点评'
+] as const;
+
+const AUDIENCE_OPTIONS = ['独立开发者', '内容创作者', '产品经理', '运营同学'] as const;
 
 export default function TopicsPage() {
   const { pushToast } = useToast();
   const [rows, setRows] = useState<TopicEntity[]>([]);
+  const [direction, setDirection] = useState<(typeof DIRECTION_OPTIONS)[number]>('AI 工具实测');
+  const [audience, setAudience] = useState<(typeof AUDIENCE_OPTIONS)[number]>('内容创作者');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
@@ -35,12 +47,17 @@ export default function TopicsPage() {
     void load();
   }, []);
 
+  useEffect(() => {
+    setTitle((prev) => (prev.trim() ? prev : `${direction}｜面向${audience}`));
+  }, [direction, audience]);
+
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!title.trim() || submitting) return;
     setSubmitting(true);
     try {
-      await createTopic({ title: title.trim(), description: description.trim() || undefined });
+      const finalDescription = description.trim() || `方向：${direction}；目标受众：${audience}`;
+      await createTopic({ title: title.trim(), description: finalDescription });
       setTitle('');
       setDescription('');
       pushToast({ title: '选题创建成功', variant: 'success' });
@@ -54,13 +71,29 @@ export default function TopicsPage() {
 
   return (
     <WorkbenchShell title="选题中心" description="方向输入与选题沉淀，支持后续草稿链路复用。">
-      <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600">
+      <div className="do-card-compact bg-slate-50/70 text-sm text-slate-600">
         当前共 {rows.length} 个选题，其中活跃 {activeCount} 个。
       </div>
 
-      <form onSubmit={onSubmit} className="grid gap-2 rounded-lg border border-gray-200 p-3">
+      <form onSubmit={onSubmit} className="do-panel grid gap-2.5 p-4">
+        <div className="grid gap-2 sm:grid-cols-2">
+          <select value={direction} onChange={(e) => setDirection(e.target.value as (typeof DIRECTION_OPTIONS)[number])}>
+            {DIRECTION_OPTIONS.map((item) => (
+              <option key={item} value={item}>
+                方向：{item}
+              </option>
+            ))}
+          </select>
+          <select value={audience} onChange={(e) => setAudience(e.target.value as (typeof AUDIENCE_OPTIONS)[number])}>
+            {AUDIENCE_OPTIONS.map((item) => (
+              <option key={item} value={item}>
+                受众：{item}
+              </option>
+            ))}
+          </select>
+        </div>
         <input
-          placeholder="新增选题标题（必填）"
+          placeholder="选题标题（可按需调整）"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           disabled={submitting}
@@ -73,7 +106,7 @@ export default function TopicsPage() {
           disabled={submitting}
         />
         <button
-          className="w-fit rounded bg-gray-900 px-3 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-60"
+          className="w-fit rounded-xl bg-slate-900 px-3.5 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-60"
           type="submit"
           disabled={submitting || !title.trim()}
         >
@@ -88,7 +121,7 @@ export default function TopicsPage() {
           message={normalizeErrorMessage(error)}
           actionText="重试"
           onAction={() => void load()}
-          extra={isWorkspaceMissing(error) ? <WorkspaceRecovery onRecovered={load} /> : undefined}
+          extra={buildRecoveryExtra(error, load)}
         />
       ) : null}
 
@@ -98,13 +131,13 @@ export default function TopicsPage() {
 
       <div className="space-y-2">
         {rows.map((item) => (
-          <div key={item.id} className="rounded-lg border border-gray-200 p-3">
+          <div key={item.id} className="do-card-compact">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <p className="font-medium text-gray-900">{item.title}</p>
-                <p className="text-xs text-gray-500">{item.description || '无描述'}</p>
+                <p className="text-sm font-medium text-slate-900">{item.title}</p>
+                <p className="text-xs leading-5 text-slate-500">{item.description || '无描述'}</p>
               </div>
-              <span className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{item.status}</span>
+              <span className="do-chip">{item.status}</span>
             </div>
           </div>
         ))}

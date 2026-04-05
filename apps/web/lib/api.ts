@@ -1,6 +1,13 @@
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 const DEFAULT_API_TIMEOUT_MS = Number(process.env.NEXT_PUBLIC_API_TIMEOUT_MS ?? 12000);
 
+const PUBLIC_API_PREFIXES = new Set([
+  '/billing/plans',
+  '/auth/x/authorize',
+  '/auth/google/authorize',
+  '/auth/local/session'
+]);
+
 export type AppErrorPayload = {
   code: string;
   message: string;
@@ -75,6 +82,15 @@ function normalizeTimeoutMs(input?: number): number {
   return Math.min(Math.max(Math.round(input), 1000), 60000);
 }
 
+function normalizePath(path: string): string {
+  const withoutQuery = path.split('?')[0] ?? path;
+  return withoutQuery.startsWith('/') ? withoutQuery : `/${withoutQuery}`;
+}
+
+function isPublicApiPath(path: string): boolean {
+  return PUBLIC_API_PREFIXES.has(normalizePath(path));
+}
+
 function isAbortLikeError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
   const maybe = error as { name?: string; message?: string };
@@ -122,6 +138,14 @@ type ApiFetchInit = RequestInit & {
 
 export async function apiFetch<T>(path: string, init?: ApiFetchInit): Promise<T> {
   const token = getToken();
+  if (!token && !isPublicApiPath(path)) {
+    throw new AppError({
+      message: '未登录，请先回首页完成登录后再继续。',
+      code: 'UNAUTHORIZED',
+      statusCode: 401
+    });
+  }
+
   const headers = new Headers(init?.headers ?? {});
   const isFormData = typeof FormData !== 'undefined' && init?.body instanceof FormData;
   if (!headers.has('Content-Type') && !isFormData) {
@@ -168,7 +192,12 @@ export async function apiFetch<T>(path: string, init?: ApiFetchInit): Promise<T>
   const body = isJson ? await response.json().catch(() => null) : await response.text().catch(() => '');
 
   if (!response.ok) {
-    throw toAppError(response.status, body, `请求失败（${response.status}）`);
+    const requestId = response.headers.get('x-request-id') ?? undefined;
+    const appError = toAppError(response.status, body, `请求失败（${response.status}）`);
+    if (!appError.requestId && requestId) {
+      appError.requestId = requestId;
+    }
+    throw appError;
   }
 
   if (!isJson) {

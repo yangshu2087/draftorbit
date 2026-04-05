@@ -46,9 +46,9 @@ export function ReasoningPanel({ steps, isGenerating }: ReasoningPanelProps) {
   if (!isGenerating && steps.length === 0) return null;
 
   return (
-    <div className="mt-8 rounded-2xl border border-gray-100 bg-gray-50/50 p-6 shadow-sm transition-all">
-      <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-gray-800">
-        <Sparkles className="h-4 w-4 text-blue-600" />
+    <div className="do-panel-soft mt-8 p-5 transition-all">
+      <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-800">
+        <Sparkles className="h-4 w-4 text-slate-900" />
         推理过程
       </div>
       <ul className="space-y-2">
@@ -61,7 +61,7 @@ export function ReasoningPanel({ steps, isGenerating }: ReasoningPanelProps) {
           return (
             <li
               key={key}
-              className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm transition-all duration-300 animate-do-fade-up"
+              className="animate-do-fade-up overflow-hidden rounded-xl border border-slate-900/8 bg-white shadow-sm transition-all duration-300"
               style={{ animationDelay: `${Math.min(i, 6) * 80}ms` }}
             >
               <button
@@ -69,14 +69,14 @@ export function ReasoningPanel({ steps, isGenerating }: ReasoningPanelProps) {
                 onClick={() => hasContent && toggle(row.step)}
                 className={cn(
                   'flex w-full items-center gap-3 px-4 py-3 text-left text-sm',
-                  hasContent && 'cursor-pointer hover:bg-gray-50'
+                  hasContent && 'cursor-pointer hover:bg-slate-50'
                 )}
                 disabled={!hasContent}
               >
                 <span className="text-lg leading-none" aria-hidden>
                   {row.step === 'error' ? '⚠️' : '✦'}
                 </span>
-                <span className="flex-1 font-medium text-gray-900">{label}</span>
+                <span className="flex-1 font-medium text-slate-900">{label}</span>
                 <span className="flex items-center gap-2">
                   {row.status === 'running' && (
                     <>
@@ -90,17 +90,17 @@ export function ReasoningPanel({ steps, isGenerating }: ReasoningPanelProps) {
                   {row.status === 'done' && <CheckCircle2 className="h-5 w-5 text-green-600" />}
                   {row.status === 'failed' && <XCircle className="h-5 w-5 text-red-500" />}
                   {row.status === 'pending' && (
-                    <span className="h-2 w-2 rounded-full bg-gray-200" aria-hidden />
+                    <span className="h-2 w-2 rounded-full bg-slate-300" aria-hidden />
                   )}
                   {hasContent && (
                     <ChevronDown
-                      className={cn('h-4 w-4 text-gray-400 transition-transform', expanded && 'rotate-180')}
+                      className={cn('h-4 w-4 text-slate-400 transition-transform', expanded && 'rotate-180')}
                     />
                   )}
                 </span>
               </button>
               {hasContent && expanded && (
-                <div className="border-t border-gray-100 bg-gray-50/80 px-4 py-3 text-xs leading-relaxed text-gray-600 whitespace-pre-wrap">
+                <div className="whitespace-pre-wrap border-t border-slate-900/8 bg-slate-50/80 px-4 py-3 text-xs leading-relaxed text-slate-600">
                   {row.content}
                 </div>
               )}

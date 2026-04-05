@@ -5,7 +5,7 @@ import type { PublishJobEntity } from '@draftorbit/shared';
 import { WorkbenchShell } from '../../components/shell/workbench-shell';
 import { EmptyState, ErrorState, LoadingState } from '../../components/ui/page-states';
 import { useToast } from '../../components/ui/toast';
-import { WorkspaceRecovery, isWorkspaceMissing, normalizeErrorMessage } from '../../components/ui/workspace-recovery';
+import { buildRecoveryExtra, normalizeErrorMessage } from '../../components/ui/workspace-recovery';
 import { fetchPublishJobs, retryPublishJob } from '../../lib/queries';
 
 const STATUS_OPTIONS: Array<{ label: string; value: PublishJobEntity['status'] | 'ALL' }> = [
@@ -15,6 +15,15 @@ const STATUS_OPTIONS: Array<{ label: string; value: PublishJobEntity['status'] |
   { label: '成功', value: 'SUCCEEDED' },
   { label: '失败', value: 'FAILED' }
 ];
+
+const STATUS_LABELS: Record<PublishJobEntity['status'], string> = {
+  PENDING: '待处理',
+  QUEUED: '排队中',
+  RUNNING: '执行中',
+  SUCCEEDED: '成功',
+  FAILED: '失败',
+  CANCELED: '已取消'
+};
 
 export default function PublishQueuePage() {
   const { pushToast } = useToast();
@@ -74,8 +83,10 @@ export default function PublishQueuePage() {
         {STATUS_OPTIONS.map((option) => (
           <button
             key={option.value}
-            className={`rounded border px-2 py-1 text-xs ${
-              status === option.value ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-300 hover:bg-gray-100'
+            className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium transition ${
+              status === option.value
+                ? 'border-slate-900 bg-slate-900 text-white'
+                : 'border-slate-900/12 bg-white text-slate-700 hover:bg-slate-50'
             }`}
             onClick={() => setStatus(option.value)}
           >
@@ -91,7 +102,7 @@ export default function PublishQueuePage() {
           message={normalizeErrorMessage(error)}
           actionText="重试"
           onAction={() => void load()}
-          extra={isWorkspaceMissing(error) ? <WorkspaceRecovery onRecovered={load} /> : undefined}
+          extra={buildRecoveryExtra(error, load)}
         />
       ) : null}
 
@@ -104,27 +115,27 @@ export default function PublishQueuePage() {
           const payload = (row.payload ?? {}) as Record<string, unknown>;
           const manualFallback = Boolean(payload.manualFallback);
           return (
-            <div key={row.id} className="rounded-lg border border-gray-200 p-3">
+            <div key={row.id} className="do-card-compact">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <p className="text-sm font-medium">
-                    {row.channel} · <span className="font-semibold">{row.status}</span>
+                    {row.channel} · <span className="font-semibold">{STATUS_LABELS[row.status]}</span>
                   </p>
-                  <p className="text-xs text-gray-500">
-                    创建于 {new Date(row.createdAt).toLocaleString('zh-CN')} · 尝试 {row.attempts}/{row.maxAttempts}
+                  <p className="text-xs text-slate-500">
+                    账号 @{row.xAccount?.handle ?? '默认'} · 创建于 {new Date(row.createdAt).toLocaleString('zh-CN')} · 尝试 {row.attempts}/{row.maxAttempts}
                   </p>
                 </div>
                 <div className="flex gap-2">
                   {manualFallback ? (
                     <button
-                      className="rounded border border-amber-300 px-2 py-1 text-xs text-amber-700 hover:bg-amber-50"
+                      className="rounded-lg border border-amber-300 px-2.5 py-1 text-xs text-amber-700 hover:bg-amber-50"
                       onClick={() => void copyFallbackText(payload)}
                     >
                       复制手动发布文案
                     </button>
                   ) : null}
                   <button
-                    className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-100 disabled:opacity-50"
+                    className="rounded-lg border border-slate-900/12 px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                     onClick={() => void onRetry(row.id)}
                     disabled={busyId === row.id}
                   >
@@ -138,7 +149,7 @@ export default function PublishQueuePage() {
                 <p className="mt-1 text-xs text-amber-700">已进入人工发布兜底模式，建议复制文案后手动发布。</p>
               ) : null}
 
-              <pre className="mt-2 overflow-auto rounded bg-gray-50 p-2 text-xs text-gray-600">
+              <pre className="mt-2 overflow-auto rounded-lg border border-slate-900/8 bg-slate-50/80 p-2 text-xs text-slate-600">
                 {JSON.stringify(row.payload, null, 2)}
               </pre>
             </div>

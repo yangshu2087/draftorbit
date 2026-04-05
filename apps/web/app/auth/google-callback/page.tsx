@@ -41,7 +41,7 @@ function GoogleCallbackInner() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-white px-4">
       <div className="text-center">
-        <p className="text-sm text-gray-600">{message}</p>
+        <p className="text-sm text-slate-600">{message}</p>
         {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
       </div>
     </div>
@@ -52,7 +52,7 @@ export default function GoogleCallbackPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-screen items-center justify-center bg-white text-sm text-gray-600">
+        <div className="flex min-h-screen items-center justify-center bg-white text-sm text-slate-600">
           正在完成 Google 登录...
         </div>
       }
@@ -61,4 +61,3 @@ export default function GoogleCallbackPage() {
     </Suspense>
   );
 }
-

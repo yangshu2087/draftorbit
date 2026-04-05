@@ -10,7 +10,8 @@ import {
   GenerationStatus,
   PublishChannel,
   PublishJobStatus,
-  WorkspaceRole
+  WorkspaceRole,
+  XAccountStatus
 } from '@draftorbit/db';
 import { PrismaService } from '../../common/prisma.service';
 import { QueueService } from '../../common/queue.service';
@@ -64,13 +65,14 @@ export class PublishService {
     userId: string,
     channel: PublishChannel,
     texts: string[],
-    options: { generationId?: string; draftId?: string; scheduledFor?: Date } = {}
+    options: { generationId?: string; draftId?: string; scheduledFor?: Date; xAccountId?: string } = {}
   ) {
     if (!options.generationId && !options.draftId) {
       throw new BadRequestException('必须指定 generationId 或 draftId');
     }
 
     const { workspaceId } = await this.resolveWorkspace(userId);
+    const xAccount = await this.resolvePublishAccount(workspaceId, options.xAccountId);
 
     let generationType: string | null = null;
     if (options.generationId) {
@@ -90,13 +92,15 @@ export class PublishService {
       data: {
         workspaceId,
         userId,
+        xAccountId: xAccount?.id ?? null,
         generationId: options.generationId ?? null,
         draftId: options.draftId ?? null,
         channel,
         payload: {
           texts,
           source: 'manual-trigger',
-          generationType
+          generationType,
+          xAccountId: xAccount?.id ?? null
         },
         status: PublishJobStatus.QUEUED,
         scheduledFor: options.scheduledFor ?? null
@@ -115,7 +119,8 @@ export class PublishService {
           draftId: options.draftId ?? null,
           channel,
           textCount: texts.length,
-          scheduledFor: options.scheduledFor?.toISOString() ?? null
+          scheduledFor: options.scheduledFor?.toISOString() ?? null,
+          xAccountId: xAccount?.id ?? null
         }
       }
     });
@@ -127,31 +132,57 @@ export class PublishService {
       status: publishJob.status,
       generationId: options.generationId ?? null,
       draftId: options.draftId ?? null,
+      xAccountId: xAccount?.id ?? null,
       channel,
       queuedAt: publishJob.createdAt,
       scheduledFor: publishJob.scheduledFor
     };
   }
 
-  async publishTweet(userId: string, generationId: string) {
+  private async resolvePublishAccount(workspaceId: string, xAccountId?: string) {
+    if (xAccountId) {
+      const explicit = await this.prisma.db.xAccount.findFirst({
+        where: {
+          id: xAccountId,
+          workspaceId
+        }
+      });
+      if (!explicit) throw new NotFoundException('指定的 X 账号不存在');
+      if (explicit.status !== XAccountStatus.ACTIVE) {
+        throw new BadRequestException('指定的 X 账号不可用，请先恢复为 ACTIVE');
+      }
+      return explicit;
+    }
+
+    return this.prisma.db.xAccount.findFirst({
+      where: {
+        workspaceId,
+        status: XAccountStatus.ACTIVE
+      },
+      orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }]
+    });
+  }
+
+  async publishTweet(userId: string, generationId: string, xAccountId?: string) {
     const generation = await this.prisma.db.generation.findUnique({ where: { id: generationId } });
     if (!generation) throw new NotFoundException('生成记录不存在');
     const text = extractTweetText(generation.result);
-    return this.createAndQueuePublishJob(userId, PublishChannel.X_TWEET, [text], { generationId });
+    return this.createAndQueuePublishJob(userId, PublishChannel.X_TWEET, [text], { generationId, xAccountId });
   }
 
-  async publishThread(userId: string, generationId: string) {
+  async publishThread(userId: string, generationId: string, xAccountId?: string) {
     const generation = await this.prisma.db.generation.findUnique({ where: { id: generationId } });
     if (!generation) throw new NotFoundException('生成记录不存在');
     const texts = extractThreadTexts(generation.result);
     if (texts.length === 0) throw new BadRequestException('串推内容为空');
-    return this.createAndQueuePublishJob(userId, PublishChannel.X_THREAD, texts, { generationId });
+    return this.createAndQueuePublishJob(userId, PublishChannel.X_THREAD, texts, { generationId, xAccountId });
   }
 
   async publishDraft(
     userId: string,
     draftId: string,
-    scheduledFor?: string
+    scheduledFor?: string,
+    xAccountId?: string
   ) {
     const draft = await this.prisma.db.draft.findUnique({
       where: { id: draftId }
@@ -181,7 +212,8 @@ export class PublishService {
       [text],
       {
         draftId,
-        scheduledFor: scheduledDate
+        scheduledFor: scheduledDate,
+        xAccountId
       }
     );
 
@@ -215,6 +247,16 @@ export class PublishService {
       where: {
         workspaceId,
         ...(options.status ? { status: options.status } : {})
+      },
+      include: {
+        xAccount: {
+          select: {
+            id: true,
+            handle: true,
+            status: true,
+            isDefault: true
+          }
+        }
       },
       orderBy: { createdAt: 'desc' },
       take,

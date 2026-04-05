@@ -1,6 +1,8 @@
 import {
+  BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Inject,
   Param,
@@ -44,11 +46,11 @@ interface RequestWithUser {
 }
 
 @Controller('x-accounts')
-@UseGuards(AuthGuard)
 export class XAccountsController {
   constructor(@Inject(XAccountsService) private readonly service: XAccountsService) {}
 
   @Get()
+  @UseGuards(AuthGuard)
   async list(
     @Req() req: RequestWithUser,
     @Query('page') page?: string,
@@ -63,11 +65,27 @@ export class XAccountsController {
   }
 
   @Post('bind-manual')
+  @UseGuards(AuthGuard)
   async bindManual(@Req() req: RequestWithUser, @Body() body: BindXAccountDto) {
     return this.service.bindManual((req.user as AuthUser).userId, body);
   }
 
+  @Post('oauth/start')
+  @UseGuards(AuthGuard)
+  async startOAuth(@Req() req: RequestWithUser) {
+    return this.service.startOAuthBind((req.user as AuthUser).userId);
+  }
+
+  @Get('oauth/callback')
+  async oauthCallback(@Query('state') state?: string, @Query('code') code?: string) {
+    if (!state || !code) {
+      throw new BadRequestException('Missing state or code');
+    }
+    return this.service.handleOAuthCallback(state, code);
+  }
+
   @Patch(':id/status')
+  @UseGuards(AuthGuard)
   async updateStatus(
     @Req() req: RequestWithUser,
     @Param('id') id: string,
@@ -76,7 +94,20 @@ export class XAccountsController {
     return this.service.updateStatus((req.user as AuthUser).userId, id, body.status);
   }
 
+  @Patch(':id/default')
+  @UseGuards(AuthGuard)
+  async setDefault(@Req() req: RequestWithUser, @Param('id') id: string) {
+    return this.service.setDefault((req.user as AuthUser).userId, id);
+  }
+
+  @Delete(':id')
+  @UseGuards(AuthGuard)
+  async remove(@Req() req: RequestWithUser, @Param('id') id: string) {
+    return this.service.remove((req.user as AuthUser).userId, id);
+  }
+
   @Post(':id/refresh-token')
+  @UseGuards(AuthGuard)
   async refreshToken(@Req() req: RequestWithUser, @Param('id') id: string) {
     return this.service.refreshTokenStub((req.user as AuthUser).userId, id);
   }

@@ -80,6 +80,12 @@ npx pnpm@10.23.0 smoke:p0
 
 # 阶段 B/C 模块点亮 smoke
 npx pnpm@10.23.0 smoke:v1
+
+# 全流程 UAT（生产测试租户，真实链路）
+UAT_TOKEN=<测试租户token> \
+API_URL=https://api.draftorbit.ai \
+APP_URL=https://draftorbit.ai \
+npx pnpm@10.23.0 uat:full
 ```
 
 ### 4.1 为什么 `smoke:p0` 必须使用唯一内容
@@ -156,6 +162,12 @@ RUN_ID=20260403-001 npx pnpm@10.23.0 smoke:p0
 
 ```bash
 npx pnpm@10.23.0 preflight:prod
+
+# 如需联动全量 UAT
+RUN_UAT_FULL=1 \
+UAT_FULL_REQUIRED=1 \
+UAT_TOKEN=<测试租户token> \
+npx pnpm@10.23.0 preflight:prod
 ```
 
 ---
@@ -183,6 +195,11 @@ npx pnpm@10.23.0 preflight:prod
 cd apps/web && vercel deploy --prod --yes
 curl -fsS https://api.draftorbit.ai/health
 curl -fsSI https://draftorbit.ai
+
+# 发布后再执行一轮全量 UAT（可选）
+POST_RELEASE_UAT_FULL=1 \
+UAT_TOKEN=<测试租户token> \
+npx pnpm@10.23.0 release:prod
 ```
 
 ---

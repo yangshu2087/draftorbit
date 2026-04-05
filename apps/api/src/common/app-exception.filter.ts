@@ -5,7 +5,7 @@ import {
   HttpException,
   HttpStatus
 } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
+import { getRequestId } from './request-id';
 
 type ErrorEnvelope = {
   code: string;
@@ -69,11 +69,7 @@ export class AppExceptionFilter implements ExceptionFilter {
         ? { validationErrors: rawObject.message }
         : undefined);
 
-    const requestIdHeader = request.headers['x-request-id'];
-    const requestId =
-      (typeof requestIdHeader === 'string' && requestIdHeader) ||
-      (Array.isArray(requestIdHeader) ? requestIdHeader[0] : '') ||
-      randomUUID();
+    const requestId = getRequestId(request);
 
     response.setHeader('x-request-id', requestId);
 

@@ -1,9 +1,11 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Inject,
   Injectable,
   InternalServerErrorException,
-  Logger
+  Logger,
+  NotFoundException
 } from '@nestjs/common';
 import { BillingInterval, SubscriptionPlan, SubscriptionStatus } from '@draftorbit/db';
 import { PrismaService } from '../../common/prisma.service';
@@ -432,6 +434,158 @@ export class BillingService {
     const url = session.url;
     if (!url) throw new InternalServerErrorException('Stripe checkout URL missing');
     return { url };
+  }
+
+  async cancelSubscription(userId: string, mode: 'AT_PERIOD_END' | 'IMMEDIATE') {
+    if (!stripe) {
+      throw new BadRequestException('Stripe 未配置，无法取消订阅');
+    }
+
+    const current = await this.prisma.db.subscription.findUnique({
+      where: { userId }
+    });
+    if (!current || !current.stripeSubscriptionId) {
+      throw new NotFoundException('当前用户没有可取消的 Stripe 订阅');
+    }
+
+    let stripeSub: any;
+    if (mode === 'IMMEDIATE') {
+      stripeSub = await stripe.subscriptions.cancel(current.stripeSubscriptionId);
+    } else {
+      stripeSub = await stripe.subscriptions.update(current.stripeSubscriptionId, {
+        cancel_at_period_end: true
+      });
+    }
+
+    const mappedStatus = mapStripeSubscriptionStatus(String(stripeSub.status));
+    const trialEndsAt = stripeSub.trial_end ? new Date(stripeSub.trial_end * 1000) : null;
+    const currentPeriodEnd = stripeSub.current_period_end
+      ? new Date(stripeSub.current_period_end * 1000)
+      : null;
+    const billingInterval = mapStripeIntervalToBillingInterval(
+      stripeSub.items?.data?.[0]?.price?.recurring?.interval
+    );
+
+    const updated = await this.prisma.db.subscription.update({
+      where: { id: current.id },
+      data: {
+        status: mode === 'IMMEDIATE' ? SubscriptionStatus.CANCELED : mappedStatus,
+        trialEndsAt,
+        currentPeriodEnd,
+        billingInterval,
+        stripeSubscriptionId: mode === 'IMMEDIATE' ? null : current.stripeSubscriptionId
+      }
+    });
+
+    return {
+      subscription: this.toSubscriptionView(updated),
+      cancelMode: mode,
+      stripeStatus: String(stripeSub.status),
+      cancelAtPeriodEnd: Boolean(stripeSub.cancel_at_period_end)
+    };
+  }
+
+  private async resolveRefundCharge(
+    current: {
+      stripeSubscriptionId: string | null;
+      stripeCustomerId: string | null;
+    }
+  ): Promise<{ chargeId: string; charge: any }> {
+    if (!stripe) throw new BadRequestException('Stripe 未配置');
+
+    if (current.stripeSubscriptionId) {
+      const invoices = await stripe.invoices.list({
+        subscription: current.stripeSubscriptionId,
+        limit: 20
+      });
+
+      for (const invoice of invoices.data ?? []) {
+        const chargeId = typeof invoice.charge === 'string' ? invoice.charge : invoice.charge?.id;
+        if (!chargeId) continue;
+        const charge = await stripe.charges.retrieve(chargeId);
+        if (charge.paid && !charge.refunded) {
+          return { chargeId, charge };
+        }
+        if (charge.paid && Number(charge.amount_refunded ?? 0) < Number(charge.amount ?? 0)) {
+          return { chargeId, charge };
+        }
+      }
+    }
+
+    if (current.stripeCustomerId) {
+      const charges = await stripe.charges.list({ customer: current.stripeCustomerId, limit: 20 });
+      for (const charge of charges.data ?? []) {
+        if (!charge.paid) continue;
+        if (charge.refunded) continue;
+        if (Number(charge.amount ?? 0) <= Number(charge.amount_refunded ?? 0)) continue;
+        return { chargeId: charge.id, charge };
+      }
+    }
+
+    throw new NotFoundException('未找到可退款的支付记录');
+  }
+
+  async createRefund(
+    userId: string,
+    input: { mode: 'PARTIAL' | 'FULL'; amountUsd?: number; reason?: string }
+  ) {
+    if (!stripe) {
+      throw new BadRequestException('Stripe 未配置，无法发起退款');
+    }
+
+    const enabled = (process.env.BILLING_SELF_SERVICE_REFUND_ENABLED ?? '').trim() === 'true';
+    if (!enabled) {
+      throw new ForbiddenException('退款接口未开启，请联系运营处理');
+    }
+
+    const current = await this.prisma.db.subscription.findUnique({
+      where: { userId }
+    });
+    if (!current || (!current.stripeSubscriptionId && !current.stripeCustomerId)) {
+      throw new NotFoundException('当前用户没有可退款的 Stripe 订阅记录');
+    }
+
+    const { chargeId, charge } = await this.resolveRefundCharge(current);
+    const totalAmount = Number(charge.amount ?? 0);
+    const refundedAmount = Number(charge.amount_refunded ?? 0);
+    const refundableAmount = Math.max(totalAmount - refundedAmount, 0);
+    if (refundableAmount <= 0) {
+      throw new BadRequestException('该支付记录已无可退款金额');
+    }
+
+    let amount: number | undefined;
+    if (input.mode === 'PARTIAL') {
+      const amountUsd = Number(input.amountUsd ?? 0);
+      if (!Number.isFinite(amountUsd) || amountUsd <= 0) {
+        throw new BadRequestException('部分退款必须提供有效 amountUsd');
+      }
+      amount = Math.round(amountUsd * 100);
+      if (amount <= 0) throw new BadRequestException('退款金额过小');
+      if (amount > refundableAmount) {
+        throw new BadRequestException(
+          `退款金额超出可退上限，最大可退 ${(refundableAmount / 100).toFixed(2)} USD`
+        );
+      }
+    }
+
+    const refund = await stripe.refunds.create({
+      charge: chargeId,
+      amount,
+      reason: input.reason ?? 'requested_by_customer'
+    });
+
+    return {
+      refundId: refund.id,
+      mode: input.mode,
+      chargeId,
+      amountUsd: Number(refund.amount ?? 0) / 100,
+      currency: String(refund.currency ?? 'usd').toUpperCase(),
+      status: refund.status ?? 'unknown',
+      raw: {
+        created: refund.created,
+        reason: refund.reason
+      }
+    };
   }
 
   private resolvePayPalPlanId(plan: BillingPlanKey, cycle: BillingCycle): string | null {

@@ -160,6 +160,24 @@ export class AuthService {
     };
   }
 
+  private async ensureWorkspaceDefaultXAccount(workspaceId: string) {
+    const currentDefault = await this.prisma.db.xAccount.findFirst({
+      where: { workspaceId, isDefault: true }
+    });
+    if (currentDefault) return;
+
+    const firstActive = await this.prisma.db.xAccount.findFirst({
+      where: { workspaceId, status: XAccountStatus.ACTIVE },
+      orderBy: { createdAt: 'asc' }
+    });
+    if (!firstActive) return;
+
+    await this.prisma.db.xAccount.update({
+      where: { id: firstActive.id },
+      data: { isDefault: true }
+    });
+  }
+
   private async ensureSubscription(userId: string) {
     const now = new Date();
     const trialDays = getBillingTrialDays();
@@ -423,6 +441,7 @@ export class AuthService {
       this.ensureSubscription(dbUser.id)
     ]);
     this.logAuthTiming('x', startedAt, 'identity-and-subscription-ready');
+    await this.ensureWorkspaceDefaultXAccount(workspace.workspaceId);
 
     const full = this.buildAuthMe(
       {

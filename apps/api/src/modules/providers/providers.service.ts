@@ -33,7 +33,7 @@ export class ProvidersService {
     prompt: string;
     model: string;
     temperature: number;
-  }): Promise<{ content: string; inputTokens: number; outputTokens: number }> {
+  }): Promise<{ content: string; inputTokens: number; outputTokens: number; costUsd: number; modelUsed: string }> {
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -59,15 +59,21 @@ export class ProvidersService {
     }
 
     const data = (await response.json()) as {
+      model?: string;
       usage?: { prompt_tokens?: number; completion_tokens?: number };
       choices?: Array<{ message?: { content?: string } }>;
     };
 
     const content = data.choices?.[0]?.message?.content?.trim() ?? '';
+    const usageAny = data as Record<string, any>;
+    const costRaw = usageAny?.usage?.cost ?? usageAny?.usage?.total_cost ?? 0;
+    const costUsd = Number.isFinite(Number(costRaw)) ? Number(costRaw) : 0;
     return {
       content,
       inputTokens: data.usage?.prompt_tokens ?? 0,
-      outputTokens: data.usage?.completion_tokens ?? 0
+      outputTokens: data.usage?.completion_tokens ?? 0,
+      costUsd,
+      modelUsed: data.model ?? input.model
     };
   }
 
@@ -232,7 +238,7 @@ export class ProvidersService {
 
     const selected = connections[0] ?? null;
     const selectedProviderType = selected?.providerType ?? ProviderType.OPENROUTER;
-    const model = input.model?.trim() || 'deepseek/deepseek-chat';
+    const model = input.model?.trim() || 'openrouter/free';
     const temperature = typeof input.temperature === 'number' ? input.temperature : 0.7;
 
     let providerKey: string | null = null;
@@ -253,22 +259,50 @@ export class ProvidersService {
     let content = '';
     let inputTokens = 0;
     let outputTokens = 0;
+    let requestCostUsd = 0;
+    let modelUsed = model;
+    let fallbackDepth = 0;
+    let routingTier = 'free_first';
 
     if (providerKey) {
-      const result = await this.callOpenRouter({
-        apiKey: providerKey,
-        prompt: input.prompt,
-        model,
-        temperature
-      });
-      content = result.content;
-      inputTokens = result.inputTokens;
-      outputTokens = result.outputTokens;
+      const candidates = input.model?.trim()
+        ? [input.model.trim()]
+        : ['openrouter/free', 'deepseek/deepseek-chat'];
+
+      let lastError: Error | null = null;
+      for (let i = 0; i < candidates.length; i += 1) {
+        const candidate = candidates[i];
+        try {
+          const result = await this.callOpenRouter({
+            apiKey: providerKey,
+            prompt: input.prompt,
+            model: candidate,
+            temperature
+          });
+          content = result.content;
+          inputTokens = result.inputTokens;
+          outputTokens = result.outputTokens;
+          requestCostUsd = result.costUsd;
+          modelUsed = result.modelUsed;
+          fallbackDepth = i;
+          routingTier = i === 0 ? 'free_first' : 'floor';
+          break;
+        } catch (err) {
+          lastError = err instanceof Error ? err : new Error(String(err));
+        }
+      }
+
+      if (!content && lastError) {
+        throw lastError;
+      }
     } else {
       fallbackUsed = true;
       content = `【Mock ${selectedProviderType}】${input.prompt}`;
       inputTokens = Math.ceil(input.prompt.length / 2);
       outputTokens = Math.ceil(content.length / 2);
+      requestCostUsd = 0;
+      modelUsed = `mock/${selectedProviderType.toLowerCase()}`;
+      routingTier = 'floor';
     }
 
     const usage = await this.prisma.db.usageLog.create({
@@ -276,10 +310,15 @@ export class ProvidersService {
         userId,
         workspaceId,
         eventType: this.usageEventFromTask(input.taskType),
-        model,
+        model: modelUsed,
+        modelUsed,
+        routingTier,
+        fallbackDepth,
         inputTokens,
         outputTokens,
-        costUsd: '0'
+        costUsd: String(requestCostUsd),
+        requestCostUsd: String(requestCostUsd),
+        trialMode: false
       }
     });
 
@@ -288,22 +327,22 @@ export class ProvidersService {
         workspaceId,
         usageLogId: usage.id,
         providerType: selectedProviderType,
-        model,
+        model: modelUsed,
         inputTokens,
         outputTokens,
-        costUsd: '0'
+        costUsd: String(requestCostUsd)
       }
     });
 
     return {
       providerType: selectedProviderType,
-      model,
+      model: modelUsed,
       content,
       fallbackUsed,
       usage: {
         inputTokens,
         outputTokens,
-        costUsd: 0
+        costUsd: requestCostUsd
       }
     };
   }

@@ -50,10 +50,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           <div
             key={item.id}
             className={cn(
-              'pointer-events-auto w-[320px] rounded-lg border p-3 shadow-lg backdrop-blur',
+              'pointer-events-auto w-[320px] rounded-xl border p-3 shadow-lg backdrop-blur',
               item.variant === 'success' && 'border-emerald-200 bg-emerald-50 text-emerald-900',
               item.variant === 'error' && 'border-red-200 bg-red-50 text-red-900',
-              item.variant === 'info' && 'border-gray-200 bg-white text-gray-900'
+              item.variant === 'info' && 'border-slate-900/12 bg-white text-slate-900'
             )}
           >
             <p className="text-sm font-semibold">{item.title}</p>

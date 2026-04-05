@@ -4,7 +4,15 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { Button } from '../../components/ui/button';
-import { analyzeStyle, fetchMe, fetchStyle, fetchSubscription, fetchUsage } from '../../lib/queries';
+import {
+  analyzeStyle,
+  cancelSubscription,
+  createRefund,
+  fetchMe,
+  fetchStyle,
+  fetchSubscription,
+  fetchUsage
+} from '../../lib/queries';
 import { clearToken, getToken, getUserFromToken } from '../../lib/api';
 
 function TopNav() {
@@ -50,6 +58,7 @@ export default function SettingsPage() {
   const [style, setStyle] = useState<any | null>(undefined);
   const [loading, setLoading] = useState(true);
   const [styleBusy, setStyleBusy] = useState(false);
+  const [billingBusy, setBillingBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -96,6 +105,69 @@ export default function SettingsPage() {
       setError(e instanceof Error ? e.message : '分析失败');
     } finally {
       setStyleBusy(false);
+    }
+  };
+
+  const onCancelAtPeriodEnd = async () => {
+    if (!window.confirm('确认在当前计费周期结束时取消订阅？')) return;
+    setBillingBusy(true);
+    setError(null);
+    try {
+      await cancelSubscription('AT_PERIOD_END');
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '取消订阅失败');
+    } finally {
+      setBillingBusy(false);
+    }
+  };
+
+  const onCancelImmediate = async () => {
+    if (!window.confirm('确认立即取消订阅？这会立刻结束当前订阅。')) return;
+    setBillingBusy(true);
+    setError(null);
+    try {
+      await cancelSubscription('IMMEDIATE');
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '立即取消失败');
+    } finally {
+      setBillingBusy(false);
+    }
+  };
+
+  const onPartialRefund = async () => {
+    const raw = window.prompt('请输入部分退款金额（USD）', '1');
+    if (!raw) return;
+    const amountUsd = Number(raw);
+    if (!Number.isFinite(amountUsd) || amountUsd <= 0) {
+      setError('请输入有效退款金额');
+      return;
+    }
+    if (!window.confirm(`确认发起部分退款 USD ${amountUsd.toFixed(2)}？`)) return;
+    setBillingBusy(true);
+    setError(null);
+    try {
+      await createRefund({ mode: 'PARTIAL', amountUsd, reason: 'requested_by_customer' });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '部分退款失败');
+    } finally {
+      setBillingBusy(false);
+    }
+  };
+
+  const onFullRefund = async () => {
+    if (!window.confirm('确认发起全额退款？')) return;
+    setBillingBusy(true);
+    setError(null);
+    try {
+      await createRefund({ mode: 'FULL', reason: 'requested_by_customer' });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '全额退款失败');
+    } finally {
+      setBillingBusy(false);
     }
   };
 
@@ -210,6 +282,27 @@ export default function SettingsPage() {
               <Button asChild className="mt-6">
                 <Link href="/pricing">{subscription?.isTrialing ? '选择订阅方案' : '变更订阅方案'}</Link>
               </Button>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" disabled={billingBusy} onClick={onCancelAtPeriodEnd}>
+                  {billingBusy ? '处理中…' : '到期取消订阅'}
+                </Button>
+                <Button variant="outline" size="sm" disabled={billingBusy} onClick={onCancelImmediate}>
+                  {billingBusy ? '处理中…' : '立即取消订阅'}
+                </Button>
+              </div>
+
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                退款按钮仅用于测试租户演练；如提示未开启，请在 API 环境变量中启用
+                <span className="font-semibold"> BILLING_SELF_SERVICE_REFUND_ENABLED=true</span>。
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" disabled={billingBusy} onClick={onPartialRefund}>
+                  {billingBusy ? '处理中…' : '部分退款演练'}
+                </Button>
+                <Button variant="outline" size="sm" disabled={billingBusy} onClick={onFullRefund}>
+                  {billingBusy ? '处理中…' : '全额退款演练'}
+                </Button>
+              </div>
             </section>
 
             <section className="do-panel rounded-3xl p-6">

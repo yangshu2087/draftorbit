@@ -1,5 +1,5 @@
 import { Job } from 'bullmq';
-import { DraftStatus, PublishChannel, PublishJobStatus } from '@draftorbit/db';
+import { DraftStatus, PublishChannel, PublishJobStatus, XAccountStatus } from '@draftorbit/db';
 import { decryptSecret } from '@draftorbit/shared';
 import { prisma } from '@draftorbit/db';
 import { TwitterApi } from 'twitter-api-v2';
@@ -57,6 +57,7 @@ async function markManualFallback(publishJobId: string, reason: string, texts: s
   await prisma.postHistory.create({
     data: {
       workspaceId: publishJob.workspaceId,
+      xAccountId: publishJob.xAccountId ?? null,
       draftId: publishJob.draftId ?? null,
       externalPostId: manualId,
       url: null,
@@ -133,17 +134,43 @@ export async function processPublishJob(job: Job<PublishJobPayload>) {
       throw new Error(`Publish payload missing texts: ${publishJob.id}`);
     }
 
-    const user = await prisma.user.findUniqueOrThrow({ where: { id: publishJob.userId } });
+    const targetXAccount = publishJob.xAccountId
+      ? await prisma.xAccount.findFirst({
+          where: {
+            id: publishJob.xAccountId,
+            workspaceId: publishJob.workspaceId
+          }
+        })
+      : await prisma.xAccount.findFirst({
+          where: {
+            workspaceId: publishJob.workspaceId,
+            status: XAccountStatus.ACTIVE
+          },
+          orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }]
+        });
+
     const forceManual = (process.env.PUBLISH_FORCE_MANUAL ?? 'false').toLowerCase() === 'true';
-    if (forceManual || !user.accessTokenEnc) {
+    if (forceManual) {
+      return markManualFallback(publishJob.id, 'FORCE_MANUAL_MODE', texts);
+    }
+
+    if (!targetXAccount) {
+      return markManualFallback(publishJob.id, 'MISSING_X_ACCOUNT', texts);
+    }
+
+    if (targetXAccount.status !== XAccountStatus.ACTIVE) {
+      return markManualFallback(publishJob.id, 'X_ACCOUNT_NOT_ACTIVE', texts);
+    }
+
+    if (!targetXAccount.accessTokenEnc) {
       return markManualFallback(
         publishJob.id,
-        forceManual ? 'FORCE_MANUAL_MODE' : 'MISSING_X_TOKEN',
+        'MISSING_X_ACCOUNT_TOKEN',
         texts
       );
     }
 
-    const client = new TwitterApi(decryptSecret(user.accessTokenEnc));
+    const client = new TwitterApi(decryptSecret(targetXAccount.accessTokenEnc));
 
     let tweetId: string;
     if (publishJob.channel === PublishChannel.X_THREAD) {
@@ -175,9 +202,10 @@ export async function processPublishJob(job: Job<PublishJobPayload>) {
     await prisma.postHistory.create({
       data: {
         workspaceId: publishJob.workspaceId,
+        xAccountId: targetXAccount.id,
         draftId: publishJob.draftId ?? null,
         externalPostId: tweetId,
-        url: `https://x.com/${user.handle.replace(/^@/, '')}/status/${tweetId}`,
+        url: `https://x.com/${targetXAccount.handle.replace(/^@/, '')}/status/${tweetId}`,
         rawPayload: publishJob.payload as any
       }
     });
@@ -201,7 +229,9 @@ export async function processPublishJob(job: Job<PublishJobPayload>) {
       resourceId: publishJob.id,
       payload: {
         tweetId,
-        channel: publishJob.channel
+        channel: publishJob.channel,
+        xAccountId: targetXAccount.id,
+        xHandle: targetXAccount.handle
       }
     });
 

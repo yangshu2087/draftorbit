@@ -10,7 +10,19 @@ import type {
 import { apiFetch } from './api';
 
 export async function startGeneration(data: {
-  prompt: string;
+  mode?: 'brief' | 'advanced';
+  brief?: {
+    objective: string;
+    audience: string;
+    tone: string;
+    postType: string;
+    cta: string;
+    topicPreset: string;
+  };
+  advanced?: {
+    customPrompt?: string;
+  };
+  prompt?: string;
   type?: string;
   language?: string;
   useStyle?: boolean;
@@ -37,10 +49,10 @@ export async function fetchStyle() {
   return apiFetch<Record<string, unknown>>('/history/style');
 }
 
-export async function publishTweet(generationId: string) {
+export async function publishTweet(generationId: string, xAccountId?: string) {
   return apiFetch<Record<string, unknown>>('/publish/tweet', {
     method: 'POST',
-    body: JSON.stringify({ generationId })
+    body: JSON.stringify({ generationId, xAccountId })
   });
 }
 
@@ -83,12 +95,42 @@ export async function createCheckout(plan: 'STARTER' | 'PRO' | 'PREMIUM', cycle:
   });
 }
 
+export async function cancelSubscription(mode: 'AT_PERIOD_END' | 'IMMEDIATE' = 'AT_PERIOD_END') {
+  return apiFetch<Record<string, unknown>>('/billing/subscription/cancel', {
+    method: 'POST',
+    body: JSON.stringify({ mode })
+  });
+}
+
+export async function createRefund(input: {
+  mode: 'PARTIAL' | 'FULL';
+  amountUsd?: number;
+  reason?: 'requested_by_customer' | 'duplicate' | 'fraudulent';
+}) {
+  return apiFetch<Record<string, unknown>>('/billing/refund', {
+    method: 'POST',
+    body: JSON.stringify(input)
+  });
+}
+
 export async function fetchMe() {
   return apiFetch<Record<string, unknown>>('/auth/me');
 }
 
 export async function startXOAuth() {
   return apiFetch<{ url: string; state: string }>('/auth/x/authorize');
+}
+
+export async function startXAccountOAuthBind() {
+  return apiFetch<{ url: string; state: string; redirectUri: string }>('/x-accounts/oauth/start', {
+    method: 'POST'
+  });
+}
+
+export async function finishXAccountOAuthBind(state: string, code: string) {
+  return apiFetch<{ ok: boolean; account: Record<string, unknown> }>(
+    `/x-accounts/oauth/callback?state=${encodeURIComponent(state)}&code=${encodeURIComponent(code)}`
+  );
 }
 
 export async function startGoogleOAuth() {
@@ -128,6 +170,28 @@ export async function bindXAccountManual(input: {
   return apiFetch<Record<string, unknown>>('/x-accounts/bind-manual', {
     method: 'POST',
     body: JSON.stringify(input)
+  });
+}
+
+export async function setDefaultXAccount(id: string) {
+  return apiFetch<Record<string, unknown>>(`/x-accounts/${id}/default`, {
+    method: 'PATCH'
+  });
+}
+
+export async function updateXAccountStatus(
+  id: string,
+  status: 'ACTIVE' | 'EXPIRED' | 'REVOKED' | 'ERROR'
+) {
+  return apiFetch<Record<string, unknown>>(`/x-accounts/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status })
+  });
+}
+
+export async function deleteXAccount(id: string) {
+  return apiFetch<Record<string, unknown>>(`/x-accounts/${id}`, {
+    method: 'DELETE'
   });
 }
 
@@ -228,7 +292,7 @@ export async function fetchPublishJobs(options?: {
   return apiFetch<PublishJobEntity[]>(`/publish/jobs${suffix}`);
 }
 
-export async function publishDraft(input: { draftId: string; scheduledFor?: string }) {
+export async function publishDraft(input: { draftId: string; scheduledFor?: string; xAccountId?: string }) {
   return apiFetch<Record<string, unknown>>('/publish/draft', { method: 'POST', body: JSON.stringify(input) });
 }
 
@@ -277,6 +341,15 @@ export async function upsertProvider(input: Record<string, unknown>) {
   return apiFetch<Record<string, unknown>>('/providers', { method: 'POST', body: JSON.stringify(input) });
 }
 
+export async function fetchProviderByokStatus() {
+  return apiFetch<{
+    workspaceId: string;
+    byokEnabled: boolean;
+    enabledConnections: number;
+    platformFallbackEnabled: boolean;
+  }>('/providers/byok-status');
+}
+
 export async function routeProviderText(input: {
   prompt: string;
   taskType: string;
@@ -284,11 +357,49 @@ export async function routeProviderText(input: {
   providerType?: string;
   temperature?: number;
 }) {
-  return apiFetch<Record<string, unknown>>('/providers/route/text', { method: 'POST', body: JSON.stringify(input) });
+  return apiFetch<Record<string, unknown>>('/providers/route-text', { method: 'POST', body: JSON.stringify(input) });
 }
 
 export async function fetchUsageSummary() {
   return apiFetch<Record<string, unknown>>('/usage/summary');
+}
+
+export async function fetchUsageOverview(options?: { eventsLimit?: number; days?: number }) {
+  const query = new URLSearchParams();
+  if (options?.eventsLimit) query.set('eventsLimit', String(options.eventsLimit));
+  if (options?.days) query.set('days', String(options.days));
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return apiFetch<{
+    ok: boolean;
+    degraded: boolean;
+    segments: Record<string, { ok: boolean }>;
+    errors: Array<{ segment: string; code: string; message: string; statusCode: number }>;
+    data: {
+      summary: Record<string, unknown> | null;
+      events: Array<Record<string, unknown>>;
+      trends: {
+        workspaceId: string;
+        days: number;
+        from: string;
+        points: Array<{
+          date: string;
+          generation: number;
+          naturalization: number;
+          image: number;
+          reply: number;
+          publish: number;
+          totalEvents: number;
+          costUsd: number;
+          requestCostUsd: number;
+          freeHits: number;
+          fallbackHits: number;
+          qualityFallbackHits: number;
+          avgQualityScore: number;
+        }>;
+      } | null;
+    };
+    now: string;
+  }>(`/usage/overview${suffix}`);
 }
 
 export async function fetchUsageEvents(limit = 100) {
@@ -309,6 +420,11 @@ export async function fetchUsageTrends(days = 14) {
       publish: number;
       totalEvents: number;
       costUsd: number;
+      requestCostUsd: number;
+      freeHits: number;
+      fallbackHits: number;
+      qualityFallbackHits: number;
+      avgQualityScore: number;
     }>;
   }>(`/usage/trends?days=${days}`);
 }
@@ -400,4 +516,27 @@ export async function naturalizePreview(input: {
 
 export async function fetchQueueHealth() {
   return apiFetch<Record<string, unknown>>('/ops/queues');
+}
+
+export async function fetchDashboardOverview() {
+  return apiFetch<{
+    ok: boolean;
+    degraded: boolean;
+    segments: Record<string, { ok: boolean }>;
+    errors: Array<{ segment: string; code: string; message: string; statusCode: number }>;
+    data: {
+      workspaceId: string;
+      workspace: Record<string, unknown> | null;
+      counters: {
+        topics: number;
+        drafts: number;
+        publishJobs: number;
+        replyJobs: number;
+      };
+      usage: Record<string, unknown> | null;
+      audit: Record<string, unknown> | null;
+      queues: Record<string, unknown>;
+    } | null;
+    now: string;
+  }>('/ops/dashboard');
 }

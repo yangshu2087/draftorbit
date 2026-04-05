@@ -29,6 +29,20 @@ export class UsageController {
     return this.service.summary((req.user as AuthUser).userId);
   }
 
+  @Get('overview')
+  async overview(
+    @Req() req: RequestWithUser,
+    @Query('eventsLimit') eventsLimit?: string,
+    @Query('days') days?: string
+  ) {
+    const parsedEventsLimit = eventsLimit ? Number(eventsLimit) : 50;
+    const parsedDays = days ? Number(days) : 14;
+    return this.service.overview((req.user as AuthUser).userId, {
+      eventsLimit: Number.isFinite(parsedEventsLimit) ? parsedEventsLimit : 50,
+      trendDays: Number.isFinite(parsedDays) ? parsedDays : 14
+    });
+  }
+
   @Get('events')
   async events(@Req() req: RequestWithUser, @Query('limit') limit?: string) {
     const parsed = limit ? Number(limit) : 100;

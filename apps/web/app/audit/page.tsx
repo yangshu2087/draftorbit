@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import type { AuditLogEntity } from '@draftorbit/shared';
 import { WorkbenchShell } from '../../components/shell/workbench-shell';
 import { EmptyState, ErrorState, LoadingState } from '../../components/ui/page-states';
-import { WorkspaceRecovery, isWorkspaceMissing, normalizeErrorMessage } from '../../components/ui/workspace-recovery';
+import { buildRecoveryExtra, normalizeErrorMessage } from '../../components/ui/workspace-recovery';
 import { fetchAuditLogs, fetchAuditSummary } from '../../lib/queries';
 
 export default function AuditPage() {
@@ -42,12 +42,12 @@ export default function AuditPage() {
           message={normalizeErrorMessage(error)}
           actionText="重试"
           onAction={() => void load()}
-          extra={isWorkspaceMissing(error) ? <WorkspaceRecovery onRecovered={load} /> : undefined}
+          extra={buildRecoveryExtra(error, load)}
         />
       ) : null}
 
       {summary ? (
-        <div className="rounded-lg border border-gray-200 p-3 text-sm">
+        <div className="do-card-compact text-sm">
           总计 {summary?.total ?? 0} · 24h {summary?.last24h ?? 0}
         </div>
       ) : null}
@@ -58,14 +58,14 @@ export default function AuditPage() {
 
       <div className="space-y-2">
         {logs.map((log) => (
-          <div key={log.id} className="rounded-lg border border-gray-200 p-3">
+          <div key={log.id} className="do-card-compact">
             <p className="text-sm font-medium">
               {log.action} · {log.resourceType}
             </p>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-slate-500">
               {new Date(log.createdAt).toLocaleString('zh-CN')} · resourceId={log.resourceId || '-'}
             </p>
-            <pre className="mt-1 overflow-auto rounded bg-gray-50 p-2 text-xs text-gray-600">
+            <pre className="mt-1 overflow-auto rounded-lg border border-slate-900/8 bg-slate-50/80 p-2 text-xs text-slate-600">
               {JSON.stringify(log.payload, null, 2)}
             </pre>
           </div>

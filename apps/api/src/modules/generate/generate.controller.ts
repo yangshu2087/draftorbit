@@ -19,7 +19,7 @@ type RequestWithUser = { headers: Record<string, string | string[] | undefined>;
 import { AuthGuard } from '../../common/auth.guard';
 import { SubscriptionGuard } from '../../common/subscription.guard';
 import { GenerateService } from './generate.service';
-import { StartGenerationDto } from './start-generation.dto';
+import { StartGenerationDto, type GenerateStartMode } from './start-generation.dto';
 
 @Controller('generate')
 @UseGuards(AuthGuard)
@@ -32,12 +32,20 @@ export class GenerateController {
   @Post('start')
   async start(@Body() body: StartGenerationDto, @Req() req: RequestWithUser) {
     await this.subscriptionGuard.assertCanGenerate(req.user);
+
+    const mode: GenerateStartMode = body.mode ?? (body.brief ? 'brief' : 'advanced');
+
     const generationId = await this.generateService.startGeneration(
       req.user.userId,
-      body.prompt,
-      body.type ?? GenerationType.TWEET,
-      body.language ?? 'zh',
-      body.useStyle
+      {
+        mode,
+        brief: body.brief,
+        customPrompt: body.advanced?.customPrompt,
+        legacyPrompt: body.prompt,
+        type: body.type ?? GenerationType.TWEET,
+        language: body.language ?? 'zh',
+        useStyle: body.useStyle
+      }
     );
     return { generationId };
   }

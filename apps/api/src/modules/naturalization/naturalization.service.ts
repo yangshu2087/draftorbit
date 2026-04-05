@@ -40,22 +40,14 @@ export class NaturalizationService {
         original: input.text,
         normalized: ruleBase,
         rewritten: routed.content,
-        provider: {
-          type: routed.providerType,
-          model: routed.model,
-          fallbackUsed: routed.fallbackUsed
-        }
+        mode: routed.fallbackUsed ? '标准润色' : '深度润色'
       };
     } catch {
       return {
         original: input.text,
         normalized: ruleBase,
         rewritten: ruleBase,
-        provider: {
-          type: 'RULE_ONLY',
-          model: 'rule-based',
-          fallbackUsed: true
-        }
+        mode: '标准润色'
       };
     }
   }

@@ -40,6 +40,7 @@ export interface DraftEntity {
 
 export interface PublishJobEntity {
   id: string;
+  xAccountId: string | null;
   draftId: string | null;
   generationId: string | null;
   channel: 'X_TWEET' | 'X_THREAD';
@@ -52,6 +53,12 @@ export interface PublishJobEntity {
   externalPostId: string | null;
   createdAt: string;
   updatedAt: string;
+  xAccount?: {
+    id: string;
+    handle: string;
+    status: 'ACTIVE' | 'EXPIRED' | 'REVOKED' | 'ERROR';
+    isDefault: boolean;
+  } | null;
 }
 
 export interface ReplyCandidateEntity {
@@ -97,6 +104,8 @@ export interface XAccountEntity {
   twitterUserId: string;
   handle: string;
   status: 'ACTIVE' | 'EXPIRED' | 'REVOKED' | 'ERROR';
+  isDefault: boolean;
+  tokenExpiresAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }

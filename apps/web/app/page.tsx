@@ -3,6 +3,7 @@
 import { Clock, Loader2, Send, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
+import type { XAccountEntity } from '@draftorbit/shared';
 import { HistoryList, type HistoryItem } from '../components/workspace/history-list';
 import {
   ReasoningPanel,
@@ -19,6 +20,7 @@ import {
   createLocalSession,
   fetchGeneration,
   fetchHistory,
+  fetchXAccounts,
   publishTweet,
   startGeneration,
   startXOAuth
@@ -27,6 +29,46 @@ import { cn } from '../lib/utils';
 
 type GenType = 'TWEET' | 'THREAD' | 'LONG';
 type Lang = 'zh' | 'en';
+
+const OBJECTIVE_OPTIONS = [
+  { value: '涨粉', label: '涨粉' },
+  { value: '互动', label: '互动' },
+  { value: '转化', label: '转化' },
+  { value: '品牌', label: '品牌认知' }
+] as const;
+
+const AUDIENCE_OPTIONS = [
+  { value: '创作者', label: '创作者' },
+  { value: '独立开发者', label: '独立开发者' },
+  { value: '品牌运营', label: '品牌运营' },
+  { value: 'AI 从业者', label: 'AI 从业者' }
+] as const;
+
+const TONE_OPTIONS = [
+  { value: '专业清晰', label: '专业清晰' },
+  { value: '口语亲和', label: '口语亲和' },
+  { value: '观点锋利', label: '观点锋利' }
+] as const;
+
+const POST_TYPE_OPTIONS = [
+  { value: '观点短推', label: '观点短推' },
+  { value: '教程清单', label: '教程清单' },
+  { value: '案例复盘', label: '案例复盘' },
+  { value: '热点点评', label: '热点点评' }
+] as const;
+
+const CTA_OPTIONS = [
+  { value: '欢迎留言讨论', label: '欢迎留言讨论' },
+  { value: '同意请点赞转发', label: '同意请点赞转发' },
+  { value: '关注获取后续更新', label: '关注获取后续更新' }
+] as const;
+
+const TOPIC_PRESETS = [
+  { value: 'AI 产品增长', label: 'AI 产品增长' },
+  { value: 'X 运营方法', label: 'X 运营方法' },
+  { value: '创作效率提升', label: '创作效率提升' },
+  { value: '行业趋势洞察', label: '行业趋势洞察' }
+] as const;
 
 function sortSteps(rows: StepRow[]): StepRow[] {
   const order: string[] = [...STEP_ORDER, 'error'];
@@ -95,10 +137,17 @@ function planLabel(plan?: string | null): string {
 
 export default function HomePage() {
   const [user, setUser] = useState(() => getUserFromToken());
-  const [prompt, setPrompt] = useState('');
   const [type, setType] = useState<GenType>('TWEET');
   const [language, setLanguage] = useState<Lang>('zh');
   const [useStyle, setUseStyle] = useState(true);
+  const [objective, setObjective] = useState<(typeof OBJECTIVE_OPTIONS)[number]['value']>('互动');
+  const [audience, setAudience] = useState<(typeof AUDIENCE_OPTIONS)[number]['value']>('创作者');
+  const [tone, setTone] = useState<(typeof TONE_OPTIONS)[number]['value']>('专业清晰');
+  const [postType, setPostType] = useState<(typeof POST_TYPE_OPTIONS)[number]['value']>('观点短推');
+  const [cta, setCta] = useState<(typeof CTA_OPTIONS)[number]['value']>('欢迎留言讨论');
+  const [topicPreset, setTopicPreset] = useState<(typeof TOPIC_PRESETS)[number]['value']>('AI 产品增长');
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [customPrompt, setCustomPrompt] = useState('');
   const [generationId, setGenerationId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [steps, setSteps] = useState<StepRow[]>([]);
@@ -109,6 +158,8 @@ export default function HomePage() {
   const [oauthLoading, setOauthLoading] = useState(false);
   const [localLoading, setLocalLoading] = useState(false);
   const [publishBusy, setPublishBusy] = useState(false);
+  const [xAccounts, setXAccounts] = useState<XAccountEntity[]>([]);
+  const [selectedXAccountId, setSelectedXAccountId] = useState('');
   const [allowLocalLogin, setAllowLocalLogin] = useState(
     process.env.NEXT_PUBLIC_ENABLE_LOCAL_LOGIN === 'true'
   );
@@ -154,9 +205,27 @@ export default function HomePage() {
     }
   }, []);
 
+  const loadXAccounts = useCallback(async () => {
+    if (!getUserFromToken()) return;
+    try {
+      const rows = await fetchXAccounts({ pageSize: 50 });
+      setXAccounts(rows);
+      const defaultAccount = rows.find((row) => row.isDefault) ?? rows[0];
+      if (defaultAccount) {
+        setSelectedXAccountId(defaultAccount.id);
+      }
+    } catch {
+      setXAccounts([]);
+      setSelectedXAccountId('');
+    }
+  }, []);
+
   useEffect(() => {
-    if (user) void loadHistory();
-  }, [user, loadHistory]);
+    if (user) {
+      void loadHistory();
+      void loadXAccounts();
+    }
+  }, [user, loadHistory, loadXAccounts]);
 
   const runStream = useCallback(async (id: string) => {
     setIsGenerating(true);
@@ -197,14 +266,30 @@ export default function HomePage() {
   }, [loadHistory]);
 
   const handleGenerate = useCallback(async () => {
-    const p = prompt.trim();
-    if (!p || isGenerating) return;
+    if (isGenerating) return;
+
+    const advancedPrompt = customPrompt.trim();
+    const useAdvanced = advancedOpen && advancedPrompt.length > 0;
+
     setResult(null);
     setSteps([]);
     setIsGenerating(true);
     try {
       const { generationId: id } = await startGeneration({
-        prompt: p,
+        mode: useAdvanced ? 'advanced' : 'brief',
+        brief: {
+          objective,
+          audience,
+          tone,
+          postType,
+          cta,
+          topicPreset
+        },
+        advanced: useAdvanced
+          ? {
+              customPrompt: advancedPrompt
+            }
+          : undefined,
         type,
         language,
         useStyle
@@ -221,7 +306,21 @@ export default function HomePage() {
         })
       );
     }
-  }, [prompt, type, language, useStyle, isGenerating, runStream]);
+  }, [
+    audience,
+    advancedOpen,
+    cta,
+    customPrompt,
+    isGenerating,
+    language,
+    objective,
+    postType,
+    runStream,
+    tone,
+    topicPreset,
+    type,
+    useStyle
+  ]);
 
   const handleHistorySelect = useCallback(async (id: string) => {
     setHistoryOpen(false);
@@ -229,7 +328,8 @@ export default function HomePage() {
     try {
       const gen = await fetchGeneration(id);
       const g = gen as Record<string, unknown>;
-      setPrompt(typeof g.prompt === 'string' ? g.prompt : '');
+      setCustomPrompt(typeof g.prompt === 'string' ? g.prompt : '');
+      setAdvancedOpen(true);
       if (typeof g.type === 'string' && ['TWEET', 'THREAD', 'LONG'].includes(g.type)) {
         setType(g.type as GenType);
       }
@@ -410,13 +510,91 @@ export default function HomePage() {
 
         <main className="flex-1 px-4 py-8 lg:px-10 lg:py-12">
           <div className="mx-auto max-w-3xl">
-            <textarea
-              className="min-h-[120px] w-full resize-y text-base"
-              placeholder="描述你想发的推文，或粘贴一段灵感..."
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              disabled={isGenerating}
-            />
+            <div className="rounded-2xl border border-slate-900/10 bg-slate-50/65 p-4">
+              <p className="text-xs font-semibold tracking-[0.14em] text-slate-500">Brief-first 生成</p>
+              <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
+                <select value={objective} onChange={(e) => setObjective(e.target.value as typeof objective)} disabled={isGenerating}>
+                  {OBJECTIVE_OPTIONS.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      目标：{item.label}
+                    </option>
+                  ))}
+                </select>
+                <select value={audience} onChange={(e) => setAudience(e.target.value as typeof audience)} disabled={isGenerating}>
+                  {AUDIENCE_OPTIONS.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      受众：{item.label}
+                    </option>
+                  ))}
+                </select>
+                <select value={tone} onChange={(e) => setTone(e.target.value as typeof tone)} disabled={isGenerating}>
+                  {TONE_OPTIONS.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      语气：{item.label}
+                    </option>
+                  ))}
+                </select>
+                <select value={postType} onChange={(e) => setPostType(e.target.value as typeof postType)} disabled={isGenerating}>
+                  {POST_TYPE_OPTIONS.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      类型：{item.label}
+                    </option>
+                  ))}
+                </select>
+                <select value={cta} onChange={(e) => setCta(e.target.value as typeof cta)} disabled={isGenerating}>
+                  {CTA_OPTIONS.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      CTA：{item.label}
+                    </option>
+                  ))}
+                </select>
+                <div className="rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-xs text-slate-500">
+                  主题模板（点击选择）
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                {TOPIC_PRESETS.map((item) => (
+                  <button
+                    key={item.value}
+                    type="button"
+                    className={cn(
+                      'rounded-full border px-3 py-1.5 text-xs transition',
+                      topicPreset === item.value
+                        ? 'border-slate-900 bg-slate-900 text-white'
+                        : 'border-slate-300 bg-white text-slate-700 hover:border-slate-500'
+                    )}
+                    onClick={() => setTopicPreset(item.value)}
+                    disabled={isGenerating}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-3 rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-xs text-slate-600">
+                当前简报：{objective} · {audience} · {tone} · {postType} · {cta} · {topicPreset}
+              </div>
+
+              <button
+                type="button"
+                className="mt-3 text-xs font-medium text-slate-600 underline underline-offset-2 hover:text-slate-900"
+                onClick={() => setAdvancedOpen((v) => !v)}
+                disabled={isGenerating}
+              >
+                {advancedOpen ? '收起高级输入' : '展开高级输入（可选）'}
+              </button>
+
+              {advancedOpen ? (
+                <textarea
+                  className="mt-2 min-h-[110px] w-full resize-y text-sm"
+                  placeholder="可选：补充背景、禁用词、引用链接或额外要求。留空则完全使用简报生成。"
+                  value={customPrompt}
+                  onChange={(e) => setCustomPrompt(e.target.value)}
+                  disabled={isGenerating}
+                />
+              ) : null}
+            </div>
 
             <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
               <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
@@ -430,6 +608,20 @@ export default function HomePage() {
                 从历史推文学习风格
               </label>
               <div className="flex flex-wrap items-center gap-3">
+                <select
+                  className="text-sm"
+                  value={selectedXAccountId}
+                  onChange={(e) => setSelectedXAccountId(e.target.value)}
+                  disabled={isGenerating || xAccounts.length === 0}
+                >
+                  {xAccounts.length === 0 ? <option value="">默认发布账号</option> : null}
+                  {xAccounts.map((row) => (
+                    <option key={row.id} value={row.id}>
+                      发布账号：@{row.handle}
+                      {row.isDefault ? '（默认）' : ''}
+                    </option>
+                  ))}
+                </select>
                 <select
                   className="text-sm"
                   value={type}
@@ -456,10 +648,10 @@ export default function HomePage() {
               type="button"
               className="mt-6 h-12 w-full gap-2 rounded-xl text-base shadow-md transition hover:shadow-lg"
               onClick={handleGenerate}
-              disabled={isGenerating || !prompt.trim()}
+              disabled={isGenerating}
             >
               {isGenerating ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-              生成推文
+              {advancedOpen && customPrompt.trim() ? '按高级补充生成' : '按简报一键生成'}
             </Button>
 
             {(isGenerating || steps.length > 0) && (
@@ -475,7 +667,7 @@ export default function HomePage() {
                   if (!generationId) return;
                   setPublishBusy(true);
                   try {
-                    await publishTweet(generationId);
+                    await publishTweet(generationId, selectedXAccountId || undefined);
                   } finally {
                     setPublishBusy(false);
                   }

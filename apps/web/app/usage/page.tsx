@@ -4,8 +4,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { WorkbenchShell } from '../../components/shell/workbench-shell';
 import { EmptyState, ErrorState, LoadingState } from '../../components/ui/page-states';
-import { WorkspaceRecovery, isWorkspaceMissing, normalizeErrorMessage } from '../../components/ui/workspace-recovery';
-import { fetchUsageEvents, fetchUsageSummary, fetchUsageTrends } from '../../lib/queries';
+import {
+  AuthRecovery,
+  WorkspaceRecovery,
+  isAuthMissing,
+  isWorkspaceMissing,
+  normalizeErrorMessage
+} from '../../components/ui/workspace-recovery';
+import { fetchUsageOverview } from '../../lib/queries';
 
 export default function UsagePage() {
   const [summary, setSummary] = useState<Record<string, any> | null>(null);
@@ -20,33 +26,21 @@ export default function UsagePage() {
     setError(null);
     setWarning(null);
     try {
-      const s = await fetchUsageSummary();
-      setSummary(s);
-      setLoading(false);
+      const overview = await fetchUsageOverview({ eventsLimit: 50, days: 14 });
+      setSummary(overview.data.summary);
+      setEvents(overview.data.events);
+      setPoints(overview.data.trends?.points ?? []);
 
-      const [eventsResult, trendResult] = await Promise.allSettled([
-        fetchUsageEvents(50),
-        fetchUsageTrends(14)
-      ]);
-
-      let hasPartialFailure = false;
-
-      if (eventsResult.status === 'fulfilled') {
-        setEvents(eventsResult.value);
-      } else {
-        hasPartialFailure = true;
-        setEvents([]);
-      }
-
-      if (trendResult.status === 'fulfilled') {
-        setPoints(trendResult.value.points);
-      } else {
-        hasPartialFailure = true;
-        setPoints([]);
-      }
-
-      if (hasPartialFailure) {
-        setWarning('部分明细暂时不可用，已先展示可加载的数据。请稍后重试。');
+      if (overview.degraded) {
+        const labels = overview.errors
+          .map((item) => item.segment)
+          .filter(Boolean)
+          .join('、');
+        setWarning(
+          labels
+            ? `部分明细暂不可用（${labels}），已展示可加载数据。`
+            : '部分明细暂不可用，已展示可加载数据。'
+        );
       }
     } catch (err) {
       setError(err);
@@ -78,7 +72,13 @@ export default function UsagePage() {
           message={normalizeErrorMessage(error)}
           actionText="重试"
           onAction={() => void load()}
-          extra={isWorkspaceMissing(error) ? <WorkspaceRecovery onRecovered={load} /> : undefined}
+          extra={
+            isAuthMissing(error) ? (
+              <AuthRecovery />
+            ) : isWorkspaceMissing(error) ? (
+              <WorkspaceRecovery onRecovered={load} />
+            ) : undefined
+          }
         />
       ) : null}
 
@@ -99,6 +99,22 @@ export default function UsagePage() {
             <MetricCard title="本期生成次数" value={String(summary?.counters?.generations ?? 0)} />
             <MetricCard title="本期发布任务" value={String(summary?.counters?.publishJobs ?? 0)} />
             <MetricCard title="14日估算成本" value={`$${totalCost.toFixed(4)}`} />
+            <MetricCard
+              title="免费模型命中率"
+              value={`${(((summary?.modelRouting?.freeHitRate ?? 0) as number) * 100).toFixed(1)}%`}
+            />
+            <MetricCard
+              title="Fallback 率"
+              value={`${(((summary?.modelRouting?.fallbackRate ?? 0) as number) * 100).toFixed(1)}%`}
+            />
+            <MetricCard
+              title="质量升档率"
+              value={`${(((summary?.modelRouting?.qualityFallbackRate ?? 0) as number) * 100).toFixed(1)}%`}
+            />
+            <MetricCard
+              title="平均质量分"
+              value={Number(summary?.modelRouting?.avgQualityScore ?? 0).toFixed(1)}
+            />
           </div>
 
           {summary?.isTrialing ? (
@@ -120,6 +136,7 @@ export default function UsagePage() {
                   <Line type="monotone" dataKey="generation" name="生成" stroke="#2563eb" strokeWidth={2} dot={false} />
                   <Line type="monotone" dataKey="publish" name="发布" stroke="#059669" strokeWidth={2} dot={false} />
                   <Line type="monotone" dataKey="reply" name="回复" stroke="#d97706" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="freeHits" name="免费命中" stroke="#7c3aed" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -131,7 +148,10 @@ export default function UsagePage() {
               <div key={String(event.id)} className="do-card-compact">
                 <p className="text-sm">{String(event.eventType)}</p>
                 <p className="text-xs text-slate-500">
-                  input={String(event.inputTokens ?? 0)} output={String(event.outputTokens ?? 0)} cost={String(event.costUsd ?? 0)}
+                  model={String(event.modelUsed ?? event.model ?? '—')} · tier={String(event.routingTier ?? '—')} · fallback={String(event.fallbackDepth ?? 0)}
+                </p>
+                <p className="text-xs text-slate-500">
+                  input={String(event.inputTokens ?? 0)} output={String(event.outputTokens ?? 0)} cost={String(event.requestCostUsd ?? event.costUsd ?? 0)}
                 </p>
               </div>
             ))}
