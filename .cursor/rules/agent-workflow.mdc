@@ -1,0 +1,12 @@
+---
+description: Shared Codex/Cursor workflow with DESIGN.md-first UI guidance.
+alwaysApply: true
+---
+
+- Read `AGENTS.md` before substantial changes.
+- If `docs/agent-handoff.md` exists, read it before continuing previous work.
+- Start with: `git branch --show-current`, `git status --short`, `git diff --stat`.
+- Keep meaningful changes on short-lived branches and route via PR.
+- Do not let multiple agents edit one dirty working tree in parallel.
+
+- For front-end work, read repository `DESIGN.md` (and web `DESIGN.md` when present) before implementation.
