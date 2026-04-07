@@ -29,6 +29,8 @@ export type RoutedChatOptions = {
   temperature?: number;
   trialMode?: boolean;
   forceHighTier?: boolean;
+  timeoutMs?: number;
+  maxCandidates?: number;
   maxPrice?: {
     prompt?: number;
     completion?: number;
@@ -52,14 +54,46 @@ export type RoutedChatResult = {
 const DEFAULT_FREE_MODELS = ['openrouter/free'] as const;
 const DEFAULT_FLOOR_MODELS = ['openrouter/free'] as const;
 const DEFAULT_HIGH_MODELS = ['openrouter/free'] as const;
+const DEFAULT_TASK_TIMEOUT_MS = 20000;
+const DEFAULT_TASK_MAX_CANDIDATES = 2;
+
+const TASK_TIMEOUT_MS: Record<RouterTaskType, number> = {
+  research: 12000,
+  hook: 12000,
+  outline: 12000,
+  draft: 24000,
+  humanize: 18000,
+  media: 10000,
+  package: 12000,
+  generic: DEFAULT_TASK_TIMEOUT_MS
+};
+
+const TASK_MAX_CANDIDATES: Record<RouterTaskType, number> = {
+  research: 2,
+  hook: 2,
+  outline: 2,
+  draft: 2,
+  humanize: 2,
+  media: 1,
+  package: 2,
+  generic: DEFAULT_TASK_MAX_CANDIDATES
+};
 
 function parseModelList(value: string | undefined, fallback: readonly string[]): string[] {
   const raw = (value ?? '').trim();
-  if (!raw) return [...fallback];
-  return raw
+  const parts = (!raw ? [...fallback] : raw
     .split(',')
     .map((part) => part.trim())
-    .filter(Boolean);
+    .filter(Boolean));
+
+  const seen = new Set<string>();
+  const deduped: string[] = [];
+  for (const model of parts) {
+    if (seen.has(model)) continue;
+    seen.add(model);
+    deduped.push(model);
+  }
+  return deduped;
 }
 
 function parseCost(value: unknown): number {
@@ -191,6 +225,27 @@ export class OpenRouterService {
     return parseModelList(process.env.OPENROUTER_HIGH_MODELS, DEFAULT_HIGH_MODELS);
   }
 
+  private readPositiveIntEnv(name: string): number | null {
+    const raw = process.env[name]?.trim();
+    if (!raw) return null;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return null;
+    const intValue = Math.floor(parsed);
+    return intValue > 0 ? intValue : null;
+  }
+
+  private resolveTaskTimeoutMs(taskType: RouterTaskType | undefined): number {
+    const globalTimeout = this.readPositiveIntEnv('OPENROUTER_TIMEOUT_MS');
+    if (globalTimeout) return globalTimeout;
+    return TASK_TIMEOUT_MS[taskType ?? 'generic'] ?? DEFAULT_TASK_TIMEOUT_MS;
+  }
+
+  private resolveTaskMaxCandidates(taskType: RouterTaskType | undefined): number {
+    const globalMax = this.readPositiveIntEnv('OPENROUTER_MAX_CANDIDATES');
+    if (globalMax) return globalMax;
+    return TASK_MAX_CANDIDATES[taskType ?? 'generic'] ?? DEFAULT_TASK_MAX_CANDIDATES;
+  }
+
   private buildCandidates(options: RoutedChatOptions): Array<{ model: string; tier: RoutingTier }> {
     const task = options.taskType ?? 'generic';
     const trialMode = options.trialMode === true;
@@ -198,28 +253,40 @@ export class OpenRouterService {
       options.forceHighTier === true ||
       (trialMode && ['draft', 'humanize', 'package', 'hook'].includes(task));
 
-    if (shouldPreferHighTier) {
-      return [
+    const candidates = shouldPreferHighTier
+      ? [
         ...this.highModels.map((model) => ({ model, tier: trialMode ? 'trial_high' : 'quality_fallback' as RoutingTier })),
         ...this.floorModels.map((model) => ({ model, tier: 'floor' as RoutingTier }))
+      ]
+      : [
+        ...this.freeModels.map((model) => ({ model, tier: 'free_first' as RoutingTier })),
+        ...this.floorModels.map((model) => ({ model, tier: 'floor' as RoutingTier })),
+        ...this.highModels.map((model) => ({ model, tier: 'quality_fallback' as RoutingTier }))
       ];
-    }
 
-    return [
-      ...this.freeModels.map((model) => ({ model, tier: 'free_first' as RoutingTier })),
-      ...this.floorModels.map((model) => ({ model, tier: 'floor' as RoutingTier })),
-      ...this.highModels.map((model) => ({ model, tier: 'quality_fallback' as RoutingTier }))
-    ];
+    const seen = new Set<string>();
+    const deduped: Array<{ model: string; tier: RoutingTier }> = [];
+    for (const candidate of candidates) {
+      if (seen.has(candidate.model)) continue;
+      seen.add(candidate.model);
+      deduped.push(candidate);
+    }
+    return deduped;
   }
 
   private async runChatRequest(input: {
     model: string;
     messages: ChatMessage[];
     temperature: number;
+    timeoutMs: number;
     maxPrice?: RoutedChatOptions['maxPrice'];
     providerSortByPrice?: boolean;
   }) {
     if (this.mockMode) {
+      const mockLatencyMs = this.readPositiveIntEnv('OPENROUTER_MOCK_LATENCY_MS') ?? 0;
+      if (mockLatencyMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, mockLatencyMs));
+      }
       return {
         content: this.detectMockPayload(input.messages),
         model: 'mock/openrouter-local',
@@ -251,15 +318,28 @@ export class OpenRouterService {
       body.max_price = input.maxPrice;
     }
 
-    const res = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-        'X-Title': 'DraftOrbit'
-      },
-      body: JSON.stringify(body)
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), input.timeoutMs);
+    let res: Response;
+    try {
+      res = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+          'X-Title': 'DraftOrbit'
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(`OpenRouter timeout after ${input.timeoutMs}ms (${input.model})`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
 
     if (!res.ok) {
       const text = await res.text();
@@ -289,7 +369,13 @@ export class OpenRouterService {
   }
 
   async chatWithRouting(messages: ChatMessage[], options: RoutedChatOptions = {}): Promise<RoutedChatResult> {
-    const candidates = this.buildCandidates(options);
+    const timeoutMs = options.timeoutMs ?? this.resolveTaskTimeoutMs(options.taskType);
+    const candidatePool = this.buildCandidates(options);
+    const maxCandidates = Math.max(
+      1,
+      Math.min(candidatePool.length, options.maxCandidates ?? this.resolveTaskMaxCandidates(options.taskType))
+    );
+    const candidates = candidatePool.slice(0, maxCandidates);
     if (candidates.length === 0) {
       throw new Error('No OpenRouter model candidates configured');
     }
@@ -303,6 +389,7 @@ export class OpenRouterService {
           model: candidate.model,
           messages,
           temperature: options.temperature ?? 0.7,
+          timeoutMs,
           maxPrice: options.maxPrice,
           providerSortByPrice: candidate.tier === 'free_first' || candidate.tier === 'floor'
         });
@@ -329,6 +416,7 @@ export class OpenRouterService {
       model,
       messages,
       temperature,
+      timeoutMs: this.resolveTaskTimeoutMs('generic'),
       providerSortByPrice: false
     });
     return result.content;

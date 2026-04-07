@@ -141,6 +141,11 @@ type MediaStepPayload = {
   searchKeywords: string[];
 };
 
+type PackageStepPayload = {
+  tweet: string;
+  variants: Array<{ tone: string; text: string }>;
+};
+
 function toDecimalString(value: number): string {
   if (!Number.isFinite(value)) return '0';
   return value.toFixed(6);
@@ -186,6 +191,38 @@ function clampPercent(value: number): number {
   return Math.max(0, Math.min(100, Number(value.toFixed(2))));
 }
 
+function extractTopKeywords(input: string, max = 8): string[] {
+  const tokens = (input.match(/[\p{L}\p{N}_-]{2,}/gu) ?? [])
+    .map((token) => token.trim().toLowerCase())
+    .filter(Boolean);
+
+  const stopWords = new Set([
+    '这个',
+    '那个',
+    '我们',
+    '你们',
+    '他们',
+    'and',
+    'for',
+    'with',
+    'from',
+    'that',
+    'this',
+    'the'
+  ]);
+
+  const counter = new Map<string, number>();
+  for (const token of tokens) {
+    if (stopWords.has(token)) continue;
+    counter.set(token, (counter.get(token) ?? 0) + 1);
+  }
+
+  return [...counter.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, max)
+    .map(([token]) => token);
+}
+
 @Injectable()
 export class GenerateService {
   constructor(
@@ -224,6 +261,121 @@ export class GenerateService {
     return {
       mode: 'advanced',
       prompt: advancedPrompt
+    };
+  }
+
+  private get fastPathEnabled(): boolean {
+    return process.env.GENERATE_FAST_PATH_ENABLED !== '0';
+  }
+
+  private enforceTweetLength(text: string, maxChars = 280): string {
+    const trimmed = text.trim().replace(/\s+/g, ' ');
+    const chars = [...trimmed];
+    if (chars.length <= maxChars) return trimmed;
+    return `${chars.slice(0, Math.max(0, maxChars - 1)).join('')}…`;
+  }
+
+  private buildHeuristicRoutedResult(sourceModel = 'draftorbit/heuristic'): RoutedChatResult {
+    return {
+      content: '',
+      modelUsed: sourceModel,
+      routingTier: 'free_first',
+      fallbackDepth: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      costUsd: 0
+    };
+  }
+
+  private buildFastResearchPayload(prompt: string): ResearchStepPayload {
+    const keywords = extractTopKeywords(prompt, 4);
+    const anchor = keywords[0] ?? '内容运营';
+    const secondary = keywords[1] ?? '执行效率';
+    const tertiary = keywords[2] ?? '互动反馈';
+
+    return {
+      researchPoints: [
+        `核心痛点：围绕“${anchor}”的执行链路不稳定，导致内容产出波动。`,
+        `增长杠杆：用“${secondary}”拆解动作，把选题到发布做成固定节奏。`,
+        `复盘重点：关注“${tertiary}”与发布反馈，形成下一轮优化闭环。`
+      ],
+      hookCandidates: [
+        `别再靠灵感写 ${anchor}，把流程跑顺才是增长关键。`,
+        `多数账号做不出结果，不是不会写，而是“${secondary}”没有标准化。`,
+        `把 ${anchor} 做成可复用流程，互动与稳定性会同时提升。`
+      ],
+      angleSummary: `以“${anchor}”为主线，强调流程化执行与可复盘增长。`
+    };
+  }
+
+  private buildFastOutlinePayload(prompt: string, research: ResearchStepPayload): OutlineStepPayload {
+    const titleSeed = extractTopKeywords(prompt, 2).join(' · ') || 'X 运营提效';
+    const body = research.researchPoints
+      .slice(0, 3)
+      .map((row, index) => `${index + 1}. ${row.replace(/^.+：/, '')}`)
+      .filter(Boolean);
+
+    return {
+      title: `${titleSeed}：把内容链路跑成稳定系统`,
+      hook: research.hookCandidates[0] ?? '稳定流程比偶然爆款更可复制。',
+      body: body.length >= 2 ? body : ['先对齐目标与受众。', '再固化选题到发布节奏。', '最后用复盘驱动下一轮优化。'],
+      cta: '你最想先优化哪一步？欢迎留言，我给你具体建议。'
+    };
+  }
+
+  private buildFastMediaPayload(text: string): MediaStepPayload {
+    const keywords = extractTopKeywords(text, 8);
+    const searchKeywords =
+      keywords.length > 0 ? keywords : ['x content workflow', 'social media operations', 'engagement analytics'];
+
+    return {
+      ideas: [
+        {
+          title: '流程可视化主图',
+          composition: '中轴流程箭头 + 左右关键动作卡片，突出“选题-草稿-审批-发布-复盘”',
+          keywords: searchKeywords.slice(0, 4)
+        },
+        {
+          title: '运营数据对比图',
+          composition: '左右对比版式，展示流程化前后互动数据变化',
+          keywords: searchKeywords.slice(2, 6).length > 0 ? searchKeywords.slice(2, 6) : searchKeywords.slice(0, 4)
+        }
+      ],
+      searchKeywords
+    };
+  }
+
+  private buildFastPackagePayload(params: {
+    humanized: string;
+    outline: OutlineStepPayload | null;
+    media: MediaStepPayload;
+  }): PackageStepPayload {
+    const outlineHook = params.outline?.hook?.trim();
+    const base = this.enforceTweetLength(params.humanized);
+    const hookPrefix = outlineHook ? `${outlineHook.replace(/[。！!？?]+$/, '')} ` : '';
+    const keyword = params.media.searchKeywords[0]?.replace(/[^\p{L}\p{N}_-]/gu, '') ?? '';
+    const tailTag = keyword ? ` #${keyword}` : '';
+    const merged = this.enforceTweetLength(`${hookPrefix}${base}${tailTag}`.trim());
+
+    const concise = this.enforceTweetLength(
+      merged
+        .replace(/，/g, '，')
+        .replace(/。+/g, '。')
+        .replace(/欢迎留言.*$/, '欢迎交流。')
+    );
+
+    const strategic = this.enforceTweetLength(
+      `${merged} 先把流程稳定，再追求更高频率与规模。`
+    );
+
+    const variants = [
+      { tone: '简洁', text: concise },
+      { tone: '专业', text: strategic }
+    ];
+
+    return {
+      tweet: merged,
+      variants
     };
   }
 
@@ -640,6 +792,10 @@ export class GenerateService {
     let draftPayload: DraftStepPayload | null = null;
     let humanizedPayload: HumanizeStepPayload | null = null;
     let mediaPayload: MediaStepPayload | null = null;
+    let draftRouted: RoutedChatResult | null = null;
+    let humanizeRouted: RoutedChatResult | null = null;
+    let packageRouted: RoutedChatResult | null = null;
+    const fastPathApplied: Partial<Record<'research' | 'outline' | 'media' | 'package', boolean>> = {};
 
     const hydrateFromDone = () => {
       for (const s of gen.steps) {
@@ -702,69 +858,81 @@ export class GenerateService {
         let content = '';
 
         if (stepName === StepName.HOTSPOT) {
-          const result = await this.generateJsonStep<ResearchStepPayload>({
-            userId,
-            workspaceId: gen.workspaceId,
-            generationId,
-            trialMode,
-            maxPrice,
-            eventType: UsageEventType.GENERATION,
-            taskType: 'research',
-            schemaHint:
-              '{"researchPoints":["..."],"hookCandidates":["..."],"angleSummary":"..."}',
-            validator: (value) => this.validateResearchStep(value),
-            promptMessages: [
-              {
-                role: 'system',
-                content:
-                  '你是 X 内容策略编辑。请输出严格 JSON，不要 markdown，不要额外解释。'
-              },
-              {
-                role: 'user',
-                content: [
-                  `主题：${prompt}`,
-                  `语言：${language}`,
-                  '请产出：2-5 个研究角度 researchPoints、2-5 个开头钩子 hookCandidates、一个 angleSummary。'
-                ].join('\n')
-              }
-            ]
-          });
-          researchPayload = result.data;
-          content = JSON.stringify(result.data);
+          if (this.fastPathEnabled) {
+            researchPayload = this.buildFastResearchPayload(prompt);
+            fastPathApplied.research = true;
+            content = JSON.stringify(researchPayload);
+          } else {
+            const result = await this.generateJsonStep<ResearchStepPayload>({
+              userId,
+              workspaceId: gen.workspaceId,
+              generationId,
+              trialMode,
+              maxPrice,
+              eventType: UsageEventType.GENERATION,
+              taskType: 'research',
+              schemaHint:
+                '{"researchPoints":["..."],"hookCandidates":["..."],"angleSummary":"..."}',
+              validator: (value) => this.validateResearchStep(value),
+              promptMessages: [
+                {
+                  role: 'system',
+                  content:
+                    '你是 X 内容策略编辑。请输出严格 JSON，不要 markdown，不要额外解释。'
+                },
+                {
+                  role: 'user',
+                  content: [
+                    `主题：${prompt}`,
+                    `语言：${language}`,
+                    '请产出：2-5 个研究角度 researchPoints、2-5 个开头钩子 hookCandidates、一个 angleSummary。'
+                  ].join('\n')
+                }
+              ]
+            });
+            researchPayload = result.data;
+            content = JSON.stringify(result.data);
+          }
         } else if (stepName === StepName.OUTLINE) {
           if (!researchPayload) {
             throw new Error('缺少 research 数据，无法继续生成 outline');
           }
 
-          const result = await this.generateJsonStep<OutlineStepPayload>({
-            userId,
-            workspaceId: gen.workspaceId,
-            generationId,
-            trialMode,
-            maxPrice,
-            eventType: UsageEventType.GENERATION,
-            taskType: 'outline',
-            schemaHint: '{"title":"...","hook":"...","body":["..."],"cta":"..."}',
-            validator: (value) => this.validateOutlineStep(value),
-            promptMessages: [
-              {
-                role: 'system',
-                content: '输出严格 JSON，字段固定为 title/hook/body/cta。'
-              },
-              {
-                role: 'user',
-                content: [
-                  `主题：${prompt}`,
-                  `研究角度：${researchPayload.researchPoints.join(' | ')}`,
-                  `候选钩子：${researchPayload.hookCandidates.join(' | ')}`,
-                  '请生成可直接用于 X 的结构化大纲。'
-                ].join('\n')
-              }
-            ]
-          });
+          if (this.fastPathEnabled) {
+            outlinePayload = this.buildFastOutlinePayload(prompt, researchPayload);
+            fastPathApplied.outline = true;
+            content = JSON.stringify(outlinePayload);
+          } else {
+            const result = await this.generateJsonStep<OutlineStepPayload>({
+              userId,
+              workspaceId: gen.workspaceId,
+              generationId,
+              trialMode,
+              maxPrice,
+              eventType: UsageEventType.GENERATION,
+              taskType: 'outline',
+              schemaHint: '{"title":"...","hook":"...","body":["..."],"cta":"..."}',
+              validator: (value) => this.validateOutlineStep(value),
+              promptMessages: [
+                {
+                  role: 'system',
+                  content: '输出严格 JSON，字段固定为 title/hook/body/cta。'
+                },
+                {
+                  role: 'user',
+                  content: [
+                    `主题：${prompt}`,
+                    `研究角度：${researchPayload.researchPoints.join(' | ')}`,
+                    `候选钩子：${researchPayload.hookCandidates.join(' | ')}`,
+                    '请生成可直接用于 X 的结构化大纲。'
+                  ].join('\n')
+                }
+              ]
+            });
 
-          outlinePayload = result.data;
-          content = JSON.stringify(result.data);
+            outlinePayload = result.data;
+            content = JSON.stringify(result.data);
+          }
         } else if (stepName === StepName.DRAFT) {
           if (!outlinePayload) {
             throw new Error('缺少 outline 数据，无法继续生成 draft');
@@ -801,6 +969,7 @@ export class GenerateService {
           });
 
           draftPayload = result.data;
+          draftRouted = result.routed;
           content = JSON.stringify(result.data);
         } else if (stepName === StepName.HUMANIZE) {
           if (!draftPayload) throw new Error('缺少 draft 数据，无法继续 humanize');
@@ -831,94 +1000,112 @@ export class GenerateService {
           });
 
           humanizedPayload = result.data;
+          humanizeRouted = result.routed;
           content = JSON.stringify(result.data);
         } else if (stepName === StepName.IMAGE) {
           if (!humanizedPayload) throw new Error('缺少 humanized 数据，无法继续 media');
 
-          const result = await this.generateJsonStep<MediaStepPayload>({
-            userId,
-            workspaceId: gen.workspaceId,
-            generationId,
-            trialMode,
-            maxPrice,
-            eventType: UsageEventType.IMAGE,
-            taskType: 'media',
-            schemaHint:
-              '{"ideas":[{"title":"...","composition":"...","keywords":["..."]}],"searchKeywords":["..."]}',
-            validator: (value) => this.validateMediaStep(value),
-            promptMessages: [
-              {
-                role: 'system',
-                content: '你是内容配图策划。输出严格 JSON。'
-              },
-              {
-                role: 'user',
-                content: [
-                  `文案：${humanizedPayload.humanized}`,
-                  '请给出 2-3 个配图创意，每个包含 title/composition/keywords。'
-                ].join('\n')
-              }
-            ]
-          });
+          if (this.fastPathEnabled) {
+            mediaPayload = this.buildFastMediaPayload(humanizedPayload.humanized);
+            fastPathApplied.media = true;
+            content = JSON.stringify(mediaPayload);
+          } else {
+            const result = await this.generateJsonStep<MediaStepPayload>({
+              userId,
+              workspaceId: gen.workspaceId,
+              generationId,
+              trialMode,
+              maxPrice,
+              eventType: UsageEventType.IMAGE,
+              taskType: 'media',
+              schemaHint:
+                '{"ideas":[{"title":"...","composition":"...","keywords":["..."]}],"searchKeywords":["..."]}',
+              validator: (value) => this.validateMediaStep(value),
+              promptMessages: [
+                {
+                  role: 'system',
+                  content: '你是内容配图策划。输出严格 JSON。'
+                },
+                {
+                  role: 'user',
+                  content: [
+                    `文案：${humanizedPayload.humanized}`,
+                    '请给出 2-3 个配图创意，每个包含 title/composition/keywords。'
+                  ].join('\n')
+                }
+              ]
+            });
 
-          mediaPayload = result.data;
-          content = JSON.stringify(result.data);
+            mediaPayload = result.data;
+            content = JSON.stringify(result.data);
+          }
         } else if (stepName === StepName.PACKAGE) {
           if (!humanizedPayload || !mediaPayload) {
             throw new Error('缺少 humanized/media 数据，无法打包发布');
           }
 
-          const packageResponse = await this.generateJsonStep<{
-            tweet: string;
-            variants: Array<{ tone: string; text: string }>;
-          }>({
-            userId,
-            workspaceId: gen.workspaceId,
-            generationId,
-            trialMode,
-            maxPrice,
-            eventType: UsageEventType.GENERATION,
-            taskType: 'package',
-            schemaHint: '{"tweet":"...","variants":[{"tone":"formal","text":"..."}]}',
-            validator: (value) => {
-              if (!value || typeof value !== 'object') return null;
-              const data = value as Record<string, unknown>;
-              const tweet = String(data.tweet ?? '').trim();
-              if (!tweet) return null;
-              const variantsRaw = Array.isArray(data.variants) ? data.variants : [];
-              const variants = variantsRaw
-                .map((item) => {
-                  if (!item || typeof item !== 'object') return null;
-                  const row = item as Record<string, unknown>;
-                  const tone = String(row.tone ?? '').trim();
-                  const text = String(row.text ?? '').trim();
-                  if (!tone || !text) return null;
-                  return { tone, text };
-                })
-                .filter((item): item is { tone: string; text: string } => Boolean(item))
-                .slice(0, 4);
-              return {
-                tweet,
-                variants
-              };
-            },
-            promptMessages: [
-              {
-                role: 'system',
-                content: '你是发布编辑。输出严格 JSON。'
+          let packagePayload: PackageStepPayload;
+          if (this.fastPathEnabled) {
+            packagePayload = this.buildFastPackagePayload({
+              humanized: humanizedPayload.humanized,
+              outline: outlinePayload,
+              media: mediaPayload
+            });
+            packageRouted = humanizeRouted ?? draftRouted ?? this.buildHeuristicRoutedResult();
+            fastPathApplied.package = true;
+          } else {
+            const packageResponse = await this.generateJsonStep<PackageStepPayload>({
+              userId,
+              workspaceId: gen.workspaceId,
+              generationId,
+              trialMode,
+              maxPrice,
+              eventType: UsageEventType.GENERATION,
+              taskType: 'package',
+              schemaHint: '{"tweet":"...","variants":[{"tone":"formal","text":"..."}]}',
+              validator: (value) => {
+                if (!value || typeof value !== 'object') return null;
+                const data = value as Record<string, unknown>;
+                const tweet = String(data.tweet ?? '').trim();
+                if (!tweet) return null;
+                const variantsRaw = Array.isArray(data.variants) ? data.variants : [];
+                const variants = variantsRaw
+                  .map((item) => {
+                    if (!item || typeof item !== 'object') return null;
+                    const row = item as Record<string, unknown>;
+                    const tone = String(row.tone ?? '').trim();
+                    const text = String(row.text ?? '').trim();
+                    if (!tone || !text) return null;
+                    return { tone, text };
+                  })
+                  .filter((item): item is { tone: string; text: string } => Boolean(item))
+                  .slice(0, 4);
+                return {
+                  tweet,
+                  variants
+                };
               },
-              {
-                role: 'user',
-                content: [
-                  `主文案：${humanizedPayload.humanized}`,
-                  `配图关键词：${mediaPayload.searchKeywords.join(' | ')}`,
-                  '输出最终 tweet 和不少于2条 variants（不同语气）。'
-                ].join('\n')
-              }
-            ]
-          });
+              promptMessages: [
+                {
+                  role: 'system',
+                  content: '你是发布编辑。输出严格 JSON。'
+                },
+                {
+                  role: 'user',
+                  content: [
+                    `主文案：${humanizedPayload.humanized}`,
+                    `配图关键词：${mediaPayload.searchKeywords.join(' | ')}`,
+                    '输出最终 tweet 和不少于2条 variants（不同语气）。'
+                  ].join('\n')
+                }
+              ]
+            });
 
-          let finalTweet = packageResponse.data.tweet.trim();
+            packagePayload = packageResponse.data;
+            packageRouted = packageResponse.routed;
+          }
+
+          let finalTweet = packagePayload.tweet.trim();
           let quality = this.scoreTweetQuality(finalTweet);
 
           if (quality.total < QUALITY_THRESHOLD) {
@@ -946,6 +1133,7 @@ export class GenerateService {
             );
 
             const rewritten = rewrite.content.trim();
+            packageRouted = rewrite;
             await this.recordUsage({
               userId,
               workspaceId: gen.workspaceId,
@@ -967,24 +1155,37 @@ export class GenerateService {
           const packageCompletedAt = new Date();
           stepTimingRows.set(stepName, { step: stepName, startedAt, completedAt: packageCompletedAt });
           const stepMetadata = buildPackageStepMetadata([...stepTimingRows.values()]);
+          const stepExplain = { ...stepMetadata.stepExplain };
+          if (fastPathApplied.research) {
+            stepExplain.research = 'Fast path：基于意图模板快速抽取研究角度与钩子，降低首段等待时间。';
+          }
+          if (fastPathApplied.outline) {
+            stepExplain.outline = 'Fast path：由研究结果直接生成结构化大纲，减少一次模型往返。';
+          }
+          if (fastPathApplied.media) {
+            stepExplain.media = 'Fast path：按文案关键词生成素材建议与检索词，保证可发布素材包。';
+          }
+          if (fastPathApplied.package) {
+            stepExplain.package = 'Fast path：本地拼装发布包并做质量门控，必要时才触发模型重写。';
+          }
 
           const pkg: PackageResult = {
             tweet: finalTweet,
             charCount: [...finalTweet].length,
             imageKeywords: mediaPayload.searchKeywords,
-            variants: packageResponse.data.variants,
+            variants: packagePayload.variants,
             quality,
             routing: {
               trialMode,
-              primaryModel: packageResponse.routed.modelUsed,
-              routingTier: packageResponse.routed.routingTier
+              primaryModel: packageRouted?.modelUsed ?? 'draftorbit/heuristic',
+              routingTier: packageRouted?.routingTier ?? 'free_first'
             },
             budget: {
               ratio: Number(budgetRatio.toFixed(4)),
               conservativeMode
             },
             stepLatencyMs: stepMetadata.stepLatencyMs,
-            stepExplain: stepMetadata.stepExplain
+            stepExplain
           };
 
           content = JSON.stringify(pkg);
@@ -994,7 +1195,7 @@ export class GenerateService {
             workspaceId: gen.workspaceId,
             generationId,
             qualityScore: quality.total,
-            routed: packageResponse.routed,
+            routed: packageRouted ?? this.buildHeuristicRoutedResult(),
             trialMode
           });
 
