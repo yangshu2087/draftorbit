@@ -1,10 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { XAccountStatus } from '@draftorbit/db';
 import { PrismaService } from '../../common/prisma.service';
 import { QueueService } from '../../common/queue.service';
 import { toSegmentError } from '../../common/segment-error';
 import { WorkspaceContextService } from '../../common/workspace-context.service';
 import { AuditService } from '../audit/audit.service';
 import { UsageService } from '../usage/usage.service';
+import { deriveOpsDashboardGuidance } from './ops-dashboard-guidance';
 
 @Injectable()
 export class OpsService {
@@ -32,12 +34,15 @@ export class OpsService {
           drafts: { ok: false },
           publishJobs: { ok: false },
           replyJobs: { ok: false },
+          xAccounts: { ok: false },
           usage: { ok: false },
           audit: { ok: false },
           queues: { ok: false }
         },
         errors: [error],
         data: null,
+        nextAction: 'create_workspace',
+        blockingReason: 'NO_DEFAULT_WORKSPACE',
         now: new Date().toISOString()
       };
     }
@@ -50,6 +55,7 @@ export class OpsService {
       draftsCountResult,
       publishCountResult,
       replyCountResult,
+      activeXAccountsResult,
       usageResult,
       auditResult,
       queueResult
@@ -62,6 +68,7 @@ export class OpsService {
       this.prisma.db.draft.count({ where: { workspaceId } }),
       this.prisma.db.publishJob.count({ where: { workspaceId } }),
       this.prisma.db.replyJob.count({ where: { workspaceId } }),
+      this.prisma.db.xAccount.count({ where: { workspaceId, status: XAccountStatus.ACTIVE } }),
       this.usageService.summary(userId),
       this.auditService.summary(userId),
       this.queue.getQueueStats()
@@ -83,10 +90,26 @@ export class OpsService {
       ...(replyCountResult.status === 'rejected'
         ? [toSegmentError('replyJobs', replyCountResult.reason)]
         : []),
+      ...(activeXAccountsResult.status === 'rejected'
+        ? [toSegmentError('xAccounts', activeXAccountsResult.reason)]
+        : []),
       ...(usageResult.status === 'rejected' ? [toSegmentError('usage', usageResult.reason)] : []),
       ...(auditResult.status === 'rejected' ? [toSegmentError('audit', auditResult.reason)] : []),
       ...(queueResult.status === 'rejected' ? [toSegmentError('queues', queueResult.reason)] : [])
     ];
+
+    const guidance = deriveOpsDashboardGuidance({
+      degraded: errors.length > 0,
+      workspace: workspaceDetailResult.status === 'fulfilled' ? workspaceDetailResult.value : null,
+      counters: {
+        topics: topicsCountResult.status === 'fulfilled' ? topicsCountResult.value : 0,
+        drafts: draftsCountResult.status === 'fulfilled' ? draftsCountResult.value : 0,
+        publishJobs: publishCountResult.status === 'fulfilled' ? publishCountResult.value : 0,
+        replyJobs: replyCountResult.status === 'fulfilled' ? replyCountResult.value : 0,
+        activeXAccounts: activeXAccountsResult.status === 'fulfilled' ? activeXAccountsResult.value : 0
+      },
+      usage: usageResult.status === 'fulfilled' ? usageResult.value : null
+    });
 
     return {
       ok: errors.length === 0,
@@ -97,6 +120,7 @@ export class OpsService {
         drafts: { ok: draftsCountResult.status === 'fulfilled' },
         publishJobs: { ok: publishCountResult.status === 'fulfilled' },
         replyJobs: { ok: replyCountResult.status === 'fulfilled' },
+        xAccounts: { ok: activeXAccountsResult.status === 'fulfilled' },
         usage: { ok: usageResult.status === 'fulfilled' },
         audit: { ok: auditResult.status === 'fulfilled' },
         queues: { ok: queueResult.status === 'fulfilled' }
@@ -109,12 +133,15 @@ export class OpsService {
           topics: topicsCountResult.status === 'fulfilled' ? topicsCountResult.value : 0,
           drafts: draftsCountResult.status === 'fulfilled' ? draftsCountResult.value : 0,
           publishJobs: publishCountResult.status === 'fulfilled' ? publishCountResult.value : 0,
-          replyJobs: replyCountResult.status === 'fulfilled' ? replyCountResult.value : 0
+          replyJobs: replyCountResult.status === 'fulfilled' ? replyCountResult.value : 0,
+          activeXAccounts: activeXAccountsResult.status === 'fulfilled' ? activeXAccountsResult.value : 0
         },
         usage: usageResult.status === 'fulfilled' ? usageResult.value : null,
         audit: auditResult.status === 'fulfilled' ? auditResult.value : null,
         queues: queueResult.status === 'fulfilled' ? queueResult.value : {}
       },
+      nextAction: guidance.nextAction,
+      blockingReason: guidance.blockingReason,
       now: new Date().toISOString()
     };
   }

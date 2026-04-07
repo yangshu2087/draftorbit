@@ -22,6 +22,7 @@ import { ProvidersModule } from './modules/providers/providers.module';
 import { UsageModule } from './modules/usage/usage.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { OpsModule } from './modules/ops/ops.module';
+import { V2Module } from './modules/v2/v2.module';
 
 @Module({
   controllers: [HealthController],
@@ -47,7 +48,8 @@ import { OpsModule } from './modules/ops/ops.module';
     ProvidersModule,
     UsageModule,
     AuditModule,
-    OpsModule
+    OpsModule,
+    V2Module
   ]
 })
 export class AppModule {}

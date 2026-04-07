@@ -7,6 +7,7 @@ import { OpsService } from './ops.service';
 @Module({
   imports: [UsageModule, AuditModule],
   controllers: [OpsController],
-  providers: [OpsService]
+  providers: [OpsService],
+  exports: [OpsService]
 })
 export class OpsModule {}

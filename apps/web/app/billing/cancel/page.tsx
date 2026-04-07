@@ -15,10 +15,10 @@ export default function BillingCancelPage() {
           返回定价页
         </Link>
         <Link
-          href="/dashboard"
+          href="/chat"
           className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
         >
-          返回工作台
+          返回聊天中枢
         </Link>
       </div>
     </main>

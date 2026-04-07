@@ -7,7 +7,7 @@ export async function fetchGenerationStream(
   const token = getToken();
   if (!token) throw new Error('未登录');
 
-  const res = await fetch(sseUrl(`/generate/${generationId}/stream`), {
+  const res = await fetch(sseUrl(`/v2/generate/${generationId}/stream`), {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,

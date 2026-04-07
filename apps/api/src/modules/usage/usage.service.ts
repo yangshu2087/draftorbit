@@ -3,6 +3,7 @@ import { CreditDirection, PublishJobStatus } from '@draftorbit/db';
 import { PrismaService } from '../../common/prisma.service';
 import { toSegmentError } from '../../common/segment-error';
 import { WorkspaceContextService } from '../../common/workspace-context.service';
+import { deriveUsageOverviewGuidance } from './usage-overview-guidance';
 
 function decimalToNumber(value: unknown): number {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -98,6 +99,37 @@ export class UsageService {
 
     const draftMap = new Map(draftStatusCounts.map((row) => [row.status, row._count._all]));
 
+    const guidance = deriveUsageOverviewGuidance({
+      degraded: false,
+      summary: {
+        counters: {
+          usageEvents: usageLogs,
+          generations: generationCount,
+          publishJobs: publishCount,
+          replyJobs: replyCount
+        },
+        billing,
+        funnel: {
+          drafts: [...draftMap.values()].reduce((sum, value) => sum + value, 0),
+          pendingApproval: draftMap.get('PENDING_APPROVAL') ?? 0,
+          approved: draftMap.get('APPROVED') ?? 0,
+          queued: draftMap.get('QUEUED') ?? 0,
+          published: draftMap.get('PUBLISHED') ?? 0,
+          publishSucceeded: publishSuccessCount,
+          replies: replyCount
+        },
+        modelRouting: {
+          totalCalls: totalModelCalls,
+          freeHitRate: totalModelCalls > 0 ? freeHits / totalModelCalls : 0,
+          fallbackRate: totalModelCalls > 0 ? fallbackHits / totalModelCalls : 0,
+          qualityFallbackRate: totalModelCalls > 0 ? qualityFallbackHits / totalModelCalls : 0,
+          avgRequestCostUsd,
+          totalRequestCostUsd,
+          avgQualityScore
+        } as any
+      } as any
+    });
+
     return {
       workspaceId,
       periodStart: monthStart.toISOString(),
@@ -131,7 +163,9 @@ export class UsageService {
         totalRequestCostUsd,
         avgQualityScore
       },
-      latestLedgers
+      latestLedgers,
+      nextAction: guidance.nextAction,
+      blockingReason: guidance.blockingReason
     };
   }
 
@@ -157,6 +191,12 @@ export class UsageService {
       ...(trendsResult.status === 'rejected' ? [toSegmentError('trends', trendsResult.reason)] : [])
     ];
 
+    const summaryValue = summaryResult.status === 'fulfilled' ? summaryResult.value : null;
+    const guidance = deriveUsageOverviewGuidance({
+      degraded: errors.length > 0,
+      summary: summaryValue
+    });
+
     return {
       ok: errors.length === 0,
       degraded: errors.length > 0,
@@ -167,10 +207,12 @@ export class UsageService {
       },
       errors,
       data: {
-        summary: summaryResult.status === 'fulfilled' ? summaryResult.value : null,
+        summary: summaryValue,
         events: eventsResult.status === 'fulfilled' ? eventsResult.value : [],
         trends: trendsResult.status === 'fulfilled' ? trendsResult.value : null
       },
+      nextAction: guidance.nextAction,
+      blockingReason: guidance.blockingReason,
       now: new Date().toISOString()
     };
   }

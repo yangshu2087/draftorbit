@@ -128,10 +128,13 @@ export class PublishService {
     await this.queue.enqueuePublish(publishJob.id, options.scheduledFor);
 
     return {
+      traceId: publishJob.id,
       publishJobId: publishJob.id,
       status: publishJob.status,
       generationId: options.generationId ?? null,
       draftId: options.draftId ?? null,
+      requestedXAccountId: options.xAccountId ?? null,
+      resolvedXAccountId: xAccount?.id ?? null,
       xAccountId: xAccount?.id ?? null,
       channel,
       queuedAt: publishJob.createdAt,
@@ -298,8 +301,10 @@ export class PublishService {
     });
 
     return {
+      traceId: publishJobId,
       publishJobId,
-      retried: true
+      retried: true,
+      xAccountId: job.xAccountId ?? null
     };
   }
 

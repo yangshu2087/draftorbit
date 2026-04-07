@@ -25,7 +25,7 @@ export default function GlobalError({
             重新加载
           </Button>
           <Button asChild size="sm" variant="outline">
-            <Link href="/dashboard">回到工作台</Link>
+            <Link href="/chat">回到聊天中枢</Link>
           </Button>
         </div>
       </div>

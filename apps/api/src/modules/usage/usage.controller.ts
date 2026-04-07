@@ -2,6 +2,7 @@ import { Body, Controller, Get, Inject, Post, Query, Req, UseGuards } from '@nes
 import type { AuthUser } from '@draftorbit/shared';
 import { IsInt, IsOptional, IsString, Max, Min, MinLength } from 'class-validator';
 import { AuthGuard } from '../../common/auth.guard';
+import { withRequestId } from '../../common/response-with-request-id';
 import { UsageService } from './usage.service';
 
 class AddCreditsDto {
@@ -26,7 +27,8 @@ export class UsageController {
 
   @Get('summary')
   async summary(@Req() req: RequestWithUser) {
-    return this.service.summary((req.user as AuthUser).userId);
+    const result = await this.service.summary((req.user as AuthUser).userId);
+    return withRequestId(req, result);
   }
 
   @Get('overview')
@@ -37,10 +39,11 @@ export class UsageController {
   ) {
     const parsedEventsLimit = eventsLimit ? Number(eventsLimit) : 50;
     const parsedDays = days ? Number(days) : 14;
-    return this.service.overview((req.user as AuthUser).userId, {
+    const result = await this.service.overview((req.user as AuthUser).userId, {
       eventsLimit: Number.isFinite(parsedEventsLimit) ? parsedEventsLimit : 50,
       trendDays: Number.isFinite(parsedDays) ? parsedDays : 14
     });
+    return withRequestId(req, result);
   }
 
   @Get('events')
@@ -52,11 +55,13 @@ export class UsageController {
   @Get('trends')
   async trends(@Req() req: RequestWithUser, @Query('days') days?: string) {
     const parsed = days ? Number(days) : 14;
-    return this.service.trends((req.user as AuthUser).userId, Number.isFinite(parsed) ? parsed : 14);
+    const result = await this.service.trends((req.user as AuthUser).userId, Number.isFinite(parsed) ? parsed : 14);
+    return withRequestId(req, result);
   }
 
   @Post('credits/add')
   async addCredits(@Req() req: RequestWithUser, @Body() body: AddCreditsDto) {
-    return this.service.addCredits((req.user as AuthUser).userId, body.amount, body.reason);
+    const result = await this.service.addCredits((req.user as AuthUser).userId, body.amount, body.reason);
+    return withRequestId(req, result);
   }
 }

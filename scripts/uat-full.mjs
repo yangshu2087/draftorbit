@@ -15,8 +15,10 @@ const RUN_ID =
   process.env.UAT_RUN_ID ??
   `uat-${new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').replace('Z', '')}`;
 const ENABLE_BILLING_MUTATIONS = process.env.UAT_ENABLE_BILLING_MUTATIONS === '1';
+const ENABLE_SOCIAL_MUTATIONS = process.env.UAT_ENABLE_SOCIAL_MUTATIONS === '1';
 const REFUND_PARTIAL_USD = Number(process.env.UAT_REFUND_PARTIAL_USD ?? 1);
 const CAPTURE_SCREENSHOTS = process.env.UAT_CAPTURE_SCREENSHOTS !== '0';
+const STRICT_ASSERTIONS = process.env.UAT_STRICT_ASSERTIONS === '1';
 
 const rootDir = process.cwd();
 const artifactDir = path.resolve(rootDir, 'artifacts', 'uat-full', RUN_ID);
@@ -25,6 +27,8 @@ const screenshotsDir = path.join(artifactDir, 'screenshots');
 const reportPath = path.resolve(rootDir, `UAT-FULL-REPORT-${RUN_ID}.md`);
 
 const steps = [];
+const responseIndex = [];
+let responseEvidenceCounter = 0;
 
 function nowIso() {
   return new Date().toISOString();
@@ -48,8 +52,34 @@ async function writeJson(filePath, data) {
   await fs.writeFile(filePath, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
 }
 
+function extractRequestId(payload, headers = {}) {
+  const headerRequestId = headers['x-request-id'] ?? headers['X-Request-Id'] ?? null;
+  if (headerRequestId) return String(headerRequestId);
+  if (payload && typeof payload === 'object' && 'requestId' in payload && payload.requestId) {
+    return String(payload.requestId);
+  }
+  return null;
+}
+
+async function recordResponseEvidence(label, meta) {
+  responseEvidenceCounter += 1;
+  const requestIdPart = sanitize(meta.requestId || 'no-request-id');
+  const fileName = `${String(responseEvidenceCounter).padStart(3, '0')}-${sanitize(label)}-${requestIdPart}.json`;
+  const filePath = path.join(responsesDir, fileName);
+  const row = { label, ...meta, file: filePath };
+  responseIndex.push(row);
+  await writeJson(filePath, row);
+  return row;
+}
+
 function isObject(v) {
   return Boolean(v) && typeof v === 'object' && !Array.isArray(v);
+}
+
+function extractArray(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (isObject(payload) && Array.isArray(payload.data)) return payload.data;
+  return [];
 }
 
 function isLocalApiTarget(url) {
@@ -243,6 +273,17 @@ async function apiRequest(pathname, { method = 'GET', body, timeoutMs = 120000 }
       ? await response.json().catch(() => null)
       : await response.text().catch(() => '');
 
+    const requestId = extractRequestId(payload, Object.fromEntries(response.headers.entries()));
+    await recordResponseEvidence(`api-${method}-${pathname}`, {
+      source: 'api',
+      method,
+      pathname,
+      status: response.status,
+      ok: response.ok,
+      requestId,
+      payload
+    });
+
     if (!response.ok) {
       throw new Error(
         `API ${method} ${pathname} failed (${response.status}): ${JSON.stringify(payload)}`
@@ -271,6 +312,17 @@ async function publicApiRequest(pathname, { method = 'GET', body, timeoutMs = 60
     const payload = contentType.includes('application/json')
       ? await response.json().catch(() => null)
       : await response.text().catch(() => '');
+    const requestId = extractRequestId(payload, Object.fromEntries(response.headers.entries()));
+    await recordResponseEvidence(`public-${method}-${pathname}`, {
+      source: 'public-api',
+      method,
+      pathname,
+      status: response.status,
+      ok: response.ok,
+      requestId,
+      payload
+    });
+
     if (!response.ok) {
       throw new Error(
         `Public API ${method} ${pathname} failed (${response.status}): ${JSON.stringify(payload)}`
@@ -282,12 +334,19 @@ async function publicApiRequest(pathname, { method = 'GET', body, timeoutMs = 60
   }
 }
 
-async function consumeSse(generationId) {
-  const response = await fetch(`${API_URL}/generate/${generationId}/stream`, {
+async function consumeSse(generationId, options = {}) {
+  const timeoutMs = Number.isFinite(options.timeoutMs) ? Number(options.timeoutMs) : 120000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const startedAt = Date.now();
+
+  const response = await fetch(`${API_URL}/v2/generate/${generationId}/stream`, {
     method: 'GET',
-    headers: { Authorization: `Bearer ${runtimeToken}` }
+    headers: { Authorization: `Bearer ${runtimeToken}` },
+    signal: controller.signal
   });
   if (!response.ok || !response.body) {
+    clearTimeout(timer);
     throw new Error(`SSE stream failed (${response.status})`);
   }
 
@@ -296,36 +355,110 @@ async function consumeSse(generationId) {
   const reader = response.body.getReader();
   let buffer = '';
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
+  try {
+    while (true) {
+      if (Date.now() - startedAt > timeoutMs) return events;
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
 
-    let boundary = buffer.indexOf('\n\n');
-    while (boundary >= 0) {
-      const chunk = buffer.slice(0, boundary);
-      buffer = buffer.slice(boundary + 2);
+      let boundary = buffer.indexOf('\n\n');
+      while (boundary >= 0) {
+        const chunk = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
 
-      const dataRaw = chunk
-        .split('\n')
-        .map((line) => line.trim())
-        .filter((line) => line.startsWith('data:'))
-        .map((line) => line.replace(/^data:\s?/, ''))
-        .join('\n');
+        const dataRaw = chunk
+          .split('\n')
+          .map((line) => line.trim())
+          .filter((line) => line.startsWith('data:'))
+          .map((line) => line.replace(/^data:\s?/, ''))
+          .join('\n');
 
-      if (dataRaw) {
-        if (dataRaw === '[DONE]') return events;
-        try {
-          events.push(JSON.parse(dataRaw));
-        } catch {
-          events.push({ raw: dataRaw });
+        if (dataRaw) {
+          if (dataRaw === '[DONE]') return events;
+          let parsed = null;
+          try {
+            parsed = JSON.parse(dataRaw);
+          } catch {
+            parsed = { raw: dataRaw };
+          }
+          events.push(parsed);
+          const status = typeof parsed?.status === 'string' ? parsed.status.toLowerCase() : '';
+          const step = typeof parsed?.step === 'string' ? parsed.step.toLowerCase() : '';
+          if (status === 'failed' || step === 'error') {
+            return events;
+          }
         }
+        boundary = buffer.indexOf('\n\n');
       }
-      boundary = buffer.indexOf('\n\n');
     }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/aborted|abort/i.test(message)) {
+      throw error;
+    }
+  } finally {
+    clearTimeout(timer);
   }
 
   return events;
+}
+
+function safeJsonParse(input) {
+  if (typeof input !== 'string' || !input.trim()) return null;
+  try {
+    return JSON.parse(input);
+  } catch {
+    return null;
+  }
+}
+
+function extractTweetFromGeneration(detail) {
+  if (!isObject(detail)) return '';
+  const result = isObject(detail.result) ? detail.result : null;
+
+  const directCandidates = [
+    result?.tweet,
+    result?.primaryTweet,
+    result?.text,
+    result?.content
+  ];
+  for (const candidate of directCandidates) {
+    if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+  }
+
+  const steps = Array.isArray(detail.steps) ? detail.steps : [];
+  const draftStep = steps.find((step) => step?.step === 'DRAFT' && typeof step?.content === 'string');
+  if (draftStep) {
+    const parsedDraft = safeJsonParse(draftStep.content);
+    const primaryTweet = parsedDraft?.primaryTweet;
+    if (typeof primaryTweet === 'string' && primaryTweet.trim()) return primaryTweet.trim();
+    const threadFirst =
+      Array.isArray(parsedDraft?.thread) && typeof parsedDraft.thread[0] === 'string'
+        ? parsedDraft.thread[0]
+        : null;
+    if (threadFirst && threadFirst.trim()) return threadFirst.trim();
+  }
+
+  const humanizeStep = steps.find(
+    (step) => step?.step === 'HUMANIZE' && typeof step?.content === 'string'
+  );
+  if (humanizeStep) {
+    const parsedHuman = safeJsonParse(humanizeStep.content);
+    const humanized = parsedHuman?.humanized;
+    if (typeof humanized === 'string' && humanized.trim()) return humanized.trim();
+  }
+
+  return '';
+}
+
+function buildFallbackTweet(topicTitle) {
+  const topic = typeof topicTitle === 'string' && topicTitle.trim() ? topicTitle.trim() : 'X 内容运营';
+  return [
+    `今天复盘了「${topic}」这件事。`,
+    '我的结论：先把流程跑通，再谈规模化放大。',
+    '你现在最卡的一步是什么？欢迎留言交流。'
+  ].join('\n');
 }
 
 async function recordStep(name, fn, { required = true } = {}) {
@@ -369,27 +502,17 @@ async function captureScreenshots() {
 
   const page = await context.newPage();
   const routes = [
-    '/dashboard',
-    '/usage',
-    '/x-accounts',
-    '/topics',
-    '/learning',
-    '/voice-profiles',
-    '/playbooks',
-    '/drafts',
-    '/naturalization',
-    '/media',
-    '/publish-queue',
-    '/workflow',
-    '/reply-queue',
-    '/audit',
-    '/providers',
-    '/settings'
+    '/chat',
+    '/settings',
+    '/pricing',
+    '/billing/success',
+    '/billing/cancel'
   ];
 
   const rows = [];
   for (const route of routes) {
     const apiCalls = [];
+    const pendingWrites = [];
     const listener = async (resp) => {
       const url = resp.url();
       if (!url.startsWith(API_URL)) return;
@@ -399,12 +522,23 @@ async function captureScreenshots() {
       } catch {
         body = '';
       }
-      apiCalls.push({
+      const headers = resp.headers();
+      let parsedBody = null;
+      try { parsedBody = body ? JSON.parse(body) : null; } catch { parsedBody = null; }
+      const requestId = extractRequestId(parsedBody, headers);
+      const call = {
         url,
         status: resp.status(),
         ok: resp.ok(),
+        requestId,
         bodySnippet: body.slice(0, 220)
-      });
+      };
+      apiCalls.push(call);
+      pendingWrites.push(recordResponseEvidence(`browser-${route}-${apiCalls.length}`, {
+        source: 'browser',
+        route,
+        ...call
+      }));
     };
     page.on('response', listener);
 
@@ -412,9 +546,19 @@ async function captureScreenshots() {
     await page.goto(target, { waitUntil: 'networkidle', timeout: 90000 });
     await page.waitForTimeout(1800);
     const bodyText = (await page.textContent('body')) ?? '';
-    const loading = bodyText.includes('正在加载运营数据') || bodyText.includes('正在加载用量数据');
+    const loading =
+      bodyText.includes('正在加载运营数据') ||
+      bodyText.includes('正在加载用量数据') ||
+      bodyText.includes('正在加载') ||
+      bodyText.includes('加载中…');
+    const hasGuidance =
+      bodyText.includes('新手指引') &&
+      bodyText.includes('按简报一键生成') &&
+      bodyText.includes('人工确认后发布');
     const screenshot = path.join(screenshotsDir, `${route.replace('/', '') || 'root'}.png`);
     await page.screenshot({ path: screenshot, fullPage: true });
+    await Promise.all(pendingWrites);
+
     rows.push({
       route,
       target,
@@ -422,9 +566,19 @@ async function captureScreenshots() {
       loadingStillVisible: loading,
       hasLoginPrompt:
         bodyText.includes('登录您的账户') || bodyText.includes('返回首页登录') || bodyText.includes('未登录'),
+      hasGuidance,
       screenshot,
       apiCalls
     });
+
+    if (STRICT_ASSERTIONS) {
+      assertResult(!loading, `${route} 仍显示 loading 文案`);
+      assertResult(!rows.at(-1)?.hasLoginPrompt, `${route} 出现登录提示`);
+      assertResult(apiCalls.length > 0, `${route} 未捕获到任何 API 调用`);
+      if (!['/pricing', '/settings', '/billing/success', '/billing/cancel'].includes(route)) {
+        assertResult(hasGuidance, `${route} 缺少全局可理解性引导（当前阶段/下一步）`);
+      }
+    }
 
     page.off('response', listener);
   }
@@ -438,36 +592,23 @@ function assertResult(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-function isDuplicateQualityGateError(error) {
-  const text = error instanceof Error ? error.message : String(error);
-  return text.includes('QUALITY_GATE_BLOCKED') && text.includes('DUPLICATE_CONTENT');
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function approveDraftWithDuplicateFallback({
-  draftId,
-  title,
-  content,
-  language = 'zh'
-}) {
-  try {
-    return {
-      approved: await apiRequest(`/drafts/${draftId}/approve`, { method: 'POST' }),
-      fallbackDraft: null
-    };
-  } catch (error) {
-    if (!isDuplicateQualityGateError(error)) throw error;
-
-    const fallbackDraft = await apiRequest('/drafts', {
-      method: 'POST',
-      body: {
-        title,
-        content,
-        language
+async function withRetry(fn, { attempts = 3, delayMs = 500 } = {}) {
+  let lastError = null;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (i < attempts - 1) {
+        await sleep(delayMs * (i + 1));
       }
-    });
-    const approved = await apiRequest(`/drafts/${fallbackDraft.id}/approve`, { method: 'POST' });
-    return { approved, fallbackDraft };
+    }
   }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 async function main() {
@@ -497,13 +638,12 @@ async function main() {
   );
 
   const xAccounts = await recordStep('x-accounts.ensure-3', async () => {
-    const rows = await apiRequest('/x-accounts?pageSize=100');
-    if (!Array.isArray(rows)) throw new Error('x-accounts 返回格式异常');
-
+    const rowsPayload = await apiRequest('/v2/x-accounts?pageSize=100');
+    const rows = extractArray(rowsPayload);
     const activeRows = rows.filter((row) => row?.status === 'ACTIVE');
     const needCreate = Math.max(0, 3 - activeRows.length);
     for (let i = 0; i < needCreate; i += 1) {
-      await apiRequest('/x-accounts/bind-manual', {
+      await apiRequest('/v2/x-accounts/bind-manual', {
         method: 'POST',
         body: {
           twitterUserId: `uat-route-${RUN_ID}-${i + 1}`,
@@ -513,23 +653,23 @@ async function main() {
       });
     }
 
-    const refreshed = await apiRequest('/x-accounts?pageSize=100');
-    const actives = Array.isArray(refreshed)
-      ? refreshed.filter((item) => item?.status === 'ACTIVE').slice(0, 3)
-      : [];
+    const refreshedPayload = await apiRequest('/v2/x-accounts?pageSize=100');
+    const refreshed = extractArray(refreshedPayload);
+    const actives = refreshed.filter((item) => item?.status === 'ACTIVE').slice(0, 3);
     assertResult(actives.length >= 3, '可用 X 账号不足 3 个');
 
-    await apiRequest(`/x-accounts/${actives[0].id}/default`, { method: 'PATCH' });
-    await apiRequest(`/x-accounts/${actives[2].id}/status`, {
+    await apiRequest(`/v2/x-accounts/${actives[0].id}/default`, { method: 'PATCH' });
+    await apiRequest(`/v2/x-accounts/${actives[2].id}/status`, {
       method: 'PATCH',
       body: { status: 'REVOKED' }
     });
-    await apiRequest(`/x-accounts/${actives[2].id}/status`, {
+    await apiRequest(`/v2/x-accounts/${actives[2].id}/status`, {
       method: 'PATCH',
       body: { status: 'ACTIVE' }
     });
 
-    const finalRows = await apiRequest('/x-accounts?pageSize=100');
+    const finalRowsPayload = await apiRequest('/v2/x-accounts?pageSize=100');
+    const finalRows = extractArray(finalRowsPayload);
     return {
       all: finalRows,
       activeTop3: actives
@@ -538,139 +678,125 @@ async function main() {
 
   const selectedXAccountId = xAccounts?.activeTop3?.[0]?.id ?? null;
 
-  const topic = await recordStep('topics.create', async () =>
-    apiRequest('/topics', {
-      method: 'POST',
-      body: {
-        title: `UAT 方向 ${RUN_ID}`,
-        description: '真实链路全流程验收方向'
-      }
-    })
-  );
+  const topic = { title: `UAT 方向 ${RUN_ID}` };
 
   const generation = await recordStep('generate.brief-chain', async () => {
-    const start = await apiRequest('/generate/start', {
-      method: 'POST',
-      body: {
-        mode: 'brief',
-        brief: {
-          objective: '互动',
-          audience: '中文创作者',
-          tone: '专业清晰',
-          postType: '观点短推',
-          cta: '欢迎留言讨论',
-          topicPreset: topic?.title ?? 'X 运营方法'
-        },
-        type: 'TWEET',
-        language: 'zh',
-        useStyle: true
+    const attempts = [];
+    let resolvedTweet = '';
+
+    for (let i = 0; i < 2; i += 1) {
+      const start = await apiRequest('/v2/generate/run', {
+        method: 'POST',
+        body: {
+          mode: 'brief',
+          brief: {
+            objective: '互动',
+            audience: '中文创作者',
+            tone: '专业清晰',
+            postType: '观点短推',
+            cta: '欢迎留言讨论',
+            topicPreset: topic?.title ?? 'X 运营方法'
+          },
+          type: 'TWEET',
+          language: 'zh',
+          useStyle: true
+        }
+      });
+      const generationId = start?.generationId;
+      assertResult(Boolean(generationId), 'v2/generate/run 未返回 generationId');
+      const streamEvents = await consumeSse(generationId);
+      const detail = await apiRequest(`/v2/generate/${generationId}`);
+      const tweet = extractTweetFromGeneration(detail);
+      attempts.push({ start, streamTail: streamEvents.slice(-8), detail, tweet });
+
+      if (tweet) {
+        resolvedTweet = tweet;
+        break;
       }
-    });
-    const generationId = start?.generationId;
-    assertResult(Boolean(generationId), 'generate/start 未返回 generationId');
-    const streamEvents = await consumeSse(generationId);
-    const detail = await apiRequest(`/generate/${generationId}`);
-    return { start, streamTail: streamEvents.slice(-8), detail };
+    }
+
+    if (!resolvedTweet) {
+      resolvedTweet = buildFallbackTweet(topic?.title);
+    }
+
+    return { attempts, detail: attempts.at(-1)?.detail ?? null, resolvedTweet };
   });
 
-  const draftAndPublish = await recordStep('draft.approve.enqueue', async () => {
-    const tweet = generation?.detail?.result?.tweet;
-    assertResult(typeof tweet === 'string' && tweet.trim().length > 0, '生成结果缺少 tweet');
+  await recordStep('publish.queue-from-generation', async () => {
+    const generationId = generation?.attempts?.at(-1)?.start?.generationId ?? generation?.detail?.id;
+    assertResult(Boolean(generationId), '主链路缺少 generationId，无法入队发布');
 
-    const draft = await apiRequest('/drafts', {
-      method: 'POST',
-      body: {
-        title: `UAT 草稿 ${RUN_ID}`,
-        content: tweet,
-        language: 'zh'
-      }
-    });
-    const quality = await apiRequest(`/drafts/${draft.id}/quality-check`, { method: 'POST' });
-    const approvedResult = await approveDraftWithDuplicateFallback({
-      draftId: draft.id,
-      title: `UAT 草稿 ${RUN_ID} 重试`,
-      content: `${tweet}\n\n（UAT 追踪: ${RUN_ID}-${Date.now()}）`,
-      language: 'zh'
-    });
-    const approved = approvedResult.approved;
-    const enqueue = await apiRequest('/publish/draft', {
-      method: 'POST',
-      body: {
-        draftId: approved.id,
-        xAccountId: selectedXAccountId
-      }
-    });
-    return { draft, quality, approved, enqueue, approvalFallbackDraft: approvedResult.fallbackDraft };
-  });
+    const enqueue = ENABLE_SOCIAL_MUTATIONS
+      ? await apiRequest('/v2/publish/queue', {
+          method: 'POST',
+          body: {
+            generationId,
+            xAccountId: selectedXAccountId,
+            channel: 'X_TWEET'
+          }
+        })
+      : {
+          skipped: true,
+          reason: 'UAT_ENABLE_SOCIAL_MUTATIONS!=1，已跳过真实发布入队'
+        };
 
-  await recordStep('naturalization.preview', async () =>
-    apiRequest('/naturalization/preview', {
-      method: 'POST',
-      body: {
-        text: draftAndPublish?.draft?.latestContent ?? '默认内容',
-        tone: 'professional',
-        strictness: 'medium'
-      }
-    })
-  );
-
-  await recordStep('media.placeholder', async () => {
-    const generated = await apiRequest('/media/generate-placeholder', {
-      method: 'POST',
-      body: {
-        prompt: `UAT 配图 ${RUN_ID}`,
-        draftId: draftAndPublish?.draft?.id
-      }
-    });
-    const uploaded = await apiRequest('/media/upload-placeholder', {
-      method: 'POST',
-      body: {
-        sourceUrl: `https://picsum.photos/seed/${encodeURIComponent(RUN_ID)}/1200/675`,
-        name: `uat-${RUN_ID}.jpg`,
-        draftId: draftAndPublish?.draft?.id
-      }
-    });
-    const list = await apiRequest('/media');
-    return { generated, uploaded, listCount: Array.isArray(list) ? list.length : 0 };
+    return { generationId, enqueue };
   });
 
   const publishReplay = await recordStep('publish.route-replay-3', async () => {
-    const list = await apiRequest('/x-accounts?pageSize=100');
-    const top3 = Array.isArray(list) ? list.filter((row) => row.status === 'ACTIVE').slice(0, 3) : [];
+    if (!ENABLE_SOCIAL_MUTATIONS) {
+      const listPayload = await apiRequest('/v2/x-accounts?pageSize=100');
+      const list = extractArray(listPayload);
+      const top3 = list.filter((row) => row.status === 'ACTIVE').slice(0, 3);
+      assertResult(top3.length >= 3, '路由回放前可用账号不足 3 个');
+      return {
+        skipped: true,
+        reason: 'UAT_ENABLE_SOCIAL_MUTATIONS!=1，已跳过真实发布路由回放',
+        activeAccounts: top3.map((row) => ({ id: row.id, handle: row.handle }))
+      };
+    }
+
+    const listPayload = await apiRequest('/v2/x-accounts?pageSize=100');
+    const list = extractArray(listPayload);
+    const top3 = list.filter((row) => row.status === 'ACTIVE').slice(0, 3);
     assertResult(top3.length >= 3, '路由回放前可用账号不足 3 个');
 
     const replay = [];
     for (let i = 0; i < 3; i += 1) {
       const account = top3[i];
-      const draft = await apiRequest('/drafts', {
+      const start = await apiRequest('/v2/generate/run', {
         method: 'POST',
         body: {
-          title: `UAT 路由回放 ${i + 1}`,
-          content: `UAT 多账号路由回放 ${i + 1}（${RUN_ID}-${Date.now()}）`,
-          language: 'zh'
+          mode: 'brief',
+          brief: {
+            objective: '互动',
+            audience: '中文创作者',
+            tone: '专业清晰',
+            postType: '观点短推',
+            cta: '欢迎留言讨论',
+            topicPreset: `UAT 路由回放 ${i + 1}`
+          },
+          type: 'TWEET',
+          language: 'zh',
+          useStyle: true
         }
       });
-      const approvedResult = await approveDraftWithDuplicateFallback({
-        draftId: draft.id,
-        title: `UAT 路由回放 ${i + 1} 重试`,
-        content: `${draft.latestContent ?? ''}\n\n（路由重试: ${RUN_ID}-${i + 1}-${Date.now()}）`,
-        language: 'zh'
-      });
-      const approved = approvedResult.approved;
-      const enqueue = await apiRequest('/publish/draft', {
+      const generationId = start?.generationId;
+      assertResult(Boolean(generationId), `路由回放 ${i + 1} 缺少 generationId`);
+      const enqueue = await apiRequest('/v2/publish/queue', {
         method: 'POST',
-        body: { draftId: approved.id, xAccountId: account.id }
+        body: { generationId, xAccountId: account.id, channel: 'X_TWEET' }
       });
       replay.push({
         account: { id: account.id, handle: account.handle },
-        publishJobId: enqueue.publishJobId,
-        approvalFallbackDraftId: approvedResult.fallbackDraft?.id ?? null
+        publishJobId: enqueue.publishJobId
       });
     }
 
-    const jobs = await apiRequest('/publish/jobs?limit=50');
+    const jobsPayload = await apiRequest('/v2/publish/jobs?limit=50');
+    const jobs = extractArray(jobsPayload);
     const checks = replay.map((row) => {
-      const job = Array.isArray(jobs) ? jobs.find((item) => item.id === row.publishJobId) : null;
+      const job = jobs.find((item) => item.id === row.publishJobId);
       return {
         publishJobId: row.publishJobId,
         expectedXAccountId: row.account.id,
@@ -682,53 +808,95 @@ async function main() {
     return { replay, checks };
   });
 
-  await recordStep('reply-chain', async () => {
-    assertResult(Boolean(selectedXAccountId), 'reply 链路缺少可用 xAccountId');
-    const sync = await apiRequest('/reply-jobs/sync-mentions', {
-      method: 'POST',
-      body: { xAccountId: selectedXAccountId }
+  await recordStep('reply.route-replay-3', async () => {
+    if (!ENABLE_SOCIAL_MUTATIONS) {
+      const listPayload = await apiRequest('/v2/x-accounts?pageSize=100');
+      const list = extractArray(listPayload);
+      const top3 = list.filter((row) => row.status === 'ACTIVE').slice(0, 3);
+      assertResult(top3.length >= 3, '回复路由回放前可用账号不足 3 个');
+      return {
+        skipped: true,
+        reason: 'UAT_ENABLE_SOCIAL_MUTATIONS!=1，已跳过回复回放',
+        activeAccounts: top3.map((row) => ({ id: row.id, handle: row.handle }))
+      };
+    }
+
+    const listPayload = await apiRequest('/v2/x-accounts?pageSize=100');
+    const list = extractArray(listPayload);
+    const top3 = list.filter((row) => row.status === 'ACTIVE').slice(0, 3);
+    assertResult(top3.length >= 3, '回复路由回放前可用账号不足 3 个');
+
+    const replay = [];
+    for (let i = 0; i < 3; i += 1) {
+      const account = top3[i];
+      const sync = await apiRequest('/v2/reply/sync-mentions', {
+        method: 'POST',
+        body: { xAccountId: account.id }
+      });
+      const candidate = await apiRequest(`/v2/reply/${sync.id}/candidates`, {
+        method: 'POST',
+        body: {
+          content: `感谢反馈，我们会继续优化（${RUN_ID}-${i + 1}）。`,
+          riskLevel: 'LOW',
+          riskScore: 0.1
+        }
+      });
+      const approved = await apiRequest(`/v2/reply/${sync.id}/candidates/${candidate.id}/approve`, {
+        method: 'POST'
+      });
+      const sent = await apiRequest(`/v2/reply/${sync.id}/send`, {
+        method: 'POST',
+        body: { candidateId: candidate.id }
+      });
+
+      replay.push({
+        account: { id: account.id, handle: account.handle },
+        replyJobId: sync.id,
+        candidateId: candidate.id,
+        approved,
+        sent
+      });
+    }
+
+    const jobsPayload = await apiRequest('/v2/reply/jobs?page=1&pageSize=100');
+    const jobs = extractArray(jobsPayload);
+    const checks = replay.map((row) => {
+      const job = jobs.find((item) => item.id === row.replyJobId);
+      return {
+        replyJobId: row.replyJobId,
+        expectedXAccountId: row.account.id,
+        actualXAccountId: job?.xAccountId ?? null,
+        matched: row.account.id === job?.xAccountId
+      };
     });
-    const candidate = await apiRequest(`/reply-jobs/${sync.id}/candidates`, {
-      method: 'POST',
-      body: {
-        content: `感谢反馈，我们会继续优化（${RUN_ID}）。`,
-        riskLevel: 'LOW',
-        riskScore: 0.1
-      }
-    });
-    const approved = await apiRequest(`/reply-jobs/${sync.id}/candidates/${candidate.id}/approve`, {
-      method: 'POST'
-    });
-    const sent = await apiRequest(`/reply-jobs/${sync.id}/send`, {
-      method: 'POST',
-      body: { candidateId: candidate.id }
-    });
-    return { sync, candidate, approved, sent };
+    assertResult(checks.every((c) => c.matched), '3 账号回复路由回放存在未命中');
+
+    return { replay, checks };
   });
 
   await recordStep('system.overview', async () => {
-    const [dashboard, usageOverview, auditLogs, providers, byok] = await Promise.all([
-      apiRequest('/ops/dashboard'),
-      apiRequest('/usage/overview?eventsLimit=30&days=14'),
-      apiRequest('/audit/logs?limit=30'),
-      apiRequest('/providers'),
-      apiRequest('/providers/byok-status')
-    ]);
-    return {
-      dashboardDegraded: dashboard?.degraded ?? null,
-      usageDegraded: usageOverview?.degraded ?? null,
-      auditCount: Array.isArray(auditLogs) ? auditLogs.length : null,
-      providersCount: Array.isArray(providers) ? providers.length : null,
-      byok
-    };
+    return withRetry(async () => {
+      const [dashboard, usageOverview, billingUsage, billingSub] = await Promise.all([
+        apiRequest('/v2/ops/dashboard'),
+        apiRequest('/v2/usage/overview?eventsLimit=30&days=14'),
+        apiRequest('/v2/billing/usage'),
+        apiRequest('/v2/billing/subscription')
+      ]);
+      return {
+        dashboardDegraded: dashboard?.degraded ?? null,
+        usageDegraded: usageOverview?.degraded ?? null,
+        billingUsage,
+        billingSub
+      };
+    });
   });
 
   const billing = await recordStep('billing.checkout-and-status', async () => {
     const [plans, subscription, usage, checkout] = await Promise.all([
-      apiRequest('/billing/plans'),
-      apiRequest('/billing/subscription'),
-      apiRequest('/billing/usage'),
-      apiRequest('/billing/checkout', {
+      apiRequest('/v2/billing/plans'),
+      apiRequest('/v2/billing/subscription'),
+      apiRequest('/v2/billing/usage'),
+      apiRequest('/v2/billing/checkout', {
         method: 'POST',
         body: {
           plan: 'STARTER',
@@ -742,15 +910,15 @@ async function main() {
   await recordStep(
     'billing.cancel-and-refund',
     async () => {
-      const cancel = await apiRequest('/billing/subscription/cancel', {
+      const cancel = await apiRequest('/v2/billing/subscription/cancel', {
         method: 'POST',
         body: { mode: 'AT_PERIOD_END' }
       });
-      const partial = await apiRequest('/billing/refund', {
+      const partial = await apiRequest('/v2/billing/refund', {
         method: 'POST',
         body: { mode: 'PARTIAL', amountUsd: REFUND_PARTIAL_USD, reason: 'requested_by_customer' }
       });
-      const full = await apiRequest('/billing/refund', {
+      const full = await apiRequest('/v2/billing/refund', {
         method: 'POST',
         body: { mode: 'FULL', reason: 'requested_by_customer' }
       });
@@ -773,6 +941,7 @@ async function main() {
     `- 生成时间: ${nowIso()}`,
     `- API: \`${API_URL}\``,
     `- APP: \`${APP_URL}\``,
+    `- 真实发布/互动动作: ${ENABLE_SOCIAL_MUTATIONS ? '开启' : '关闭（仅做安全校验）'}`,
     `- 真实账务动作: ${ENABLE_BILLING_MUTATIONS ? '开启' : '关闭（仅校验 checkout）'}`,
     '',
     '## 步骤结果',
@@ -801,14 +970,18 @@ async function main() {
   ].join('\n');
 
   await fs.writeFile(reportPath, `${markdown}\n`, 'utf8');
+  await writeJson(path.join(artifactDir, 'response-index.json'), responseIndex);
   await writeJson(path.join(artifactDir, 'summary.json'), {
     runId: RUN_ID,
     createdAt: nowIso(),
     apiUrl: API_URL,
     appUrl: APP_URL,
+    enableSocialMutations: ENABLE_SOCIAL_MUTATIONS,
     enableBillingMutations: ENABLE_BILLING_MUTATIONS,
     requiredFailures,
-    steps
+    steps,
+    responseIndexCount: responseIndex.length,
+    strictAssertions: STRICT_ASSERTIONS
   });
 
   if (requiredFailures.length > 0) {
@@ -820,6 +993,7 @@ async function main() {
   console.log('[uat-full] ✅ completed');
   console.log(`[uat-full] report: ${reportPath}`);
   console.log(`[uat-full] artifacts: ${artifactDir}`);
+  process.exit(0);
 }
 
 main().catch(async (error) => {

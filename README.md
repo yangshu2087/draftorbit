@@ -1,30 +1,17 @@
-# DraftOrbit（draftorbit.io）
+# DraftOrbit（draftorbit.ai）
 
-面向 X（Twitter）的 **AI 内容运营工作台**，中文优先，支持 Web 平台与自托管部署。  
-当前版本按“阶段 A 直接可用 + 阶段 B/C 同步收敛”的目标实现了可运行骨架与主链路。
+面向 X（Twitter）的 **Chat-first AI 内容运营助手**，中文优先，支持 Web 平台 + Tauri 本地客户端壳 + 自托管部署。  
+当前版本已引入 V2 一次性替换骨架：主入口 `/chat` 与 `/v2/*` API。
 
 ---
 
-## 1) 当前交付范围（上线级收敛）
+## 1) 当前交付范围（V2 Chat-first）
 
-### 阶段 A（24h 可用闭环）
-- 本地登录会话（`/auth/local/session`，仅 `AUTH_MODE=self_host_no_login` 可用）
-- Topic Center（`/topics`）
-- Draft Studio（`/drafts`）
-- 审批通过后入发布队列（`/drafts/:id/approve` + `/publish/draft`）
-- Publish Queue + Worker 执行 + 状态回写
-- 基础审计日志（`/audit/logs`）
-- Docker Compose 一键启动：`web/api/worker/postgres/redis`
-
-### 阶段 B/C（同步补齐的可运行基础版）
-- Google 登录骨架（`/auth/google/authorize` + `/auth/google/callback`）
-- X 账号绑定骨架（`/x-accounts`）
-- Learning Sources / Voice Profiles / Playbooks
-- Naturalization Layer（自然化规则 + 平台托管生成通道）
-- Image & Media Center（上传占位 + 生成占位）
-- Reply Assistant（mentions sync stub + 候选审批发送）
-- Workflow Center（模板 + 运行记录）
-- Usage/Billing、Audit Logs 页面与 API
+- 主入口：`/chat`（一句话意图 + 选项化简报 + 步骤推理 + 结果包 + 人工确认发布）
+- 主 API：`/v2/*`（生成、知识接入、X 账号绑定、发布/回复路由、运营概览、计费）
+- 兼容能力：保留核心后端模块（publish/reply/billing/usage）作为 V2 编排底座
+- 部署形态：Web + API + Worker + PostgreSQL + Redis + Tauri 客户端壳
+- 旧版工作台路由（`/dashboard`、`/drafts`、`/usage` 等）已统一重定向到 `/chat`
 
 ---
 
@@ -67,7 +54,7 @@ docker compose up -d --build
 ```
 
 访问：
-- Web: [http://localhost:3000](http://localhost:3000)
+- Web: [http://localhost:3000/chat](http://localhost:3000/chat)
 - API: [http://localhost:4000](http://localhost:4000)
 
 ---
@@ -75,13 +62,13 @@ docker compose up -d --build
 ## 4) Smoke 验证
 
 ```bash
-# 阶段 A 主链路 smoke（topic -> draft -> approve -> publish queue）
+# Legacy smoke（V1 历史脚本，已不再作为主验收）
 npx pnpm@10.23.0 smoke:p0
 
-# 阶段 B/C 模块点亮 smoke
+# Legacy smoke（V1 历史脚本，已不再作为主验收）
 npx pnpm@10.23.0 smoke:v1
 
-# 全流程 UAT（生产测试租户，真实链路）
+# V2 全流程 UAT（生产测试租户，真实链路）
 UAT_TOKEN=<测试租户token> \
 API_URL=https://api.draftorbit.ai \
 APP_URL=https://draftorbit.ai \
@@ -215,6 +202,43 @@ npx pnpm@10.23.0 release:prod
 - `usage` / `audit`
 
 ---
+
+
+
+## 8.1 V2 API（新增）
+
+- `POST /v2/chat/sessions`
+- `POST /v2/chat/messages`
+- `POST /v2/generate/run`
+- `GET /v2/generate/:id`
+- `GET /v2/generate/:id/stream`（SSE）
+- `POST /v2/knowledge/connectors/obsidian`
+- `POST /v2/knowledge/connectors/local-files`
+- `POST /v2/knowledge/urls/import`
+- `POST /v2/x-accounts/oauth/start`
+- `GET /v2/x-accounts`
+- `POST /v2/x-accounts/bind-manual`
+- `PATCH /v2/x-accounts/:id/default`
+- `PATCH /v2/x-accounts/:id/status`
+- `DELETE /v2/x-accounts/:id`
+- `GET /v2/x-accounts/oauth/callback`
+- `POST /v2/style/profile/rebuild`
+- `POST /v2/publish/queue`
+- `GET /v2/publish/jobs`
+- `POST /v2/publish/jobs/:id/retry`
+- `GET /v2/reply/jobs`
+- `POST /v2/reply/sync-mentions`
+- `POST /v2/reply/:replyJobId/candidates`
+- `POST /v2/reply/:replyJobId/candidates/:candidateId/approve`
+- `POST /v2/reply/:replyJobId/send`
+- `GET /v2/ops/dashboard`
+- `GET /v2/usage/overview`
+- `GET /v2/billing/plans`
+- `GET /v2/billing/subscription`
+- `GET /v2/billing/usage`
+- `POST /v2/billing/checkout`
+- `POST /v2/billing/subscription/cancel`
+- `POST /v2/billing/refund`
 
 ## 9) 注意事项
 

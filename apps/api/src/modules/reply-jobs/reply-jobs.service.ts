@@ -89,7 +89,13 @@ export class ReplyJobsService {
       }
     });
 
-    return job;
+    return {
+      ...job,
+      traceId: job.id,
+      requestedXAccountId: input.xAccountId ?? null,
+      resolvedXAccountId: xAccount.id,
+      xAccountId: xAccount.id
+    };
   }
 
   async addCandidate(
@@ -125,7 +131,12 @@ export class ReplyJobsService {
       }
     });
 
-    return candidate;
+    return {
+      ...candidate,
+      traceId: candidate.id,
+      replyJobId,
+      xAccountId: job.xAccountId ?? null
+    };
   }
 
   async approveCandidate(userId: string, replyJobId: string, candidateId: string) {
@@ -137,6 +148,11 @@ export class ReplyJobsService {
         replyJobId,
         replyJob: {
           workspaceId
+        }
+      },
+      include: {
+        replyJob: {
+          select: { xAccountId: true }
         }
       }
     });
@@ -162,7 +178,11 @@ export class ReplyJobsService {
       }
     });
 
-    return approved;
+    return {
+      ...approved,
+      traceId: approved.id,
+      xAccountId: candidate.replyJob.xAccountId ?? null
+    };
   }
 
   async sendApproved(userId: string, replyJobId: string, candidateId?: string) {
@@ -217,7 +237,13 @@ export class ReplyJobsService {
       }
     });
 
-    return updated;
+    return {
+      ...updated,
+      traceId: updated.id,
+      requestedCandidateId: candidateId ?? null,
+      approvedCandidateId: target.id,
+      xAccountId: job.xAccountId ?? null
+    };
   }
 
   private async resolveReplyAccount(workspaceId: string, xAccountId?: string) {

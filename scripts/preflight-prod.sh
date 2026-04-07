@@ -9,7 +9,7 @@ set -euo pipefail
 #   API_DOMAIN=api.draftorbit.ai
 #   WEB_PROJECT_DIR=apps/web
 #   VERCEL_ENV=production
-#   RUN_W1_ACCEPTANCE=1            # 1=执行 W1 联动验收（默认开启）
+#   RUN_W1_ACCEPTANCE=0            # 1=执行 W1 联动验收（V1 legacy，默认关闭）
 #   W1_ACCEPTANCE_AUTO_BOOT=1      # 1=若本地服务未启动则自动拉起（默认开启）
 #   W1_ACCEPTANCE_API_URL=http://127.0.0.1:4100
 #   W1_ACCEPTANCE_APP_URL=http://127.0.0.1:3100
@@ -18,12 +18,13 @@ set -euo pipefail
 #   UAT_FULL_REQUIRED=0            # 1=UAT 失败时阻断发布（默认关闭）
 #   UAT_FULL_API_URL=https://api.draftorbit.ai
 #   UAT_FULL_APP_URL=https://draftorbit.ai
+#   UAT_FULL_STRICT_ASSERTIONS=1   # 1=启用全页可理解性严格断言（默认开启）
 
 DOMAIN="${DOMAIN:-draftorbit.ai}"
 API_DOMAIN="${API_DOMAIN:-api.draftorbit.ai}"
 WEB_PROJECT_DIR="${WEB_PROJECT_DIR:-apps/web}"
 VERCEL_ENV="${VERCEL_ENV:-production}"
-RUN_W1_ACCEPTANCE="${RUN_W1_ACCEPTANCE:-1}"
+RUN_W1_ACCEPTANCE="${RUN_W1_ACCEPTANCE:-0}"
 W1_ACCEPTANCE_AUTO_BOOT="${W1_ACCEPTANCE_AUTO_BOOT:-1}"
 W1_ACCEPTANCE_API_URL="${W1_ACCEPTANCE_API_URL:-http://127.0.0.1:4100}"
 W1_ACCEPTANCE_APP_URL="${W1_ACCEPTANCE_APP_URL:-http://127.0.0.1:3100}"
@@ -32,6 +33,7 @@ RUN_UAT_FULL="${RUN_UAT_FULL:-0}"
 UAT_FULL_REQUIRED="${UAT_FULL_REQUIRED:-0}"
 UAT_FULL_API_URL="${UAT_FULL_API_URL:-https://${API_DOMAIN}}"
 UAT_FULL_APP_URL="${UAT_FULL_APP_URL:-https://${DOMAIN}}"
+UAT_FULL_STRICT_ASSERTIONS="${UAT_FULL_STRICT_ASSERTIONS:-1}"
 PREFLIGHT_TMP_DIR="${PREFLIGHT_TMP_DIR:-/tmp/draftorbit-preflight}"
 
 ACCEPTANCE_API_PID=""
@@ -78,7 +80,7 @@ resolve_pnpm_runner() {
     return 0
   fi
   if command -v npx >/dev/null 2>&1; then
-    PNPM_RUNNER="npx pnpm@10.23.0"
+    PNPM_RUNNER="npx -y pnpm@10.23.0"
     return 0
   fi
   return 1
@@ -242,6 +244,39 @@ check_stripe_wallet_domain() {
   ok "Stripe 钱包域名状态：${match}"
 }
 
+check_benchmark_docs() {
+  local matrix_file=""
+  local backlog_file="docs/benchmark/adoption-backlog.md"
+  local candidate
+
+  for candidate in \
+    "docs/benchmark/github-competitor-matrix-v2.md" \
+    "docs/benchmark/github-competitor-matrix-2026-04-05.md"; do
+    if [[ -f "$candidate" ]]; then
+      matrix_file="$candidate"
+      break
+    fi
+  done
+
+  if [[ -z "$matrix_file" ]]; then
+    fail "缺少竞品矩阵文档（v2 / legacy）"
+    return 1
+  fi
+  if [[ ! -f "$backlog_file" ]]; then
+    fail "缺少借鉴待办文档：${backlog_file}"
+    return 1
+  fi
+
+  local repo_count
+  repo_count="$(grep -Eo '\[[^]]+\]\(https://github\.com/[^)]+\)' "$matrix_file" | wc -l | xargs)"
+  if [[ "${repo_count:-0}" -lt 30 ]]; then
+    fail "竞品矩阵仓库数量不足 30（当前 ${repo_count:-0}）"
+    return 1
+  fi
+
+  ok "竞品矩阵文档已就绪（${matrix_file}，仓库样本 ${repo_count} 个）"
+}
+
 cleanup_acceptance_stack() {
   if [[ -n "${ACCEPTANCE_WEB_PID:-}" ]] && kill -0 "$ACCEPTANCE_WEB_PID" >/dev/null 2>&1; then
     kill "$ACCEPTANCE_WEB_PID" >/dev/null 2>&1 || true
@@ -374,7 +409,27 @@ run_w1_acceptance() {
 
 run_uat_full() {
   step '执行全量 UAT（生产测试租户）'
-  if ! UAT_TOKEN="${UAT_TOKEN:-${DRAFTORBIT_TOKEN:-}}" API_URL="$UAT_FULL_API_URL" APP_URL="$UAT_FULL_APP_URL" run_pnpm uat:full; then
+  local auth_token="${UAT_TOKEN:-${DRAFTORBIT_TOKEN:-}}"
+  if [[ -z "$auth_token" ]]; then
+    warn '未提供 UAT_TOKEN，尝试自动解析生产测试租户 token...'
+    if auth_token="$(node ./scripts/resolve-uat-token.mjs 2>/tmp/draftorbit-resolve-uat-token.log)"; then
+      ok '已自动解析 UAT token'
+    else
+      warn '自动解析 UAT token 失败，详情见 /tmp/draftorbit-resolve-uat-token.log'
+      if [[ "$UAT_FULL_REQUIRED" == "1" ]]; then
+        fail '全量 UAT 缺少可用 token（阻断发布）。'
+        return 1
+      fi
+      warn '全量 UAT 缺少 token（未阻断，继续后续流程）。'
+      return 0
+    fi
+  fi
+
+  if ! UAT_TOKEN="$auth_token" \
+    API_URL="$UAT_FULL_API_URL" \
+    APP_URL="$UAT_FULL_APP_URL" \
+    UAT_STRICT_ASSERTIONS="$UAT_FULL_STRICT_ASSERTIONS" \
+    run_pnpm uat:full; then
     if [[ "$UAT_FULL_REQUIRED" == "1" ]]; then
       fail '全量 UAT 失败（阻断发布）。'
       return 1
@@ -416,6 +471,9 @@ main() {
 
   step 'Stripe 钱包域名条件检查'
   check_stripe_wallet_domain || failed=1
+
+  step '竞品对标产物检查'
+  check_benchmark_docs || failed=1
 
   if [[ "$RUN_W1_ACCEPTANCE" == "1" ]]; then
     step 'W1 验收脚本联动'

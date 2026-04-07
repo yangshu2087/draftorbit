@@ -17,6 +17,8 @@ import { GenerationType } from '@draftorbit/db';
 
 type RequestWithUser = { headers: Record<string, string | string[] | undefined>; user: AuthUser };
 import { AuthGuard } from '../../common/auth.guard';
+import { getRequestId } from '../../common/request-id';
+import { withRequestId } from '../../common/response-with-request-id';
 import { SubscriptionGuard } from '../../common/subscription.guard';
 import { GenerateService } from './generate.service';
 import { StartGenerationDto, type GenerateStartMode } from './start-generation.dto';
@@ -47,7 +49,7 @@ export class GenerateController {
         useStyle: body.useStyle
       }
     );
-    return { generationId };
+    return withRequestId(req, { generationId });
   }
 
   @Get('history')
@@ -65,16 +67,17 @@ export class GenerateController {
     @Req() req: RequestWithUser
   ): Observable<MessageEvent> {
     const user = req.user;
+    const requestId = getRequestId(req);
     return new Observable<MessageEvent>((subscriber) => {
       void (async () => {
         try {
           for await (const event of this.generateService.runReasoningChain(id, user.userId)) {
-            subscriber.next({ data: event } as MessageEvent);
+            subscriber.next({ data: { ...event, requestId } } as MessageEvent);
           }
           subscriber.complete();
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          subscriber.next({ data: { step: 'error', content: message } } as MessageEvent);
+          subscriber.next({ data: { step: 'error', content: message, requestId } } as MessageEvent);
           subscriber.complete();
         }
       })();
@@ -83,6 +86,7 @@ export class GenerateController {
 
   @Get(':id')
   async one(@Param('id') id: string, @Req() req: RequestWithUser) {
-    return this.generateService.getGeneration(id, req.user.userId);
+    const result = await this.generateService.getGeneration(id, req.user.userId);
+    return withRequestId(req, result);
   }
 }

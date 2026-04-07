@@ -18,6 +18,7 @@ import {
   type RouterTaskType
 } from '../../common/openrouter.service';
 import type { BriefInputDto, GenerateStartMode } from './start-generation.dto';
+import { buildPackageStepMetadata } from './package-step-metadata';
 
 const STEP_ORDER: StepName[] = [
   StepName.HOTSPOT,
@@ -92,6 +93,8 @@ export type PackageResult = {
     ratio: number;
     conservativeMode: boolean;
   };
+  stepLatencyMs: Record<'research' | 'outline' | 'draft' | 'humanize' | 'media' | 'package', number | null>;
+  stepExplain: Record<'research' | 'outline' | 'draft' | 'humanize' | 'media' | 'package', string>;
 };
 
 type GenerationStartInput = {
@@ -665,6 +668,10 @@ export class GenerateService {
 
     hydrateFromDone();
 
+    const stepTimingRows = new Map(
+      gen.steps.map((step) => [step.step, { step: step.step, startedAt: step.startedAt ?? null, completedAt: step.completedAt ?? null }])
+    );
+
     const prompt = gen.prompt;
     const language = gen.language;
     const styleInjection = gen.style
@@ -684,10 +691,12 @@ export class GenerateService {
 
       yield { step: stepName, status: 'running' };
 
+      const startedAt = row.startedAt ?? new Date();
       await this.prisma.db.generationStep.update({
         where: { id: row.id },
-        data: { status: StepStatus.RUNNING, startedAt: new Date() }
+        data: { status: StepStatus.RUNNING, startedAt }
       });
+      stepTimingRows.set(stepName, { step: stepName, startedAt, completedAt: null });
 
       try {
         let content = '';
@@ -955,6 +964,10 @@ export class GenerateService {
             }
           }
 
+          const packageCompletedAt = new Date();
+          stepTimingRows.set(stepName, { step: stepName, startedAt, completedAt: packageCompletedAt });
+          const stepMetadata = buildPackageStepMetadata([...stepTimingRows.values()]);
+
           const pkg: PackageResult = {
             tweet: finalTweet,
             charCount: [...finalTweet].length,
@@ -969,7 +982,9 @@ export class GenerateService {
             budget: {
               ratio: Number(budgetRatio.toFixed(4)),
               conservativeMode
-            }
+            },
+            stepLatencyMs: stepMetadata.stepLatencyMs,
+            stepExplain: stepMetadata.stepExplain
           };
 
           content = JSON.stringify(pkg);
@@ -988,7 +1003,7 @@ export class GenerateService {
             data: {
               status: StepStatus.DONE,
               content,
-              completedAt: new Date()
+              completedAt: packageCompletedAt
             }
           });
 
@@ -1029,14 +1044,16 @@ export class GenerateService {
           return;
         }
 
+        const completedAt = new Date();
         await this.prisma.db.generationStep.update({
           where: { id: row.id },
           data: {
             status: StepStatus.DONE,
             content,
-            completedAt: new Date()
+            completedAt
           }
         });
+        stepTimingRows.set(stepName, { step: stepName, startedAt, completedAt });
         yield { step: stepName, status: 'done', content };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

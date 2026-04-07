@@ -52,6 +52,7 @@ function planLabel(plan: string) {
 
 export default function SettingsPage() {
   const router = useRouter();
+  const refundDrillEnabled = process.env.NEXT_PUBLIC_BILLING_REFUND_DRILL_ENABLED === 'true';
   const [user, setUser] = useState<any>(null);
   const [subscription, setSubscription] = useState<any>(null);
   const [usage, setUsage] = useState<any>(null);
@@ -291,18 +292,26 @@ export default function SettingsPage() {
                 </Button>
               </div>
 
-              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                退款按钮仅用于测试租户演练；如提示未开启，请在 API 环境变量中启用
-                <span className="font-semibold"> BILLING_SELF_SERVICE_REFUND_ENABLED=true</span>。
-              </div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" disabled={billingBusy} onClick={onPartialRefund}>
-                  {billingBusy ? '处理中…' : '部分退款演练'}
-                </Button>
-                <Button variant="outline" size="sm" disabled={billingBusy} onClick={onFullRefund}>
-                  {billingBusy ? '处理中…' : '全额退款演练'}
-                </Button>
-              </div>
+              {refundDrillEnabled ? (
+                <>
+                  <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                    退款按钮仅用于测试租户演练；如提示未开启，请在 API 环境变量中启用
+                    <span className="font-semibold"> BILLING_SELF_SERVICE_REFUND_ENABLED=true</span>。
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" disabled={billingBusy} onClick={onPartialRefund}>
+                      {billingBusy ? '处理中…' : '部分退款演练'}
+                    </Button>
+                    <Button variant="outline" size="sm" disabled={billingBusy} onClick={onFullRefund}>
+                      {billingBusy ? '处理中…' : '全额退款演练'}
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                  退款演练接口当前未开放（按运营策略关闭）。如需演练，请由运营在测试窗口临时开启并验收后关闭。
+                </div>
+              )}
             </section>
 
             <section className="do-panel rounded-3xl p-6">
