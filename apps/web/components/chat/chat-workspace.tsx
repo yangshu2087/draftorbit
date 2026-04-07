@@ -20,6 +20,8 @@ import {
   createLocalSession,
   fetchGeneration,
   fetchHistory,
+  fetchOpsDashboard,
+  fetchUsageOverview,
   fetchXAccounts,
   publishTweet,
   startXAccountOAuthBind,
@@ -30,6 +32,36 @@ import { cn } from '../../lib/utils';
 
 type GenType = 'TWEET' | 'THREAD' | 'LONG';
 type Lang = 'zh' | 'en';
+
+type OpsSnapshot = {
+  nextAction?: string;
+  blockingReason?: string | null;
+  degraded?: boolean;
+  data?: {
+    counters?: {
+      topics?: number;
+      drafts?: number;
+      publishJobs?: number;
+      replyJobs?: number;
+      activeXAccounts?: number;
+    };
+  };
+};
+
+type UsageSnapshot = {
+  nextAction?: string;
+  blockingReason?: string | null;
+  degraded?: boolean;
+  data?: {
+    summary?: {
+      modelRouting?: {
+        freeHitRate?: number;
+        fallbackRate?: number;
+        avgQualityScore?: number;
+      };
+    };
+  };
+};
 
 const OBJECTIVE_OPTIONS = [
   { value: '涨粉', label: '涨粉' },
@@ -115,6 +147,26 @@ function normalizeResult(raw: unknown): PackageResult | null {
   const r = raw as Record<string, unknown>;
   if (typeof r.tweet !== 'string') return null;
   const tweet = r.tweet;
+  const quality =
+    r.quality && typeof r.quality === 'object'
+      ? (r.quality as PackageResult['quality'])
+      : undefined;
+  const routing =
+    r.routing && typeof r.routing === 'object'
+      ? (r.routing as PackageResult['routing'])
+      : undefined;
+  const budget =
+    r.budget && typeof r.budget === 'object'
+      ? (r.budget as PackageResult['budget'])
+      : undefined;
+  const stepLatencyMs =
+    r.stepLatencyMs && typeof r.stepLatencyMs === 'object'
+      ? (r.stepLatencyMs as PackageResult['stepLatencyMs'])
+      : undefined;
+  const stepExplain =
+    r.stepExplain && typeof r.stepExplain === 'object'
+      ? (r.stepExplain as PackageResult['stepExplain'])
+      : undefined;
   return {
     tweet,
     charCount: typeof r.charCount === 'number' ? r.charCount : [...tweet].length,
@@ -123,7 +175,12 @@ function normalizeResult(raw: unknown): PackageResult | null {
       ? (r.variants as { tone?: string; text?: string }[])
           .filter((v) => typeof v?.tone === 'string' && typeof v?.text === 'string')
           .map((v) => ({ tone: v.tone as string, text: v.text as string }))
-      : []
+      : [],
+    quality,
+    routing,
+    budget,
+    stepLatencyMs,
+    stepExplain
   };
 }
 
@@ -134,6 +191,29 @@ function planLabel(plan?: string | null): string {
   if (p === 'PRO') return 'Growth';
   if (p === 'PREMIUM') return 'Max';
   return p;
+}
+
+function actionToHint(action?: string): string {
+  const map: Record<string, string> = {
+    create_workspace: '先创建工作区',
+    bind_x_account: '先绑定 X 账号',
+    top_up_credits: '当前额度不足，先升级订阅',
+    create_topic: '先生成第一条内容',
+    run_generation: '先按简报生成草稿',
+    approve_or_publish_drafts: '草稿已就绪，进入发布队列',
+    sync_mentions: '先同步 mentions 再生成回复',
+    inspect_degraded_segments: '系统部分降级，请稍后重试',
+    monitor_operations: '继续监控并稳定发布',
+    run_first_generation: '从一句话意图开始第一条内容',
+    review_pending_drafts: '处理待审批草稿',
+    queue_approved_drafts: '将已审批内容入队发布',
+    improve_prompt_quality: '质量偏低，建议重写',
+    review_model_routing: '回退率偏高，检查模型路由',
+    inspect_usage_segments: '用量聚合降级，稍后刷新',
+    retry_usage_overview: '重试加载用量概览'
+  };
+  if (!action) return '按简报一键生成';
+  return map[action] ?? action;
 }
 
 export default function ChatWorkspacePage() {
@@ -165,6 +245,9 @@ export default function ChatWorkspacePage() {
   const [allowLocalLogin, setAllowLocalLogin] = useState(
     process.env.NEXT_PUBLIC_ENABLE_LOCAL_LOGIN === 'true'
   );
+  const [opsSnapshot, setOpsSnapshot] = useState<OpsSnapshot | null>(null);
+  const [usageSnapshot, setUsageSnapshot] = useState<UsageSnapshot | null>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
 
   const refreshUser = useCallback(() => {
     setUser(getUserFromToken());
@@ -241,12 +324,31 @@ export default function ChatWorkspacePage() {
     }
   }, []);
 
+  const loadOperationStatus = useCallback(async () => {
+    if (!getUserFromToken()) return;
+    setStatusLoading(true);
+    try {
+      const [ops, usage] = await Promise.all([
+        fetchOpsDashboard(),
+        fetchUsageOverview({ eventsLimit: 20, days: 14 })
+      ]);
+      setOpsSnapshot(ops as OpsSnapshot);
+      setUsageSnapshot(usage as UsageSnapshot);
+    } catch {
+      setOpsSnapshot(null);
+      setUsageSnapshot(null);
+    } finally {
+      setStatusLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (user) {
       void loadHistory();
       void loadXAccounts();
+      void loadOperationStatus();
     }
-  }, [user, loadHistory, loadXAccounts]);
+  }, [user, loadHistory, loadXAccounts, loadOperationStatus]);
 
   const runStream = useCallback(async (id: string) => {
     setIsGenerating(true);
@@ -257,13 +359,8 @@ export default function ChatWorkspacePage() {
         setSteps((prev) => mergeStepEvent(prev, ev));
         if (ev.step === 'PACKAGE' && ev.status === 'done' && ev.content) {
           try {
-            const pkg = JSON.parse(ev.content) as PackageResult;
-            setResult({
-              tweet: pkg.tweet,
-              charCount: pkg.charCount ?? [...pkg.tweet].length,
-              imageKeywords: pkg.imageKeywords ?? [],
-              variants: pkg.variants ?? []
-            });
+            const pkg = normalizeResult(JSON.parse(ev.content));
+            if (pkg) setResult(pkg);
           } catch {
             /* ignore */
           }
@@ -283,8 +380,9 @@ export default function ChatWorkspacePage() {
     } finally {
       setIsGenerating(false);
       void loadHistory();
+      void loadOperationStatus();
     }
-  }, [loadHistory]);
+  }, [loadHistory, loadOperationStatus]);
 
   const handleGenerate = useCallback(async () => {
     if (isGenerating) return;
@@ -721,6 +819,7 @@ export default function ChatWorkspacePage() {
                       setPublishBusy(true);
                       try {
                         await publishTweet(generationId, selectedXAccountId || undefined);
+                        await loadOperationStatus();
                       } finally {
                         setPublishBusy(false);
                       }
@@ -730,6 +829,32 @@ export default function ChatWorkspacePage() {
                 </div>
               </div>
             )}
+
+            <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-700">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-slate-900">当前环节状态</span>
+                {statusLoading ? <span className="text-slate-500">刷新中…</span> : null}
+              </div>
+              <p className="mt-2">
+                下一步：{actionToHint(opsSnapshot?.nextAction ?? usageSnapshot?.nextAction)}
+              </p>
+              {opsSnapshot?.blockingReason || usageSnapshot?.blockingReason ? (
+                <p className="mt-1 text-amber-700">
+                  阻塞原因：{opsSnapshot?.blockingReason ?? usageSnapshot?.blockingReason}
+                </p>
+              ) : null}
+              <div className="mt-2 flex flex-wrap gap-3 text-slate-600">
+                <span>主题 {opsSnapshot?.data?.counters?.topics ?? 0}</span>
+                <span>草稿 {opsSnapshot?.data?.counters?.drafts ?? 0}</span>
+                <span>发布任务 {opsSnapshot?.data?.counters?.publishJobs ?? 0}</span>
+                <span>回复任务 {opsSnapshot?.data?.counters?.replyJobs ?? 0}</span>
+                {typeof usageSnapshot?.data?.summary?.modelRouting?.freeHitRate === 'number' ? (
+                  <span>
+                    免费命中 {(usageSnapshot.data.summary.modelRouting.freeHitRate * 100).toFixed(0)}%
+                  </span>
+                ) : null}
+              </div>
+            </div>
           </div>
         </main>
       </div>

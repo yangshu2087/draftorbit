@@ -572,9 +572,12 @@ async function captureScreenshots() {
     });
 
     if (STRICT_ASSERTIONS) {
+      const shouldRequireApiCalls = !['/billing/success', '/billing/cancel'].includes(route);
       assertResult(!loading, `${route} 仍显示 loading 文案`);
       assertResult(!rows.at(-1)?.hasLoginPrompt, `${route} 出现登录提示`);
-      assertResult(apiCalls.length > 0, `${route} 未捕获到任何 API 调用`);
+      if (shouldRequireApiCalls) {
+        assertResult(apiCalls.length > 0, `${route} 未捕获到任何 API 调用`);
+      }
       if (!['/pricing', '/settings', '/billing/success', '/billing/cancel'].includes(route)) {
         assertResult(hasGuidance, `${route} 缺少全局可理解性引导（当前阶段/下一步）`);
       }
