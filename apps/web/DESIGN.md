@@ -36,11 +36,11 @@
 
 ## Agent workflow
 
-1. Read this file and the repo root `DESIGN.md`
+1. Read this file, the repo root `DESIGN.md`, and the checked-in notes under `design/`
 2. Implement with existing tokens/components
 3. Run narrow code checks
 4. Run browser visual checks
-5. Summarize what is verified and what remains unverified
+5. Summarize what is verified, which inspirations were used, and what remains unverified
 
 ---
 
