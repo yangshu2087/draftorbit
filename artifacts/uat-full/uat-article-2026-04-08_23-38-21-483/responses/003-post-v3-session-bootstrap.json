@@ -1,0 +1,27 @@
+{
+  "label": "POST-/v3/session/bootstrap",
+  "status": 201,
+  "ok": true,
+  "requestId": "8021a26b-d4cb-4f9f-9eee-c532f3a17d29",
+  "payload": {
+    "user": {
+      "id": "b358eba2-fbd9-4abf-a506-18bcc94de824",
+      "handle": "",
+      "plan": "PRO"
+    },
+    "workspaceId": "874fe2d3-caff-41dd-b897-d0ad39fc2899",
+    "defaultXAccount": null,
+    "counts": {
+      "xAccounts": 0,
+      "sources": 0
+    },
+    "sourceEvidence": [],
+    "profile": {
+      "ready": false,
+      "styleSummary": null,
+      "sourceCount": 0
+    },
+    "suggestedAction": "connect_x_self",
+    "requestId": "8021a26b-d4cb-4f9f-9eee-c532f3a17d29"
+  }
+}

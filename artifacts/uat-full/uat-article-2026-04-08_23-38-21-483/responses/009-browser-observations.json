@@ -1,0 +1,20 @@
+{
+  "label": "browser-observations",
+  "status": 200,
+  "ok": true,
+  "payload": {
+    "runId": "a7f3cafc-004a-4edb-b25e-10a9ac5db18a",
+    "consoleErrors": [],
+    "pageErrors": [],
+    "clipboardPreview": "围绕 AI 产品冷启动，写一篇适合 X 平台文章格式的长文，重点说明为什么流程比灵感更重要。：把内容链路跑成稳定系统\n\n导语\n别再靠灵感写。围绕 AI 产品冷启动，写一篇适合 X 平台文章格式的长文，重点说明为什么流程比灵感更重要。，把流程跑顺才是增长关键。\n\n一、围绕“围绕 AI 产品冷启动，写一篇适合 X 平台文章格式的长文，重点说明为什么流程比灵感更重要。”的执行链路不稳定，导致内容产出波动\n标题：把内容链路跑成稳定系统——AI 产品冷启动的流程优先论\n\n导语：\n当 AI 产品刚刚诞生，最先被提起的往往是灵感与创意。\n\n二、用“围绕”拆解动作，把选题到发布做成固定节奏\n可若没有一套成熟、可复制的流程，灵感很容易变成“闪光点”，",
+    "resultContainsArticleStructure": true,
+    "resultContainsArticleNotice": true,
+    "exportPanelContainsArticleNotice": true,
+    "screenshots": {
+      "app": "/Volumes/AI_SSD/04-projects-large/openclaw-workspace/projects/021-draftorbit.io/output/playwright/uat-article-2026-04-08_23-38-21-483/article-app.png",
+      "result": "/Volumes/AI_SSD/04-projects-large/openclaw-workspace/projects/021-draftorbit.io/output/playwright/uat-article-2026-04-08_23-38-21-483/article-result.png",
+      "copyToast": "/Volumes/AI_SSD/04-projects-large/openclaw-workspace/projects/021-draftorbit.io/output/playwright/uat-article-2026-04-08_23-38-21-483/article-copy-toast.png",
+      "exportPanel": "/Volumes/AI_SSD/04-projects-large/openclaw-workspace/projects/021-draftorbit.io/output/playwright/uat-article-2026-04-08_23-38-21-483/article-export-panel.png"
+    }
+  }
+}
