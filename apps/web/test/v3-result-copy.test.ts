@@ -49,3 +49,20 @@ test('normalizeResultText fixes branding, casing, spacing and duplicate blank li
     '别再靠灵感写 AI，把流程跑顺才是增长关键。\\n\\nDraftOrbit 能帮你把 AI 内容链路跑顺。\\n\\n#AI'
   );
 });
+
+test('normalizeResultText removes leaked run ids, echoed hashtags and repairs missing sentence breaks', () => {
+  assert.equal(
+    normalizeResultText(
+      '别再靠灵感写 ai，把流程跑顺才是增长关键 很多账号发不起来，不是因为你不会写，而是流程太散。把动作固定成“选题—起稿—审批—发布—复盘”，连续执行两周，互动质量通常会明显改善。(yf9g42) #很多账号发不起来'
+    ),
+    '别再靠灵感写 AI，把流程跑顺才是增长关键。很多账号发不起来，不是因为你不会写，而是流程太散。把动作固定成“选题—起稿—审批—发布—复盘”，连续执行两周，互动质量通常会明显改善。'
+  );
+});
+
+test('normalizeResultText removes meaningless generated hashtags but keeps meaningful ones intact', () => {
+  assert.equal(
+    normalizeResultText('别把增长寄托在“灵感爆发”。把 X 运营改成固定流水线：选题→草稿→审批→发布→复盘。流程稳定后，质量和效率会一起上升。#gib2ne'),
+    '别把增长寄托在“灵感爆发”。把 X 运营改成固定流水线：选题→草稿→审批→发布→复盘。流程稳定后，质量和效率会一起上升。'
+  );
+  assert.equal(normalizeResultText('把流程跑顺，比追灵感更重要。#AI增长'), '把流程跑顺，比追灵感更重要。#AI增长');
+});
