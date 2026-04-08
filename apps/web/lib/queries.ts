@@ -1,147 +1,161 @@
-import type { XAccountEntity } from '@draftorbit/shared';
 import { apiFetch } from './api';
 
-export async function startGeneration(data: {
-  mode?: 'brief' | 'advanced';
-  brief?: {
-    objective: string;
-    audience: string;
-    tone: string;
-    postType: string;
-    cta: string;
-    topicPreset: string;
+export type BillingPlanKey = 'STARTER' | 'PRO' | 'PREMIUM';
+export type BillingCycle = 'MONTHLY' | 'YEARLY';
+export type V3Format = 'tweet' | 'thread' | 'article';
+
+export type BillingPlanView = {
+  key: BillingPlanKey;
+  name: string;
+  monthly: { usd: number; usdCents: number };
+  yearly: { usd: number; usdCents: number };
+  features: string[];
+  limits: { daily: number; monthly: number };
+};
+
+export type V3BootstrapResponse = {
+  requestId?: string;
+  user: { id: string; handle: string; plan: string };
+  workspaceId: string;
+  defaultXAccount: { id: string; handle: string; status: string; isDefault: boolean } | null;
+  counts: { xAccounts: number; sources: number };
+  sourceEvidence: string[];
+  profile: {
+    ready: boolean;
+    styleSummary: string | null;
+    sourceCount: number;
   };
-  advanced?: {
-    customPrompt?: string;
-  };
-  prompt?: string;
-  type?: string;
-  language?: string;
-  useStyle?: boolean;
-}) {
-  return apiFetch<{
-    generationId: string;
-    sessionId?: string;
-    status?: string;
-    streamUrl?: string;
-    resultUrl?: string;
-  }>('/v2/generate/run', {
-    method: 'POST',
-    body: JSON.stringify(data)
-  });
-}
+  suggestedAction: string;
+};
 
-export async function fetchGeneration(id: string) {
-  return apiFetch<Record<string, unknown>>(`/v2/generate/${id}`);
-}
+export type V3RunStartResponse = {
+  requestId?: string;
+  runId: string;
+  stage: string;
+  nextAction: string;
+  blockingReason: string | null;
+  streamUrl: string;
+};
 
-export async function fetchHistory() {
-  const payload = await apiFetch<Record<string, unknown>[] | { data?: Record<string, unknown>[] }>(
-    '/v2/generate/history'
-  );
-  if (Array.isArray(payload)) return payload;
-  if (payload && Array.isArray(payload.data)) return payload.data;
-  return [];
-}
+export type V3RunResponse = {
+  requestId?: string;
+  runId: string;
+  status: string;
+  format: V3Format;
+  result: {
+    text: string;
+    variants: Array<{ tone: string; text: string }>;
+    imageKeywords: string[];
+    qualityScore: number | null;
+    quality?: Record<string, number>;
+    riskFlags: string[];
+    requestCostUsd: number | null;
+    whySummary: string[];
+    evidenceSummary: string[];
+    stepLatencyMs?: Record<string, number> | null;
+  } | null;
+  publish: Array<{
+    id: string;
+    status: string;
+    xAccountId: string | null;
+    xAccountHandle: string | null;
+    createdAt: string;
+    updatedAt: string;
+    externalPostId?: string | null;
+    lastError?: string | null;
+  }>;
+  stages: Array<{
+    stage: string;
+    label: string;
+    status: string;
+    summary?: string | null;
+  }>;
+};
 
-export async function publishTweet(generationId: string, xAccountId?: string) {
-  return apiFetch<Record<string, unknown>>('/v2/publish/queue', {
-    method: 'POST',
-    body: JSON.stringify({ generationId, xAccountId, channel: 'X_TWEET' })
-  });
-}
+export type V3ProfileResponse = {
+  requestId?: string;
+  styleSummary: string | null;
+  styleSampleCount: number;
+  styleLastAnalyzedAt: string | null;
+  sourceEvidence: string[];
+  sources: Array<{
+    id: string;
+    sourceType: string;
+    sourceRef: string;
+    connector: string;
+    createdAt: string;
+  }>;
+  xAccounts: Array<{
+    id: string;
+    handle: string;
+    status: string;
+    isDefault: boolean;
+    tokenExpiresAt: string | null;
+  }>;
+};
+
+export type V3QueueResponse = {
+  requestId?: string;
+  review: Array<{
+    runId: string;
+    format: V3Format;
+    text: string | null;
+    qualityScore: number | null;
+    riskFlags: string[];
+    createdAt: string;
+    nextAction: string;
+  }>;
+  queued: Array<{
+    id: string;
+    runId: string;
+    status: string;
+    xAccountId: string | null;
+    xAccountHandle: string | null;
+    createdAt: string;
+    updatedAt: string;
+    lastError?: string | null;
+    nextAction: string;
+  }>;
+  published: Array<{
+    id: string;
+    runId: string;
+    status: string;
+    xAccountHandle: string | null;
+    externalPostId?: string | null;
+    updatedAt: string;
+  }>;
+  failed: Array<{
+    id: string;
+    runId: string;
+    status: string;
+    xAccountHandle: string | null;
+    lastError?: string | null;
+    updatedAt: string;
+    nextAction: string;
+  }>;
+};
 
 export async function fetchBillingPlans() {
   return apiFetch<{
     currency: string;
     trialDays: number;
-    plans: Array<{
-      key: 'STARTER' | 'PRO' | 'PREMIUM';
-      name: string;
-      monthly: {
-        usd: number;
-        usdCents: number;
-      };
-      yearly: {
-        usd: number;
-        usdCents: number;
-      };
-      features: string[];
-      limits: {
-        daily: number;
-        monthly: number;
-      };
-    }>;
-  }>('/v2/billing/plans');
+    plans: BillingPlanView[];
+  }>('/v3/billing/plans');
 }
 
-export async function createCheckout(plan: 'STARTER' | 'PRO' | 'PREMIUM', cycle: 'MONTHLY' | 'YEARLY') {
-  return apiFetch<{ url: string }>('/v2/billing/checkout', {
+export async function createCheckout(plan: BillingPlanKey, cycle: BillingCycle) {
+  return apiFetch<{ url: string }>('/v3/billing/checkout', {
     method: 'POST',
     body: JSON.stringify({ plan, cycle })
   });
-}
-
-export async function fetchSubscription() {
-  return apiFetch<Record<string, unknown>>('/v2/billing/subscription');
-}
-
-export async function fetchUsage() {
-  return apiFetch<Record<string, unknown>>('/v2/billing/usage');
-}
-
-export async function fetchOpsDashboard() {
-  return apiFetch<Record<string, unknown>>('/v2/ops/dashboard');
-}
-
-export async function fetchUsageOverview(options?: { eventsLimit?: number; days?: number }) {
-  const query = new URLSearchParams();
-  if (options?.eventsLimit && Number.isFinite(options.eventsLimit)) {
-    query.set('eventsLimit', String(options.eventsLimit));
-  }
-  if (options?.days && Number.isFinite(options.days)) {
-    query.set('days', String(options.days));
-  }
-  const suffix = query.toString() ? `?${query.toString()}` : '';
-  return apiFetch<Record<string, unknown>>(`/v2/usage/overview${suffix}`);
-}
-
-export async function cancelSubscription(mode: 'AT_PERIOD_END' | 'IMMEDIATE' = 'AT_PERIOD_END') {
-  return apiFetch<Record<string, unknown>>('/v2/billing/subscription/cancel', {
-    method: 'POST',
-    body: JSON.stringify({ mode })
-  });
-}
-
-export async function createRefund(input: {
-  mode: 'PARTIAL' | 'FULL';
-  amountUsd?: number;
-  reason?: 'requested_by_customer' | 'duplicate' | 'fraudulent';
-}) {
-  return apiFetch<Record<string, unknown>>('/v2/billing/refund', {
-    method: 'POST',
-    body: JSON.stringify(input)
-  });
-}
-
-export async function fetchMe() {
-  return apiFetch<Record<string, unknown>>('/auth/me');
 }
 
 export async function startXOAuth() {
   return apiFetch<{ url: string; state: string }>('/auth/x/authorize');
 }
 
-export async function startXAccountOAuthBind() {
-  return apiFetch<{ url: string; state: string; redirectUri: string }>('/v2/x-accounts/oauth/start', {
-    method: 'POST'
-  });
-}
-
-export async function finishXAccountOAuthBind(state: string, code: string) {
-  return apiFetch<{ ok: boolean; account: Record<string, unknown> }>(
-    `/v2/x-accounts/oauth/callback?state=${encodeURIComponent(state)}&code=${encodeURIComponent(code)}`
-  );
+export async function startGoogleOAuth() {
+  return apiFetch<{ url: string; state: string }>('/auth/google/authorize');
 }
 
 export async function createLocalSession() {
@@ -150,67 +164,117 @@ export async function createLocalSession() {
   });
 }
 
-export async function fetchXAccounts(options?: {
-  page?: number;
-  pageSize?: number;
-  status?: 'ACTIVE' | 'EXPIRED' | 'REVOKED' | 'ERROR';
-}) {
-  const query = new URLSearchParams();
-  if (options?.page) query.set('page', String(options.page));
-  if (options?.pageSize) query.set('pageSize', String(options.pageSize));
-  if (options?.status) query.set('status', options.status);
-  const suffix = query.toString() ? `?${query.toString()}` : '';
-  const payload = await apiFetch<XAccountEntity[] | { data?: XAccountEntity[] }>(`/v2/x-accounts${suffix}`);
-  if (Array.isArray(payload)) return payload;
-  if (payload && Array.isArray(payload.data)) return payload.data;
-  return [];
+export async function finishXAccountOAuthBind(state: string, code: string) {
+  return apiFetch<{ ok: boolean; account: Record<string, unknown> }>(
+    `/v3/connections/x-self/callback?state=${encodeURIComponent(state)}&code=${encodeURIComponent(code)}`
+  );
 }
 
-export async function connectObsidianVault(input: {
-  vaultPath: string;
-  includePatterns?: string[];
-  autoLearn?: boolean;
+export async function fetchBootstrap() {
+  return apiFetch<V3BootstrapResponse>('/v3/session/bootstrap', { method: 'POST' });
+}
+
+export async function runChat(input: {
+  intent: string;
+  format: V3Format;
+  withImage: boolean;
   xAccountId?: string;
+  safeMode?: boolean;
 }) {
-  return apiFetch<Record<string, unknown>>('/v2/knowledge/connectors/obsidian', {
+  return apiFetch<V3RunStartResponse>('/v3/chat/run', {
     method: 'POST',
     body: JSON.stringify(input)
   });
 }
 
-export async function connectLocalKnowledgeFiles(input: {
-  paths: string[];
-  autoLearn?: boolean;
-  xAccountId?: string;
-}) {
-  return apiFetch<Record<string, unknown>>('/v2/knowledge/connectors/local-files', {
+export async function fetchRun(runId: string) {
+  return apiFetch<V3RunResponse>(`/v3/chat/runs/${runId}`);
+}
+
+export async function fetchProfile() {
+  return apiFetch<V3ProfileResponse>('/v3/profile');
+}
+
+export async function rebuildProfile() {
+  return apiFetch<{ ok: boolean; styleSummary: string | null; nextAction: string }>('/v3/profile/rebuild', {
+    method: 'POST',
+    body: JSON.stringify({})
+  });
+}
+
+export async function fetchQueue(limit = 20) {
+  return apiFetch<V3QueueResponse>(`/v3/queue?limit=${encodeURIComponent(String(limit))}`);
+}
+
+export async function preparePublish(input: { runId: string; xAccountId?: string; safeMode?: boolean }) {
+  return apiFetch<{
+    requestId?: string;
+    runId: string;
+    xAccount: { id: string; handle: string; status: string; isDefault: boolean } | null;
+    safeMode: boolean;
+    blockingReason: string | null;
+    nextAction: string;
+    preview: {
+      text: string;
+      charCount: number;
+      qualityScore: number;
+      riskFlags: string[];
+      imageKeywords: string[];
+    } | null;
+  }>('/v3/publish/prepare', {
     method: 'POST',
     body: JSON.stringify(input)
   });
 }
 
-export async function importKnowledgeUrls(input: {
-  urls: string[];
-  autoLearn?: boolean;
-  xAccountId?: string;
-}) {
-  return apiFetch<Record<string, unknown>>('/v2/knowledge/urls/import', {
+export async function confirmPublish(input: { runId: string; xAccountId?: string; safeMode?: boolean }) {
+  return apiFetch<{
+    requestId?: string;
+    traceId: string;
+    publishJobId: string;
+    status: string;
+    generationId: string;
+    requestedXAccountId: string | null;
+    resolvedXAccountId: string | null;
+    xAccountId: string | null;
+    nextAction: string;
+  }>('/v3/publish/confirm', {
     method: 'POST',
     body: JSON.stringify(input)
   });
 }
 
-export async function rebuildStyleProfile(input?: { profileId?: string }) {
-  return apiFetch<Record<string, unknown>>('/v2/style/profile/rebuild', {
+export async function connectSelfX() {
+  return apiFetch<{ url: string; state: string; redirectUri: string }>('/v3/connections/x-self', {
     method: 'POST',
-    body: JSON.stringify(input ?? {})
+    body: JSON.stringify({})
   });
 }
 
-export async function analyzeStyle() {
-  return apiFetch<Record<string, unknown>>('/history/analyze', { method: 'POST' });
+export async function connectTargetX(handleOrUrl: string) {
+  return apiFetch<{ ok: boolean; nextAction: string }>('/v3/connections/x-target', {
+    method: 'POST',
+    body: JSON.stringify({ handleOrUrl })
+  });
 }
 
-export async function fetchStyle() {
-  return apiFetch<Record<string, unknown>>('/history/style');
+export async function connectObsidianVault(input: { vaultPath: string; includePatterns?: string[] }) {
+  return apiFetch<{ ok: boolean; nextAction: string }>('/v3/connections/obsidian', {
+    method: 'POST',
+    body: JSON.stringify(input)
+  });
+}
+
+export async function connectLocalKnowledgeFiles(input: { paths: string[] }) {
+  return apiFetch<{ ok: boolean; count: number; nextAction: string }>('/v3/connections/local-files', {
+    method: 'POST',
+    body: JSON.stringify(input)
+  });
+}
+
+export async function importKnowledgeUrls(input: { urls: string[] }) {
+  return apiFetch<{ ok: boolean; count: number; nextAction: string }>('/v3/connections/urls', {
+    method: 'POST',
+    body: JSON.stringify(input)
+  });
 }

@@ -366,6 +366,12 @@ export class BillingService {
           return payPalCheckout;
         }
       }
+      if ((process.env.NODE_ENV ?? 'development') !== 'production') {
+        const appUrl = (process.env.APP_URL ?? 'http://localhost:3000').trim().replace(/\/$/, '');
+        return {
+          url: `${appUrl}/pricing?checkout=mock&plan=${encodeURIComponent(plan)}&cycle=${encodeURIComponent(cycle)}`
+        };
+      }
       throw new BadRequestException('支付通道未完成配置，请联系管理员');
     }
 
