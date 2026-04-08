@@ -1,0 +1,27 @@
+{
+  "label": "POST-/v3/connections/urls",
+  "status": 201,
+  "ok": true,
+  "requestId": "23ef734f-b94d-4a43-b565-f710a69ee2d3",
+  "payload": {
+    "ok": true,
+    "count": 1,
+    "sources": [
+      {
+        "id": "e8bad0e7-4540-4c00-809d-6f1b7fbdc4a8",
+        "workspaceId": "ee605462-b8de-4de2-bad6-3a1617dc5722",
+        "xAccountId": null,
+        "sourceType": "URL",
+        "sourceRef": "https://example.com/draftorbit-uat-60408114323505",
+        "isEnabled": true,
+        "metadata": {
+          "connector": "url"
+        },
+        "createdAt": "2026-04-08T11:43:23.682Z",
+        "updatedAt": "2026-04-08T11:43:23.682Z"
+      }
+    ],
+    "nextAction": "run_first_generation",
+    "requestId": "23ef734f-b94d-4a43-b565-f710a69ee2d3"
+  }
+}

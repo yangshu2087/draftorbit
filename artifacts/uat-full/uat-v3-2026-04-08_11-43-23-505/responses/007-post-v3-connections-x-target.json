@@ -1,0 +1,25 @@
+{
+  "label": "POST-/v3/connections/x-target",
+  "status": 201,
+  "ok": true,
+  "requestId": "4599bfc5-e07a-4572-85c9-e9e50a6cead2",
+  "payload": {
+    "ok": true,
+    "source": {
+      "id": "06c4edab-1f72-40d0-b5bd-e7aeddd6069a",
+      "workspaceId": "ee605462-b8de-4de2-bad6-3a1617dc5722",
+      "xAccountId": null,
+      "sourceType": "URL",
+      "sourceRef": "https://x.com/uat_target_60408114323505",
+      "isEnabled": true,
+      "metadata": {
+        "connector": "x_target",
+        "originalInput": "@uat_target_60408114323505"
+      },
+      "createdAt": "2026-04-08T11:43:23.645Z",
+      "updatedAt": "2026-04-08T11:43:23.645Z"
+    },
+    "nextAction": "run_first_generation",
+    "requestId": "4599bfc5-e07a-4572-85c9-e9e50a6cead2"
+  }
+}

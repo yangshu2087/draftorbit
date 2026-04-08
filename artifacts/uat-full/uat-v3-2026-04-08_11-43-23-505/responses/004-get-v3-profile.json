@@ -1,0 +1,104 @@
+{
+  "label": "GET-/v3/profile",
+  "status": 200,
+  "ok": true,
+  "requestId": "5f86a0f3-79d6-41e1-9c27-a59477a59205",
+  "payload": {
+    "styleSummary": null,
+    "styleSampleCount": 0,
+    "styleLastAnalyzedAt": null,
+    "sourceEvidence": [
+      "已接入外部链接知识",
+      "已接入 Obsidian / 本地知识库",
+      "已学习目标账号 / 推文链接"
+    ],
+    "sources": [
+      {
+        "id": "4cc1c5cc-1866-4b61-a5fc-b4f04451876a",
+        "sourceType": "URL",
+        "sourceRef": "https://example.com/draftorbit-uat-60408114227897",
+        "connector": "url",
+        "createdAt": "2026-04-08T11:42:28.166Z"
+      },
+      {
+        "id": "6445e346-20d0-4f30-b5f8-5739f9a4f20d",
+        "sourceType": "IMPORT_CSV",
+        "sourceRef": "/tmp/draftorbit-uat-60408114227897.md",
+        "connector": "local_file",
+        "createdAt": "2026-04-08T11:42:28.153Z"
+      },
+      {
+        "id": "f98d81de-1f43-4b91-8f08-2d074a8039ba",
+        "sourceType": "IMPORT_CSV",
+        "sourceRef": "/tmp/draftorbit-uat-60408114227897-vault",
+        "connector": "obsidian",
+        "createdAt": "2026-04-08T11:42:28.137Z"
+      },
+      {
+        "id": "8291a447-04ca-49eb-b735-493519bbe8c7",
+        "sourceType": "URL",
+        "sourceRef": "https://x.com/uat_target_60408114227897",
+        "connector": "x_target",
+        "createdAt": "2026-04-08T11:42:28.111Z"
+      },
+      {
+        "id": "2fb794c5-c22c-4c95-87ed-671c0b194e29",
+        "sourceType": "URL",
+        "sourceRef": "https://example.com/draftorbit-uat-60408114038208",
+        "connector": "url",
+        "createdAt": "2026-04-08T11:40:38.453Z"
+      },
+      {
+        "id": "2acfe9f6-ce39-4e7c-a3a3-dcd3e409833f",
+        "sourceType": "IMPORT_CSV",
+        "sourceRef": "/tmp/draftorbit-uat-60408114038208.md",
+        "connector": "local_file",
+        "createdAt": "2026-04-08T11:40:38.439Z"
+      },
+      {
+        "id": "d77722bc-661b-4ad2-a758-efe1b3b0dfc6",
+        "sourceType": "IMPORT_CSV",
+        "sourceRef": "/tmp/draftorbit-uat-60408114038208-vault",
+        "connector": "obsidian",
+        "createdAt": "2026-04-08T11:40:38.425Z"
+      },
+      {
+        "id": "bda72b32-bc1f-4479-a44a-fd750d7c70a9",
+        "sourceType": "URL",
+        "sourceRef": "https://x.com/uat_target_60408114038208",
+        "connector": "x_target",
+        "createdAt": "2026-04-08T11:40:38.408Z"
+      },
+      {
+        "id": "dcf129dc-f98d-4545-89c1-b64490526480",
+        "sourceType": "URL",
+        "sourceRef": "https://example.com/draftorbit-uat-60408113913187",
+        "connector": "url",
+        "createdAt": "2026-04-08T11:39:13.443Z"
+      },
+      {
+        "id": "f2a314a8-17d3-47ef-9a70-ca9c369af251",
+        "sourceType": "IMPORT_CSV",
+        "sourceRef": "/tmp/draftorbit-uat-60408113913187.md",
+        "connector": "local_file",
+        "createdAt": "2026-04-08T11:39:13.435Z"
+      },
+      {
+        "id": "c7b3a378-6b65-467e-8f6b-66334591b452",
+        "sourceType": "IMPORT_CSV",
+        "sourceRef": "/tmp/draftorbit-uat-60408113913187-vault",
+        "connector": "obsidian",
+        "createdAt": "2026-04-08T11:39:13.428Z"
+      },
+      {
+        "id": "2e5b0413-abe0-4bdb-b50e-a10c0f97e334",
+        "sourceType": "URL",
+        "sourceRef": "https://x.com/uat_target_60408113913187",
+        "connector": "x_target",
+        "createdAt": "2026-04-08T11:39:13.407Z"
+      }
+    ],
+    "xAccounts": [],
+    "requestId": "5f86a0f3-79d6-41e1-9c27-a59477a59205"
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "label": "GET-/v3/billing/plans",
+  "status": 200,
+  "ok": true,
+  "requestId": "9e4d2258-e49d-42d2-99b1-e7c8bbad5757",
+  "payload": {
+    "currency": "USD",
+    "trialDays": 3,
+    "plans": [
+      {
+        "key": "STARTER",
+        "name": "Starter",
+        "monthly": {
+          "usd": 19,
+          "usdCents": 1900
+        },
+        "yearly": {
+          "usd": 182.4,
+          "usdCents": 18240
+        },
+        "features": [
+          "极简一句话生成入口",
+          "自动学习 1 个知识空间",
+          "默认人工确认发布"
+        ],
+        "limits": {
+          "daily": 80,
+          "monthly": 500
+        }
+      },
+      {
+        "key": "PRO",
+        "name": "Growth",
+        "monthly": {
+          "usd": 49,
+          "usdCents": 4900
+        },
+        "yearly": {
+          "usd": 470.4,
+          "usdCents": 47040
+        },
+        "features": [
+          "支持 3 个 X 账号运营",
+          "目标账号 / 链接学习",
+          "更高推理预算与队列能力"
+        ],
+        "limits": {
+          "daily": 300,
+          "monthly": 2000
+        }
+      },
+      {
+        "key": "PREMIUM",
+        "name": "Max",
+        "monthly": {
+          "usd": 99,
+          "usdCents": 9900
+        },
+        "yearly": {
+          "usd": 950.4,
+          "usdCents": 95040
+        },
+        "features": [
+          "支持 10 个 X 账号",
+          "更高强推理预算",
+          "多账号路由与优先队列"
+        ],
+        "limits": {
+          "daily": 1000,
+          "monthly": 5000
+        }
+      }
+    ],
+    "requestId": "9e4d2258-e49d-42d2-99b1-e7c8bbad5757"
+  }
+}

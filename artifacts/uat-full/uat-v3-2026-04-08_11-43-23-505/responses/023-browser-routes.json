@@ -1,0 +1,73 @@
+{
+  "label": "browser-routes",
+  "status": 200,
+  "ok": true,
+  "payload": [
+    {
+      "route": "/",
+      "currentUrl": "http://localhost:3000/",
+      "screenshot": "/Volumes/AI_SSD/04-projects-large/openclaw-workspace/projects/021-draftorbit.io/artifacts/uat-full/uat-v3-2026-04-08_11-43-23-505/screenshots/root.png",
+      "bodySnippet": "DraftOrbit\nX AI OPERATOR\nOperator\nQueue\nConnect\nPricing\n@uat_v3_local\nStarter\n退出\n\nDRAFTORBIT V3\n\n一句话下指令，自动产出可发的 X 内容结果包\n\nDraftOrbit 是面向 X 自动化运营的 AI Operator：自动学习你的历史表达、研究平台语境、规划 hook 与结构、生成草稿与配图建议，并在发布前做风险检查。\n\n进入 Operator\n查看 Queue\nAgent-fir"
+    },
+    {
+      "route": "/app",
+      "currentUrl": "http://localhost:3000/app",
+      "screenshot": "/Volumes/AI_SSD/04-projects-large/openclaw-workspace/projects/021-draftorbit.io/artifacts/uat-full/uat-v3-2026-04-08_11-43-23-505/screenshots/app.png",
+      "bodySnippet": "DraftOrbit\nX AI OPERATOR\nOperator\nQueue\nConnect\nPricing\n@uat_v3_local\nStarter\n退出\n\nOPERATOR\n\n今天想在 X 上实现什么？\n\n只说你的目标。DraftOrbit 会自动研究话题、匹配文风、生成可发结果，并在发布前做 X 风险检查。\n\n管理学习来源\n\n当前流程\n\n设置目标 → 生成 → 审核 → 入队\n\n下一步：先连接你的 X 账号\n\n默认账号：未连接\n安全模式：开启（仅保留待确认）\n\n研究"
+    },
+    {
+      "route": "/connect",
+      "currentUrl": "http://localhost:3000/connect",
+      "screenshot": "/Volumes/AI_SSD/04-projects-large/openclaw-workspace/projects/021-draftorbit.io/artifacts/uat-full/uat-v3-2026-04-08_11-43-23-505/screenshots/connect.png",
+      "bodySnippet": "DraftOrbit\nX AI OPERATOR\nOperator\nQueue\nConnect\nPricing\n@uat_v3_local\nStarter\n退出\n\nCONNECT\n\n连接后系统会自动学什么？\n\n你不需要手动配置风格项。把账号、链接和知识源接进来，系统会自动学习你的表达习惯、目标样本和外部证据。\n\n返回 Operator\n\n任务 1\n\n连接你自己的 X 账号\n\n成功后系统会读取你的历史内容，建立 Style DNA，并在生成时自动匹配你的稳定表达方式。\n\n连接 "
+    },
+    {
+      "route": "/queue",
+      "currentUrl": "http://localhost:3000/queue",
+      "screenshot": "/Volumes/AI_SSD/04-projects-large/openclaw-workspace/projects/021-draftorbit.io/artifacts/uat-full/uat-v3-2026-04-08_11-43-23-505/screenshots/queue.png",
+      "bodySnippet": "DraftOrbit\nX AI OPERATOR\nOperator\nQueue\nConnect\nPricing\n@uat_v3_local\nStarter\n退出\n\nQUEUE\n\n所有内容最终都在这里确认与追踪\n\nDraftOrbit 默认把真实发帖动作放到最后一步。你先看结果、看账号、看风险，再决定是否发。\n\n继续生成\n刷新\n\n待确认\n\n2\n\n这些内容还没有真正进入发布任务。适合先审稿、看风险，再点确认。\n\n04/08 03:19 · tweet\n\n别再靠灵感写 ai，把流程"
+    },
+    {
+      "route": "/pricing",
+      "currentUrl": "http://localhost:3000/pricing",
+      "screenshot": "/Volumes/AI_SSD/04-projects-large/openclaw-workspace/projects/021-draftorbit.io/artifacts/uat-full/uat-v3-2026-04-08_11-43-23-505/screenshots/pricing.png",
+      "bodySnippet": "DraftOrbit\nX AI OPERATOR\nOperator\nQueue\nConnect\nPricing\n@uat_v3_local\nStarter\n退出\n\nPRICING\n\nStarter / Growth / Max，继续保持 USD 三档定价\n\n我们不再售卖复杂后台，而是售卖更省心的 X AI Operator：一句话出目标，自动研究、自动生成、自动准备可发结果包。\n\n进入 Operator\n所有套餐都默认人工确认发布\nOpenRouter-first，按质量与成"
+    },
+    {
+      "route": "/chat",
+      "currentUrl": "http://localhost:3000/app",
+      "screenshot": "/Volumes/AI_SSD/04-projects-large/openclaw-workspace/projects/021-draftorbit.io/artifacts/uat-full/uat-v3-2026-04-08_11-43-23-505/screenshots/chat.png",
+      "bodySnippet": "DraftOrbit\nX AI OPERATOR\nOperator\nQueue\nConnect\nPricing\n@uat_v3_local\nStarter\n退出\n\nOPERATOR\n\n今天想在 X 上实现什么？\n\n只说你的目标。DraftOrbit 会自动研究话题、匹配文风、生成可发结果，并在发布前做 X 风险检查。\n\n管理学习来源\n\n当前流程\n\n设置目标 → 生成 → 审核 → 入队\n\n下一步：先连接你的 X 账号\n\n默认账号：未连接\n安全模式：开启（仅保留待确认）\n\n研究"
+    },
+    {
+      "route": "/settings",
+      "currentUrl": "http://localhost:3000/connect",
+      "screenshot": "/Volumes/AI_SSD/04-projects-large/openclaw-workspace/projects/021-draftorbit.io/artifacts/uat-full/uat-v3-2026-04-08_11-43-23-505/screenshots/settings.png",
+      "bodySnippet": "DraftOrbit\nX AI OPERATOR\nOperator\nQueue\nConnect\nPricing\n@uat_v3_local\nStarter\n退出\n\nCONNECT\n\n连接后系统会自动学什么？\n\n你不需要手动配置风格项。把账号、链接和知识源接进来，系统会自动学习你的表达习惯、目标样本和外部证据。\n\n返回 Operator\n\n任务 1\n\n连接你自己的 X 账号\n\n成功后系统会读取你的历史内容，建立 Style DNA，并在生成时自动匹配你的稳定表达方式。\n\n连接 "
+    },
+    {
+      "route": "/dashboard",
+      "currentUrl": "http://localhost:3000/app",
+      "screenshot": "/Volumes/AI_SSD/04-projects-large/openclaw-workspace/projects/021-draftorbit.io/artifacts/uat-full/uat-v3-2026-04-08_11-43-23-505/screenshots/dashboard.png",
+      "bodySnippet": "DraftOrbit\nX AI OPERATOR\nOperator\nQueue\nConnect\nPricing\n@uat_v3_local\nStarter\n退出\n\nOPERATOR\n\n今天想在 X 上实现什么？\n\n只说你的目标。DraftOrbit 会自动研究话题、匹配文风、生成可发结果，并在发布前做 X 风险检查。\n\n管理学习来源\n\n当前流程\n\n设置目标 → 生成 → 审核 → 入队\n\n下一步：先连接你的 X 账号\n\n默认账号：未连接\n安全模式：开启（仅保留待确认）\n\n研究"
+    },
+    {
+      "route": "/usage",
+      "currentUrl": "http://localhost:3000/app",
+      "screenshot": "/Volumes/AI_SSD/04-projects-large/openclaw-workspace/projects/021-draftorbit.io/artifacts/uat-full/uat-v3-2026-04-08_11-43-23-505/screenshots/usage.png",
+      "bodySnippet": "DraftOrbit\nX AI OPERATOR\nOperator\nQueue\nConnect\nPricing\n@uat_v3_local\nStarter\n退出\n\nOPERATOR\n\n今天想在 X 上实现什么？\n\n只说你的目标。DraftOrbit 会自动研究话题、匹配文风、生成可发结果，并在发布前做 X 风险检查。\n\n管理学习来源\n\n当前流程\n\n设置目标 → 生成 → 审核 → 入队\n\n下一步：先连接你的 X 账号\n\n默认账号：未连接\n安全模式：开启（仅保留待确认）\n\n研究"
+    },
+    {
+      "route": "/providers",
+      "currentUrl": "http://localhost:3000/connect",
+      "screenshot": "/Volumes/AI_SSD/04-projects-large/openclaw-workspace/projects/021-draftorbit.io/artifacts/uat-full/uat-v3-2026-04-08_11-43-23-505/screenshots/providers.png",
+      "bodySnippet": "DraftOrbit\nX AI OPERATOR\nOperator\nQueue\nConnect\nPricing\n@uat_v3_local\nStarter\n退出\n\nCONNECT\n\n连接后系统会自动学什么？\n\n你不需要手动配置风格项。把账号、链接和知识源接进来，系统会自动学习你的表达习惯、目标样本和外部证据。\n\n返回 Operator\n\n任务 1\n\n连接你自己的 X 账号\n\n成功后系统会读取你的历史内容，建立 Style DNA，并在生成时自动匹配你的稳定表达方式。\n\n连接 "
+    },
+    {
+      "route": "/x-accounts",
+      "currentUrl": "http://localhost:3000/connect",
+      "screenshot": "/Volumes/AI_SSD/04-projects-large/openclaw-workspace/projects/021-draftorbit.io/artifacts/uat-full/uat-v3-2026-04-08_11-43-23-505/screenshots/x-accounts.png",
+      "bodySnippet": "DraftOrbit\nX AI OPERATOR\nOperator\nQueue\nConnect\nPricing\n@uat_v3_local\nStarter\n退出\n\nCONNECT\n\n连接后系统会自动学什么？\n\n你不需要手动配置风格项。把账号、链接和知识源接进来，系统会自动学习你的表达习惯、目标样本和外部证据。\n\n返回 Operator\n\n任务 1\n\n连接你自己的 X 账号\n\n成功后系统会读取你的历史内容，建立 Style DNA，并在生成时自动匹配你的稳定表达方式。\n\n连接 "
+    }
+  ]
+}

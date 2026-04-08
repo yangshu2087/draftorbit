@@ -1,0 +1,31 @@
+{
+  "label": "POST-/v3/session/bootstrap",
+  "status": 201,
+  "ok": true,
+  "requestId": "68b93744-5d24-4b87-9d68-dbd348d09e26",
+  "payload": {
+    "user": {
+      "id": "e87a93c6-4ed3-40ae-b8e5-518672ae38e7",
+      "handle": "uat_v3_local",
+      "plan": "STARTER"
+    },
+    "workspaceId": "ee605462-b8de-4de2-bad6-3a1617dc5722",
+    "defaultXAccount": null,
+    "counts": {
+      "xAccounts": 0,
+      "sources": 12
+    },
+    "sourceEvidence": [
+      "已接入外部链接知识",
+      "已接入 Obsidian / 本地知识库",
+      "已学习目标账号 / 推文链接"
+    ],
+    "profile": {
+      "ready": false,
+      "styleSummary": null,
+      "sourceCount": 12
+    },
+    "suggestedAction": "connect_x_self",
+    "requestId": "68b93744-5d24-4b87-9d68-dbd348d09e26"
+  }
+}

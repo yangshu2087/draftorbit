@@ -1,0 +1,27 @@
+{
+  "label": "POST-/v3/connections/local-files",
+  "status": 201,
+  "ok": true,
+  "requestId": "95dbb99e-0f98-4a17-bfc3-880a8ff3535e",
+  "payload": {
+    "ok": true,
+    "count": 1,
+    "sources": [
+      {
+        "id": "0b48df2d-f779-49e9-b381-3edb1068e5ef",
+        "workspaceId": "ee605462-b8de-4de2-bad6-3a1617dc5722",
+        "xAccountId": null,
+        "sourceType": "IMPORT_CSV",
+        "sourceRef": "/tmp/draftorbit-uat-60408114323505.md",
+        "isEnabled": true,
+        "metadata": {
+          "connector": "local_file"
+        },
+        "createdAt": "2026-04-08T11:43:23.672Z",
+        "updatedAt": "2026-04-08T11:43:23.672Z"
+      }
+    ],
+    "nextAction": "run_first_generation",
+    "requestId": "95dbb99e-0f98-4a17-bfc3-880a8ff3535e"
+  }
+}

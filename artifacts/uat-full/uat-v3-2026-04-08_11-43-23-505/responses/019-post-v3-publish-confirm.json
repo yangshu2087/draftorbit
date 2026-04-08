@@ -1,0 +1,22 @@
+{
+  "label": "POST-/v3/publish/confirm",
+  "status": 201,
+  "ok": true,
+  "requestId": "e2abc628-73ab-4e82-813f-4ad56c2fba54",
+  "payload": {
+    "traceId": "5dc4f5ab-1dd1-4eca-9572-40ab5cdb2543",
+    "publishJobId": "5dc4f5ab-1dd1-4eca-9572-40ab5cdb2543",
+    "status": "QUEUED",
+    "generationId": "1ab441b3-2ccd-44ac-9f93-b3f2cfd8e75a",
+    "draftId": null,
+    "requestedXAccountId": null,
+    "resolvedXAccountId": null,
+    "xAccountId": null,
+    "channel": "X_TWEET",
+    "queuedAt": "2026-04-08T11:43:23.773Z",
+    "scheduledFor": null,
+    "runId": "1ab441b3-2ccd-44ac-9f93-b3f2cfd8e75a",
+    "nextAction": "open_queue",
+    "requestId": "e2abc628-73ab-4e82-813f-4ad56c2fba54"
+  }
+}
