@@ -47,8 +47,42 @@ function applyCommonRewrites(input: string): string {
     .replace(/#ai\b/gi, '#AI')
     .replace(/([\p{Script=Han}])AI/gu, '$1 AI')
     .replace(/AI([\p{Script=Han}])/gu, 'AI $1')
+    .replace(/#AI\s+(?=[\p{Script=Han}])/gu, '#AI')
     .replace(/\s+([，。！？；：])/g, '$1')
     .replace(/([（【《“‘#])\s+/g, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+function stripNoisyHashtags(input: string): string {
+  let result = '';
+  let lastIndex = 0;
+  const hashtagPattern = /#([\p{L}\p{N}_]+)/gu;
+
+  for (const match of input.matchAll(hashtagPattern)) {
+    const index = match.index ?? 0;
+    const raw = match[0];
+    const tag = match[1] ?? '';
+    const shouldRemove =
+      /^[a-z0-9]{6}$/i.test(tag) || (/^[\p{Script=Han}]{4,}$/u.test(tag) && input.slice(0, index).includes(tag));
+
+    if (!shouldRemove) continue;
+
+    result += input.slice(lastIndex, index).replace(/[ \t]+$/g, '');
+    lastIndex = index + raw.length;
+  }
+
+  result += input.slice(lastIndex);
+  return result;
+}
+
+function polishResultBlock(block: string): string {
+  return stripNoisyHashtags(
+    block
+      .replace(/\s*\([a-z0-9]{6}\)(?=\s|$)/gi, '')
+      .replace(/([\p{Script=Han}A-Za-z0-9”」》】）]{6,}) ([\p{Script=Han}“「《【（][^。！？；\n]{0,40}，)/gu, '$1。$2')
+  )
+    .replace(/\s+([，。！？；：])/g, '$1')
     .replace(/\s{2,}/g, ' ')
     .trim();
 }
@@ -82,11 +116,13 @@ export function normalizeResultText(text?: string | null): string {
   const blocks = text
     .split(/\n{2,}/)
     .map((block) =>
-      block
+      polishResultBlock(
+        block
         .split('\n')
         .map((line) => applyCommonRewrites(line))
         .filter(Boolean)
         .join('\n')
+      )
     )
     .filter(Boolean);
 
