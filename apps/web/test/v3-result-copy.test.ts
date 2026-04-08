@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  normalizeResultText,
   normalizeStageSummary,
   normalizeWhySummary,
   summarizeWhySummary
@@ -38,4 +39,13 @@ test('normalizeStageSummary rewrites technical stage text into plainer language'
   assert.equal(normalizeStageSummary('Fast path：本地拼装发布包并做质量门控，必要时才触发模型重写。'), '已整理结果，并完成基础质量检查。');
   assert.equal(normalizeStageSummary('配图关键词：ai / operator / x'), '配图方向：ai / operator / x');
   assert.equal(normalizeStageSummary('已确定 hook：别再靠灵感写 ai，把流程跑顺才是增长关键。'), '开头切入点：别再靠灵感写 AI，把流程跑顺才是增长关键。');
+  assert.equal(normalizeStageSummary('以“ai”为主线，强调流程化执行与可复盘增长。'), '以“AI”为主线，强调流程化执行与可复盘增长。');
+  assert.equal(normalizeStageSummary('[object Object]'), '正在整理内容');
+});
+
+test('normalizeResultText fixes branding, casing, spacing and duplicate blank lines', () => {
+  assert.equal(
+    normalizeResultText('别再靠灵感写ai，把流程跑顺才是增长关键。\\n\\nDraftorbit 能帮你把 ai 内容链路跑顺。\\n\\n#ai'),
+    '别再靠灵感写 AI，把流程跑顺才是增长关键。\\n\\nDraftOrbit 能帮你把 AI 内容链路跑顺。\\n\\n#AI'
+  );
 });

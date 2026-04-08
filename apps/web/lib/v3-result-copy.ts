@@ -20,6 +20,10 @@ function normalizeSingleLine(input: string): string {
     return EXACT_COPY_MAP[trimmed];
   }
 
+  if (trimmed === '[object Object]') {
+    return '正在整理内容';
+  }
+
   if (trimmed.startsWith('结果包已就绪')) {
     return trimmed.replace('结果包已就绪', EXACT_COPY_MAP['结果包已就绪']);
   }
@@ -38,8 +42,15 @@ function normalizeSingleLine(input: string): string {
 function applyCommonRewrites(input: string): string {
   return input
     .replace(/^已确定 hook：/i, '开头切入点：')
-    .replace(/\bdraftorbit\b/gi, 'DraftOrbit')
-    .replace(/\bai\b/g, 'AI');
+    .replace(/draft\s*orbit/gi, 'DraftOrbit')
+    .replace(/\bai\b/gi, 'AI')
+    .replace(/#ai\b/gi, '#AI')
+    .replace(/([\p{Script=Han}])AI/gu, '$1 AI')
+    .replace(/AI([\p{Script=Han}])/gu, 'AI $1')
+    .replace(/\s+([，。！？；：])/g, '$1')
+    .replace(/([（【《“‘#])\s+/g, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 }
 
 export function normalizeWhySummary(items: string[]): string[] {
@@ -63,4 +74,21 @@ export function normalizeStageSummary(summary?: string | null): string | null {
   if (!summary) return null;
   const normalized = normalizeSingleLine(summary);
   return normalized || null;
+}
+
+export function normalizeResultText(text?: string | null): string {
+  if (!text) return '';
+
+  const blocks = text
+    .split(/\n{2,}/)
+    .map((block) =>
+      block
+        .split('\n')
+        .map((line) => applyCommonRewrites(line))
+        .filter(Boolean)
+        .join('\n')
+    )
+    .filter(Boolean);
+
+  return blocks.join('\n\n').trim();
 }
