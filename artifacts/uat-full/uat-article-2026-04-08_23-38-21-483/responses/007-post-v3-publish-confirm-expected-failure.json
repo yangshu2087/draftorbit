@@ -1,0 +1,18 @@
+{
+  "label": "POST-/v3/publish/confirm-expected-failure",
+  "status": 400,
+  "ok": false,
+  "requestId": "055dc757-a8d6-4b49-9443-7dc029bb6c43",
+  "payload": {
+    "code": "ARTICLE_PUBLISH_NOT_SUPPORTED",
+    "message": "当前长文暂不支持直接发布，请先复制到 X 文章编辑器。",
+    "details": {
+      "nextAction": "export_article",
+      "blockingReason": "ARTICLE_PUBLISH_NOT_SUPPORTED"
+    },
+    "requestId": "055dc757-a8d6-4b49-9443-7dc029bb6c43",
+    "statusCode": 400,
+    "timestamp": "2026-04-08T23:39:29.062Z",
+    "path": "/v3/publish/confirm"
+  }
+}

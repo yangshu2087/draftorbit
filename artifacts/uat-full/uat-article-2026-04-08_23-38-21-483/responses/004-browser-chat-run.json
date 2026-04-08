@@ -1,0 +1,13 @@
+{
+  "label": "browser-chat-run",
+  "status": 201,
+  "ok": true,
+  "payload": {
+    "runId": "a7f3cafc-004a-4edb-b25e-10a9ac5db18a",
+    "stage": "queued",
+    "nextAction": "watch_generation",
+    "blockingReason": null,
+    "streamUrl": "/v3/chat/runs/a7f3cafc-004a-4edb-b25e-10a9ac5db18a/stream",
+    "requestId": "71c4323f-0b43-4c58-a3bd-4cde2aae8f20"
+  }
+}

@@ -1,0 +1,355 @@
+{
+  "label": "GET-/v3/queue?limit=24",
+  "status": 200,
+  "ok": true,
+  "requestId": "7b7cf3b9-2d3f-487f-b403-ba9e26971d80",
+  "payload": {
+    "review": [
+      {
+        "runId": "a7f3cafc-004a-4edb-b25e-10a9ac5db18a",
+        "format": "article",
+        "text": "围绕 AI 产品冷启动，写一篇适合 X 平台文章格式的长文，重点说明为什么流程比灵感更重要。：把内容链路跑成稳定系统\n\n导语\n别再靠灵感写 围绕 AI 产品冷启动，写一篇适合 X 平台文章格式的长文，重点说明为什么流程比灵感更重要。，把流程跑顺才是增长关键。\n\n一、围绕“围绕 AI 产品冷启动，写一篇适合 X 平台文章格式的长文，重点说明为什么流程比灵感更重要。”的执行链路不稳定，导致内容产出波动\n标题：把内容链路跑成稳定系统——AI 产品冷启动的流程优先论\n\n导语：\n当 AI 产品刚刚诞生，最先被提起的往往是灵感与创意。\n\n二、用“围绕”拆解动作，把选题到发布做成固定节奏\n可若没有一套成熟、可复制的流程，灵感很容易变成“闪光点”，无法持续产出。\n\n三、关注“产品冷启动”与发布反馈，形成下一轮优化闭环\n本文把 AI 产品冷启动的关键链路拆解成可执行的步骤，阐明为何流程比灵感更能决定成长。\n\n结尾\n你最想先优化哪一步？欢迎留言，我给你具体建议。",
+        "qualityScore": 86.93,
+        "riskFlags": [],
+        "createdAt": "2026-04-08T23:38:22.059Z",
+        "nextAction": "export_article"
+      },
+      {
+        "runId": "8f1fbbc1-a235-4ad2-bd9e-201ed1e63971",
+        "format": "article",
+        "text": "围绕 AI 产品冷启动，写一篇适合 X 平台文章格式的长文，重点说明为什么流程比灵感更重要。：把内容链路跑成稳定系统\n\n导语\n别再靠灵感写 围绕 AI 产品冷启动，写一篇适合 X 平台文章格式的长文，重点说明为什么流程比灵感更重要。，把流程跑顺才是增长关键。\n\n一、围绕“围绕 AI 产品冷启动，写一篇适合 X 平台文章格式的长文，重点说明为什么流程比灵感更重要。”的执行链路不稳定，导致内容产出波动\n别再指望靠“灵感”让 AI 产品冷启动了。\n\n二、用“围绕”拆解动作，把选题到发布做成固定节奏\n很多人觉得，AI 产品能不能火，全看那一下“灵感迸发”的瞬间。\n\n三、关注“产品冷启动”与发布反馈，形成下一轮优化闭环\n但我告诉你，这不仅是错觉，更是很多团队在冷启动阶段原地踏步的根本原因。\n\n结尾\n你最想先优化哪一步？欢迎留言，我给你具体建议。",
+        "qualityScore": 85.21,
+        "riskFlags": [
+          "长文偏短，建议补充 3-5 个小节"
+        ],
+        "createdAt": "2026-04-08T23:36:56.873Z",
+        "nextAction": "export_article"
+      },
+      {
+        "runId": "ca5c0208-7444-43c7-95e1-5b81a1b821f0",
+        "format": "article",
+        "text": "围绕 AI 产品冷启动，写一篇适合 X 平台文章格式的长文，重点说明为什么流程比灵感更重要。：把内容链路跑成稳定系统\n\n导语\n别再靠灵感写 围绕 AI 产品冷启动，写一篇适合 X 平台文章格式的长文，重点说明为什么流程比灵感更重要。，把流程跑顺才是增长关键。\n\n一、围绕“围绕 AI 产品冷启动，写一篇适合 X 平台文章格式的长文，重点说明为什么流程比灵感更重要。”的执行链路不稳定，导致内容产出波动\n别再靠灵感写 AI 产品冷启动的内容了。\n\n二、用“围绕”拆解动作，把选题到发布做成固定节奏\n把流程跑顺才是增长关键。\n\n三、关注“产品冷启动”与发布反馈，形成下一轮优化闭环\n——\n\n很多 AI 产品在冷启动阶段都会遇到一个共同问题：内容产出全靠「灵感来了就写」，没灵感就停更。\n\n结尾\n你最想先优化哪一步？欢迎留言，我给你具体建议。",
+        "qualityScore": 86.63,
+        "riskFlags": [
+          "长文偏短，建议补充 3-5 个小节"
+        ],
+        "createdAt": "2026-04-08T23:32:51.380Z",
+        "nextAction": "export_article"
+      },
+      {
+        "runId": "1ada3054-02d5-4d73-b5ae-2fc4180dc450",
+        "format": "tweet",
+        "text": "别再靠灵感写 ai，把流程跑顺才是增长关键 确保流程顺畅以驱动持续发展 #确保流程顺畅以驱动持续发展",
+        "qualityScore": 72.2,
+        "riskFlags": [],
+        "createdAt": "2026-04-08T14:48:05.417Z",
+        "nextAction": "confirm_publish"
+      },
+      {
+        "runId": "91c2421b-647c-4446-a92c-01b9f17929f2",
+        "format": "tweet",
+        "text": "别再靠灵感写 ai，把流程跑顺才是增长关键 抱歉，我无法理解您提供的内容。 #抱歉",
+        "qualityScore": 73.1,
+        "riskFlags": [],
+        "createdAt": "2026-04-08T14:46:33.386Z",
+        "nextAction": "confirm_publish"
+      },
+      {
+        "runId": "9b31378b-4626-49ce-91cc-2c6baabd982c",
+        "format": "tweet",
+        "text": "别再靠灵感写 ai，把流程跑顺才是增长关键 别再只靠灵感，优化流程才是增长关键。 #别再只靠灵感",
+        "qualityScore": 73.1,
+        "riskFlags": [],
+        "createdAt": "2026-04-08T14:37:53.053Z",
+        "nextAction": "confirm_publish"
+      },
+      {
+        "runId": "18794e9a-158c-4871-a28f-cc07dcd9ca77",
+        "format": "tweet",
+        "text": "别再靠灵感写 ai，把流程跑顺才是增长关键 别再靠灵感随意写 AI 了，真正的增长在于把流程跑通。🚀 1️⃣ 围绕“AI”这条执行链，如果不稳定，内容质量就会起伏不定。 2️⃣ 用“你是”这种拆解方式，把选题、创作、发布每一步都固定成节奏。 3️⃣ 关注“draftorbit”以及发布后的反馈，形成持续的优化闭环。 你最想先改进哪一步？在评论里告诉我，我会给你具体的建议。 #ai",
+        "qualityScore": 79.17,
+        "riskFlags": [],
+        "createdAt": "2026-04-08T14:36:31.929Z",
+        "nextAction": "confirm_publish"
+      },
+      {
+        "runId": "8bcb7c1d-67f2-401f-ae87-7b4209c08bc0",
+        "format": "tweet",
+        "text": "别再靠灵感写 ai，把流程跑顺才是增长关键 很多人觉得 AI 写东西靠不住，其实不是 AI 的问题，是方法的问题。 靠灵感写就是抽卡——运气好爆一篇，运气不好憋三天。真正的做法是把整个链路做成流水线： 第一步，拆动作。把\"写内容\"这件事拆细：谁写、怎么写、发哪里。每个环节固定下来，别每次从头想。 第二步，建闭环。草稿要有沉淀，发出去要有反馈。@draftorbit 那个思路是对的——发出去的东西得回头看数据，数据才能告诉你什么是有效的。 第三步，迭代。Prompt 不是写完就扔的，用产出反哺指令，让下一轮更快、更准。 内容增长靠的不是某篇爆款，而是能稳…",
+        "qualityScore": 77.03,
+        "riskFlags": [],
+        "createdAt": "2026-04-08T14:28:47.793Z",
+        "nextAction": "confirm_publish"
+      },
+      {
+        "runId": "9a1de1e8-5fbb-466a-9d5b-50fcde162bbe",
+        "format": "tweet",
+        "text": "别再靠灵感写 ai，把流程跑顺才是增长关键 别再靠灵感写AI了，把流程跑顺才是正事。 做内容的朋友应该都有感觉—— 1. 围绕AI的执行链路太不稳定，内容产出忽高忽低 2. 试试用「你是」把动作拆开，从选题到发布做成固定节奏 3. 盯紧发布后的数据反馈，自然会形成下一轮优化 你想先优化哪一步？留言聊聊，我给你具体建议。 #AI写作 #内容运营 #别再靠灵感写ai了",
+        "qualityScore": 81.61,
+        "riskFlags": [],
+        "createdAt": "2026-04-08T14:15:13.087Z",
+        "nextAction": "confirm_publish"
+      },
+      {
+        "runId": "7f3995e5-ca02-405f-848a-918d025fdae0",
+        "format": "tweet",
+        "text": "别再靠灵感写 ai，把流程跑顺才是增长关键 别再靠灵感写 AI，稳定的流程才是增长的关键！🚀 1️⃣ AI 执行链路不够稳，导致内容产出忽高忽低。 2️⃣ 用「你是」把动作拆解清楚，把选题、创作、审稿、发布做成固定节奏。 3️⃣ 重点关注「draftorbit」以及发布后的反馈，形成闭环，持续优化下一轮。 你最想先从哪一步开始改进？留言告诉我，我会给你具体的建议！ #ai",
+        "qualityScore": 79.26,
+        "riskFlags": [],
+        "createdAt": "2026-04-08T14:14:23.206Z",
+        "nextAction": "confirm_publish"
+      },
+      {
+        "runId": "7943d417-bb5f-4cb5-bc07-ce8a73bf613f",
+        "format": "tweet",
+        "text": "别再靠灵感写 ai，把流程跑顺才是增长关键 很多账号发不起来，不是因为你不会写，而是流程太散。把动作固定成“选题—起稿—审批—发布—复盘”，连续执行两周，互动质量通常会明显改善。(mmmo1x) #很多账号发不起来",
+        "qualityScore": 79.12,
+        "riskFlags": [],
+        "createdAt": "2026-04-08T10:10:36.287Z",
+        "nextAction": "confirm_publish"
+      },
+      {
+        "runId": "8c350b90-636e-41a6-845f-48356a507eee",
+        "format": "tweet",
+        "text": "别再靠灵感写 ai，把流程跑顺才是增长关键 很多账号发不起来，不是因为你不会写，而是流程太散。把动作固定成“选题—起稿—审批—发布—复盘”，连续执行两周，互动质量通常会明显改善。(6gmtg9) #很多账号发不起来",
+        "qualityScore": 79.12,
+        "riskFlags": [],
+        "createdAt": "2026-04-08T10:09:46.858Z",
+        "nextAction": "confirm_publish"
+      },
+      {
+        "runId": "f1cda12e-2a98-4cbe-8e16-d29a73521a16",
+        "format": "tweet",
+        "text": "别再靠灵感写 ai，把流程跑顺才是增长关键 很多账号发不起来，不是因为你不会写，而是流程太散。把动作固定成“选题—起稿—审批—发布—复盘”，连续执行两周，互动质量通常会明显改善。(yf9g42) #很多账号发不起来",
+        "qualityScore": 79.12,
+        "riskFlags": [],
+        "createdAt": "2026-04-08T10:07:50.273Z",
+        "nextAction": "confirm_publish"
+      },
+      {
+        "runId": "6cfab622-38fe-4d5c-af4b-717e97ad8cac",
+        "format": "tweet",
+        "text": "别再靠灵感写 什么是skills，把流程跑顺才是增长关键 很多账号发不起来，不是因为你不会写，而是流程太散。把动作固定成“选题—起稿—审批—发布—复盘”，连续执行两周，互动质量通常会明显改善。(2sr2pk) #很多账号发不起来",
+        "qualityScore": 79.29,
+        "riskFlags": [],
+        "createdAt": "2026-04-07T15:31:02.829Z",
+        "nextAction": "confirm_publish"
+      },
+      {
+        "runId": "7c9b78d1-1eaf-4d32-834a-7a670293aa3d",
+        "format": "thread",
+        "text": "别再靠灵感写 目标，把流程跑顺才是增长关键 很多账号发不起来，不是因为你不会写，而是流程太散。把动作固定成“选题—起稿—审批—发布—复盘”，连续执行两周，互动质量通常会明显改善。(5yx9lt) #很多账号发不起来",
+        "qualityScore": 79.12,
+        "riskFlags": [],
+        "createdAt": "2026-04-07T15:30:15.469Z",
+        "nextAction": "confirm_publish"
+      },
+      {
+        "runId": "6ab95c77-d387-4a6a-b1c6-b7d4f4b226b1",
+        "format": "article",
+        "text": "别再靠灵感写 目标，把流程跑顺才是增长关键 很多账号发不起来，不是因为你不会写，而是流程太散。把动作固定成“选题—起稿—审批—发布—复盘”，连续执行两周，互动质量通常会明显改善。(sffgy0) #很多账号发不起来",
+        "qualityScore": 79.12,
+        "riskFlags": [
+          "长文偏短，建议补充 3-5 个小节",
+          "长文结构偏弱，建议至少保留 3 个小节",
+          "X 长文正文不建议带 hashtag"
+        ],
+        "createdAt": "2026-04-07T15:29:59.959Z",
+        "nextAction": "export_article"
+      },
+      {
+        "runId": "c7b4c310-17c8-4874-bde7-0417c363ba7d",
+        "format": "tweet",
+        "text": "别再靠灵感写 目标，把流程跑顺才是增长关键 很多账号发不起来，不是因为你不会写，而是流程太散。把动作固定成“选题—起稿—审批—发布—复盘”，连续执行两周，互动质量通常会明显改善。(92l2gz) #很多账号发不起来",
+        "qualityScore": 79.12,
+        "riskFlags": [],
+        "createdAt": "2026-04-07T15:25:39.886Z",
+        "nextAction": "confirm_publish"
+      },
+      {
+        "runId": "a80bed88-24ce-4fd0-a012-70a12b061e0a",
+        "format": "tweet",
+        "text": "别再靠灵感写 目标，把流程跑顺才是增长关键 很多账号发不起来，不是因为你不会写，而是流程太散。把动作固定成“选题—起稿—审批—发布—复盘”，连续执行两周，互动质量通常会明显改善。(1p01ro) #很多账号发不起来",
+        "qualityScore": 79.12,
+        "riskFlags": [],
+        "createdAt": "2026-04-07T13:43:10.460Z",
+        "nextAction": "confirm_publish"
+      },
+      {
+        "runId": "c23d916f-22f1-4f09-989c-cd3fb7e88353",
+        "format": "tweet",
+        "text": "别再靠灵感写 目标，把流程跑顺才是增长关键 很多账号发不起来，不是因为你不会写，而是流程太散。把动作固定成“选题—起稿—审批—发布—复盘”，连续执行两周，互动质量通常会明显改善。(jd7lqp) #很多账号发不起来",
+        "qualityScore": 79.12,
+        "riskFlags": [],
+        "createdAt": "2026-04-07T13:42:34.364Z",
+        "nextAction": "confirm_publish"
+      },
+      {
+        "runId": "9a1773c5-8295-4823-9645-2296f2a094d7",
+        "format": "tweet",
+        "text": "别再靠灵感写 目标，把流程跑顺才是增长关键 很多账号发不起来，不是因为你不会写，而是流程太散。把动作固定成“选题—起稿—审批—发布—复盘”，连续执行两周，互动质量通常会明显改善。(cbxcve) #很多账号发不起来",
+        "qualityScore": 79.12,
+        "riskFlags": [],
+        "createdAt": "2026-04-07T13:41:58.238Z",
+        "nextAction": "confirm_publish"
+      },
+      {
+        "runId": "b110a97e-34bf-42c1-9251-09193be89e7e",
+        "format": "tweet",
+        "text": "别把增长寄托在“灵感爆发”。把 X 运营改成固定流水线：选题→草稿→审批→发布→复盘。流程稳定后，质量和效率会一起上升。#gib2ne",
+        "qualityScore": 75.35,
+        "riskFlags": [],
+        "createdAt": "2026-04-07T13:40:05.865Z",
+        "nextAction": "confirm_publish"
+      },
+      {
+        "runId": "bec9b12c-c950-457d-a36e-cb296c04cafb",
+        "format": "tweet",
+        "text": "别把增长寄托在“灵感爆发”。把 X 运营改成固定流水线：选题→草稿→审批→发布→复盘。流程稳定后，质量和效率会一起上升。#7aq6v6",
+        "qualityScore": 75.35,
+        "riskFlags": [],
+        "createdAt": "2026-04-07T13:38:17.729Z",
+        "nextAction": "confirm_publish"
+      },
+      {
+        "runId": "92a0d879-097e-49ae-b100-fd55ea69345d",
+        "format": "tweet",
+        "text": "别把增长寄托在“灵感爆发”。把 X 运营改成固定流水线：选题→草稿→审批→发布→复盘。流程稳定后，质量和效率会一起上升。#r20wqg",
+        "qualityScore": 75.35,
+        "riskFlags": [],
+        "createdAt": "2026-04-07T13:36:29.575Z",
+        "nextAction": "confirm_publish"
+      },
+      {
+        "runId": "a92c4581-75fc-47c1-a579-352ec01f1079",
+        "format": "tweet",
+        "text": "别再靠灵感写 目标，把流程跑顺才是增长关键 很多账号发不起来，不是因为你不会写，而是流程太散。把动作固定成“选题—起稿—审批—发布—复盘”，连续执行两周，互动质量通常会明显改善。(cioa2o) #很多账号发不起来",
+        "qualityScore": 79.12,
+        "riskFlags": [],
+        "createdAt": "2026-04-07T13:35:24.699Z",
+        "nextAction": "confirm_publish"
+      }
+    ],
+    "queued": [
+      {
+        "id": "d17100e5-07f4-42ee-9492-c820f896b621",
+        "runId": null,
+        "status": "RUNNING",
+        "xAccountId": null,
+        "xAccountHandle": null,
+        "createdAt": "2026-04-03T15:53:25.981Z",
+        "updatedAt": "2026-04-03T15:53:32.114Z",
+        "lastError": null,
+        "nextAction": "wait_publish"
+      },
+      {
+        "id": "81e7959a-c563-4860-8161-d58a135c857e",
+        "runId": null,
+        "status": "RUNNING",
+        "xAccountId": null,
+        "xAccountHandle": null,
+        "createdAt": "2026-04-03T15:52:40.045Z",
+        "updatedAt": "2026-04-03T15:52:46.173Z",
+        "lastError": null,
+        "nextAction": "wait_publish"
+      },
+      {
+        "id": "6a2999ff-23e7-4284-9956-cb6b6319f5a7",
+        "runId": null,
+        "status": "RUNNING",
+        "xAccountId": null,
+        "xAccountHandle": null,
+        "createdAt": "2026-04-03T15:49:51.850Z",
+        "updatedAt": "2026-04-03T15:49:57.951Z",
+        "lastError": null,
+        "nextAction": "wait_publish"
+      },
+      {
+        "id": "39be9c8a-ba91-48e0-9658-901eb5529807",
+        "runId": null,
+        "status": "RUNNING",
+        "xAccountId": null,
+        "xAccountHandle": null,
+        "createdAt": "2026-04-03T15:27:45.631Z",
+        "updatedAt": "2026-04-03T15:27:51.723Z",
+        "lastError": null,
+        "nextAction": "wait_publish"
+      },
+      {
+        "id": "8039a4be-ca1c-445d-8d5b-d3a2422fe402",
+        "runId": null,
+        "status": "RUNNING",
+        "xAccountId": null,
+        "xAccountHandle": null,
+        "createdAt": "2026-04-03T15:26:58.123Z",
+        "updatedAt": "2026-04-03T15:27:04.262Z",
+        "lastError": null,
+        "nextAction": "wait_publish"
+      },
+      {
+        "id": "e42fbb3b-05e6-437e-a33f-701a4bc287f7",
+        "runId": null,
+        "status": "RUNNING",
+        "xAccountId": null,
+        "xAccountHandle": null,
+        "createdAt": "2026-04-03T08:40:13.377Z",
+        "updatedAt": "2026-04-03T08:40:19.430Z",
+        "lastError": null,
+        "nextAction": "wait_publish"
+      },
+      {
+        "id": "fd696b10-a81a-4dbe-a79b-f7f1da9a0c0d",
+        "runId": null,
+        "status": "RUNNING",
+        "xAccountId": null,
+        "xAccountHandle": null,
+        "createdAt": "2026-04-03T08:38:17.835Z",
+        "updatedAt": "2026-04-03T08:38:23.923Z",
+        "lastError": null,
+        "nextAction": "wait_publish"
+      },
+      {
+        "id": "e919d31e-351f-4517-a5b9-33f8273c7562",
+        "runId": null,
+        "status": "RUNNING",
+        "xAccountId": null,
+        "xAccountHandle": null,
+        "createdAt": "2026-04-03T08:29:48.961Z",
+        "updatedAt": "2026-04-03T08:29:55.092Z",
+        "lastError": null,
+        "nextAction": "wait_publish"
+      }
+    ],
+    "published": [],
+    "failed": [
+      {
+        "id": "9a11ff70-c403-49ca-857e-bbf2c98a4a07",
+        "runId": null,
+        "status": "FAILED",
+        "xAccountHandle": null,
+        "lastError": "User  has no access token",
+        "updatedAt": "2026-04-03T08:06:23.411Z",
+        "nextAction": "retry_manually"
+      },
+      {
+        "id": "1c2c8a25-b42a-4fa5-a7a9-d98b2d3fe12b",
+        "runId": null,
+        "status": "FAILED",
+        "xAccountHandle": null,
+        "lastError": "User  has no access token",
+        "updatedAt": "2026-04-03T07:11:16.312Z",
+        "nextAction": "retry_manually"
+      },
+      {
+        "id": "5715ff09-49dc-4785-8346-e8160dac0ef4",
+        "runId": null,
+        "status": "FAILED",
+        "xAccountHandle": null,
+        "lastError": "User  has no access token",
+        "updatedAt": "2026-04-03T07:09:54.210Z",
+        "nextAction": "retry_manually"
+      }
+    ],
+    "requestId": "7b7cf3b9-2d3f-487f-b403-ba9e26971d80"
+  }
+}

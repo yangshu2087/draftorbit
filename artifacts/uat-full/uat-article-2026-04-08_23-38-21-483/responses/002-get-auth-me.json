@@ -1,0 +1,25 @@
+{
+  "label": "GET-/auth/me",
+  "status": 200,
+  "ok": true,
+  "requestId": "a359495d-9cf7-4a20-ae37-83c1b12cc57f",
+  "payload": {
+    "id": "b358eba2-fbd9-4abf-a506-18bcc94de824",
+    "email": "selfhost@draftorbit.local",
+    "handle": "",
+    "displayName": "Self-host Admin",
+    "avatarUrl": null,
+    "subscription": {
+      "plan": "PRO",
+      "status": "TRIALING",
+      "trialEndsAt": "2026-04-10T15:26:57.958Z",
+      "currentPeriodEnd": "2026-04-10T15:26:57.958Z"
+    },
+    "defaultWorkspace": {
+      "id": "874fe2d3-caff-41dd-b897-d0ad39fc2899",
+      "slug": "self-host",
+      "name": "Self-host Workspace",
+      "role": "OWNER"
+    }
+  }
+}

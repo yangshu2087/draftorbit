@@ -1,0 +1,89 @@
+{
+  "label": "GET-/v3/chat/runs/a7f3cafc-004a-4edb-b25e-10a9ac5db18a",
+  "status": 200,
+  "ok": true,
+  "requestId": "3bb18649-4b15-4389-acd7-fe8425a3e9bf",
+  "payload": {
+    "runId": "a7f3cafc-004a-4edb-b25e-10a9ac5db18a",
+    "status": "DONE",
+    "format": "article",
+    "result": {
+      "text": "围绕 AI 产品冷启动，写一篇适合 X 平台文章格式的长文，重点说明为什么流程比灵感更重要。：把内容链路跑成稳定系统\n\n导语\n别再靠灵感写 围绕 AI 产品冷启动，写一篇适合 X 平台文章格式的长文，重点说明为什么流程比灵感更重要。，把流程跑顺才是增长关键。\n\n一、围绕“围绕 AI 产品冷启动，写一篇适合 X 平台文章格式的长文，重点说明为什么流程比灵感更重要。”的执行链路不稳定，导致内容产出波动\n标题：把内容链路跑成稳定系统——AI 产品冷启动的流程优先论\n\n导语：\n当 AI 产品刚刚诞生，最先被提起的往往是灵感与创意。\n\n二、用“围绕”拆解动作，把选题到发布做成固定节奏\n可若没有一套成熟、可复制的流程，灵感很容易变成“闪光点”，无法持续产出。\n\n三、关注“产品冷启动”与发布反馈，形成下一轮优化闭环\n本文把 AI 产品冷启动的关键链路拆解成可执行的步骤，阐明为何流程比灵感更能决定成长。\n\n结尾\n你最想先优化哪一步？欢迎留言，我给你具体建议。",
+      "variants": [],
+      "imageKeywords": [
+        "ai",
+        "围绕",
+        "产品冷启动",
+        "市场洞察",
+        "技术验证",
+        "内容生成",
+        "用户反馈",
+        "标题"
+      ],
+      "qualityScore": 86.93,
+      "quality": {
+        "total": 86.93,
+        "aiTrace": 95,
+        "density": 93,
+        "platformFit": 85,
+        "readability": 77.89
+      },
+      "riskFlags": [],
+      "requestCostUsd": null,
+      "whySummary": [
+        "Expanded the outline into a draft suitable for the requested channel.",
+        "Fast path：按文案关键词生成素材建议与检索词，保证可发布素材包。",
+        "Fast path：由研究结果直接生成结构化大纲，减少一次模型往返。"
+      ],
+      "evidenceSummary": [],
+      "stepLatencyMs": {
+        "draft": 25574,
+        "media": 3,
+        "outline": 1,
+        "package": 2,
+        "humanize": 40467,
+        "research": 2
+      }
+    },
+    "publish": [],
+    "stages": [
+      {
+        "stage": "research",
+        "label": "正在研究话题",
+        "status": "DONE",
+        "summary": "以“围绕 AI 产品冷启动，写一篇适合 X 平台文章格式的长文，重点说明为什么流程比灵感更重要。”为主线，强调流程化执行与可复盘增长。"
+      },
+      {
+        "stage": "strategy",
+        "label": "正在规划结构",
+        "status": "DONE",
+        "summary": "已确定 hook：别再靠灵感写 围绕 AI 产品冷启动，写一篇适合 X 平台文章格式的长文，重点说明为什么流程比灵感更重要。，把流程跑顺才是增长关键。"
+      },
+      {
+        "stage": "draft",
+        "label": "正在生成草稿",
+        "status": "DONE",
+        "summary": "标题：把内容链路跑成稳定系统——AI 产品冷启动的流程优先论\n\n导语：\n当 AI 产品刚刚诞生，最先被提起的往往是灵感与创意。可若没有一套成熟、可复制的流程，灵感很容易变成“闪光点”，无法持续产出。本"
+      },
+      {
+        "stage": "voice",
+        "label": "正在匹配你的文风",
+        "status": "DONE",
+        "summary": "标题：把内容链路跑成稳定系统——AI 产品冷启动的流程优先论\n\n导语：\n当 AI 产品刚刚诞生，最先被提起的往往是灵感与创意。可若没有一套成熟、可复制的流程，灵感很容易变成“闪光点”，无法持续产出。本"
+      },
+      {
+        "stage": "media",
+        "label": "正在整理配图建议",
+        "status": "DONE",
+        "summary": "配图关键词：ai / 围绕 / 产品冷启动"
+      },
+      {
+        "stage": "publish_prep",
+        "label": "正在准备可发布结果",
+        "status": "DONE",
+        "summary": "结果包已就绪 · 质量 86.93"
+      }
+    ],
+    "requestId": "3bb18649-4b15-4389-acd7-fe8425a3e9bf"
+  }
+}
