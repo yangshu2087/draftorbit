@@ -184,6 +184,18 @@ export default function OperatorApp() {
     [runDetail?.result?.text]
   );
 
+  const exportArticleAction = useCallback(
+    async (text: string) => {
+      await navigator.clipboard.writeText(text);
+      pushToast({
+        title: '长文已复制',
+        description: '请直接粘贴到 X 文章编辑器继续发布。',
+        variant: 'success'
+      });
+    },
+    [pushToast]
+  );
+
   const runPipeline = useCallback(async (customIntent?: string) => {
     const finalIntent = (customIntent ?? intent).trim();
     if (!finalIntent) {
@@ -231,6 +243,11 @@ export default function OperatorApp() {
     setRunError(null);
 
     try {
+      if (runDetail.format === 'article') {
+        await exportArticleAction(manualMode ? manualDraft : cleanedResultText);
+        return;
+      }
+
       if (safeMode) {
         const preview = await preparePublish({
           runId: runDetail.runId,
@@ -261,7 +278,18 @@ export default function OperatorApp() {
     } finally {
       setBusyAction(null);
     }
-  }, [loadPage, router, runDetail?.runId, safeMode, selectedXAccountId]);
+  }, [
+    cleanedResultText,
+    exportArticleAction,
+    loadPage,
+    manualDraft,
+    manualMode,
+    router,
+    runDetail?.format,
+    runDetail?.runId,
+    safeMode,
+    selectedXAccountId
+  ]);
 
   const runTaskAction = useCallback(async (action: () => Promise<void>, busyKey: string, errorMessage: string) => {
     setBusyAction(busyKey);
@@ -349,6 +377,14 @@ export default function OperatorApp() {
         if (href) router.replace(href);
       }, `confirm-${runId}`, '确认发布失败，请稍后重试。'),
     [loadPage, router, runTaskAction]
+  );
+
+  const exportQueueItemAction = useCallback(
+    async (text: string) =>
+      runTaskAction(async () => {
+        await exportArticleAction(text);
+      }, 'export-article', '复制长文失败，请稍后重试。'),
+    [exportArticleAction, runTaskAction]
   );
 
   if (loading) {
@@ -602,6 +638,13 @@ export default function OperatorApp() {
                     ))}
                   </ul>
                 </div>
+              ) : runDetail.format === 'article' ? (
+                <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800">
+                  <div className="flex items-start gap-2">
+                    <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>当前长文先通过复制方式发布到 X 文章编辑器，暂不进入推文/串推发布队列。</span>
+                  </div>
+                </div>
               ) : (
                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
                   <div className="flex items-center gap-2">
@@ -642,21 +685,27 @@ export default function OperatorApp() {
                   variant="outline"
                   onClick={() => {
                     void navigator.clipboard.writeText(manualMode ? manualDraft : cleanedResultText);
-                    pushToast({ title: '已复制结果文本', variant: 'success' });
+                    pushToast({
+                      title: runDetail.format === 'article' ? '长文已复制' : '已复制结果文本',
+                      description: runDetail.format === 'article' ? '请粘贴到 X 文章编辑器继续发布。' : undefined,
+                      variant: 'success'
+                    });
                   }}
                 >
                   <Copy className="mr-2 h-4 w-4" />
-                  复制文本
+                  {runDetail.format === 'article' ? '复制长文' : '复制文本'}
                 </Button>
                 <Button disabled={busyAction === 'queue-result'} onClick={() => void handleQueueAction()}>
                   {busyAction === 'queue-result' ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : runDetail.format === 'article' ? (
+                    <Copy className="mr-2 h-4 w-4" />
                   ) : safeMode ? (
                     <ShieldCheck className="mr-2 h-4 w-4" />
                   ) : (
                     <Send className="mr-2 h-4 w-4" />
                   )}
-                  {safeMode ? '加入待确认' : '进入发布队列'}
+                  {runDetail.format === 'article' ? '复制到 X 文章编辑器' : safeMode ? '加入待确认' : '进入发布队列'}
                 </Button>
               </div>
             </div>
@@ -682,6 +731,7 @@ export default function OperatorApp() {
           onConnectLocalFiles={connectLocalFilesAction}
           onRebuildProfile={rebuildProfileAction}
           onConfirmPublish={confirmQueueItemAction}
+          onExportArticle={exportQueueItemAction}
         />
       ) : null}
     </AppShell>

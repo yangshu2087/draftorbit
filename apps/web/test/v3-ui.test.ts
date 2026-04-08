@@ -42,5 +42,12 @@ test('task panel metadata uses action-focused copy instead of backend page label
     tone: 'queue'
   });
 
+  assert.deepEqual(getTaskPanelMeta('export_article'), {
+    title: '先复制这篇长文再去发布',
+    description: '当前先通过复制方式发布到 X 文章编辑器，避免误走推文队列。',
+    primaryLabel: '复制长文',
+    tone: 'queue'
+  });
+
   assert.equal(getTaskPanelMeta('watch_generation'), null);
 });
