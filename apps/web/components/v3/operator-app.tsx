@@ -27,6 +27,7 @@ import {
   type V3RunResponse
 } from '../../lib/queries';
 import { buildAppTaskHref, getTaskPanelMeta } from '../../lib/v3-ui';
+import { normalizeStageSummary, summarizeWhySummary } from '../../lib/v3-result-copy';
 import { toUiError, type UiError } from '../../lib/ui-error';
 import { cn } from '../../lib/utils';
 import { Button } from '../ui/button';
@@ -167,9 +168,15 @@ export default function OperatorApp() {
       stageOrder.map((stage) => ({
         ...stage,
         event: stageEvents[stage.key],
+        summary: normalizeStageSummary(stageEvents[stage.key]?.summary),
         tone: stageTone(stageEvents[stage.key]?.status)
       })),
     [stageEvents]
+  );
+
+  const cleanedWhySummary = useMemo(
+    () => summarizeWhySummary(runDetail?.result?.whySummary ?? []),
+    [runDetail?.result?.whySummary]
   );
 
   const runPipeline = useCallback(async (customIntent?: string) => {
@@ -522,7 +529,7 @@ export default function OperatorApp() {
                   )}
                 >
                   <p className="font-medium">{stage.title}</p>
-                  <p className="mt-1 text-xs leading-5">{stage.event?.summary ?? (stage.tone === 'idle' ? '等待中' : stage.event?.label ?? '处理中')}</p>
+                  <p className="mt-1 text-xs leading-5">{stage.summary ?? (stage.tone === 'idle' ? '等待中' : stage.event?.label ?? '处理中')}</p>
                 </div>
               ))}
             </div>
@@ -557,11 +564,11 @@ export default function OperatorApp() {
                   <p className="mt-2 text-xs text-slate-500">{qualityLabel(runDetail.result.qualityScore)}</p>
                 </div>
                 <div className="rounded-2xl border border-slate-900/10 bg-slate-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">为什么这样写</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">这一版重点</p>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {runDetail.result.whySummary.length ? runDetail.result.whySummary.map((item) => (
+                    {cleanedWhySummary.length ? cleanedWhySummary.map((item) => (
                       <span key={item} className="rounded-full border border-slate-900/10 bg-white px-3 py-1.5 text-xs text-slate-600">{item}</span>
-                    )) : <span className="text-sm text-slate-500">本次没有额外说明。</span>}
+                    )) : <span className="text-sm text-slate-500">这次主要按你输入的这句话直接生成。</span>}
                   </div>
                 </div>
               </div>
@@ -600,10 +607,10 @@ export default function OperatorApp() {
               )}
 
               <details className="rounded-2xl border border-slate-900/10 bg-slate-50 p-4">
-                <summary className="cursor-pointer list-none text-sm font-medium text-slate-900">查看证据与配图建议</summary>
+                <summary className="cursor-pointer list-none text-sm font-medium text-slate-900">查看依据与配图建议</summary>
                 <div className="mt-4 grid gap-4 md:grid-cols-2">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">已用到的证据</p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">这次参考了什么</p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {runDetail.result.evidenceSummary.length ? runDetail.result.evidenceSummary.map((item) => (
                         <span key={item} className="rounded-full border border-slate-900/10 bg-white px-3 py-1 text-xs text-slate-600">{item}</span>
