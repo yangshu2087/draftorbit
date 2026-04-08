@@ -27,7 +27,7 @@ function CallbackInner() {
     if (!state || !code) {
       setPhase('error');
       setMessage('缺少授权参数，请返回后重试。');
-      const t = setTimeout(() => router.replace('/chat?xbind=error'), 2200);
+      const t = setTimeout(() => router.replace('/connect?xbind=error'), 2200);
       return () => clearTimeout(t);
     }
 
@@ -37,14 +37,14 @@ function CallbackInner() {
       try {
         await finishXAccountOAuthBind(state, code);
         if (!cancelled) {
-          setMessage('绑定成功，正在返回聊天中枢…');
-          setTimeout(() => router.replace('/chat?xbind=success'), 400);
+          setMessage('绑定成功，正在返回 Connect…');
+          setTimeout(() => router.replace('/connect?xbind=success'), 400);
         }
       } catch (e) {
         if (cancelled) return;
         setPhase('error');
         setMessage(e instanceof Error ? e.message : '绑定失败');
-        setTimeout(() => router.replace('/chat?xbind=error'), 2500);
+        setTimeout(() => router.replace('/connect?xbind=error'), 2500);
       }
     })();
 
@@ -57,7 +57,7 @@ function CallbackInner() {
     <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-white px-4">
       {phase === 'loading' ? <Spinner /> : null}
       <p className={`text-center text-sm ${phase === 'error' ? 'text-red-600' : 'text-slate-700'}`}>{message}</p>
-      {phase === 'error' ? <p className="text-center text-xs text-slate-400">即将返回聊天中枢…</p> : null}
+      {phase === 'error' ? <p className="text-center text-xs text-slate-400">即将返回 Connect 页面…</p> : null}
     </div>
   );
 }
