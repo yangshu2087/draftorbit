@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation';
+import HomePage from '../components/v3/home-page';
 
-export default function IndexPage() {
-  redirect('/chat');
+export default function MarketingHomePage() {
+  return <HomePage />;
 }

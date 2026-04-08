@@ -30,10 +30,10 @@ function GoogleCallbackInner() {
           throw new Error(data?.message || 'Google 登录失败');
         }
         setToken(data.token);
-        router.replace('/chat');
+        router.replace('/app?from=google-login');
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Google 登录失败');
-        setTimeout(() => router.replace('/'), 2000);
+        setTimeout(() => router.replace('/app?from=google-login'), 2000);
       }
     })();
   }, [router, searchParams]);

@@ -2,19 +2,12 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Bot, CreditCard, LogOut, Sparkles } from 'lucide-react';
+import { Bot, LogOut, Sparkles } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Button } from '../ui/button';
 import { clearToken, getToken, getUserFromToken } from '../../lib/api';
+import { getShellNavItems } from '../../lib/v3-ui';
 import { cn } from '../../lib/utils';
-
-const signedInNav = [
-  { href: '/app', label: 'Operator', icon: Bot }
-];
-
-const publicNav = [
-  { href: '/pricing', label: 'Pricing', icon: CreditCard }
-];
 
 export function planLabel(plan?: string | null): string {
   const normalized = (plan ?? 'STARTER').toUpperCase();
@@ -49,9 +42,10 @@ export function AppShell(props: {
   }, []);
 
   const navItems = useMemo(() => {
-    if (hasToken) return signedInNav;
-    if (props.publicMode) return publicNav;
-    return [];
+    return getShellNavItems({ hasToken, publicMode: Boolean(props.publicMode) }).map((item) => ({
+      ...item,
+      icon: Bot
+    }));
   }, [hasToken, props.publicMode]);
 
   return (
@@ -66,7 +60,7 @@ export function AppShell(props: {
               <span>DraftOrbit</span>
             </Link>
             <span className="hidden rounded-full border border-slate-900/10 bg-slate-100 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.08em] text-slate-500 md:inline-flex">
-              X AI Operator
+              一句话生成
             </span>
           </div>
 
@@ -113,9 +107,7 @@ export function AppShell(props: {
                 </Button>
               </>
             ) : (
-              <Button asChild size="sm" variant="outline">
-                <Link href="/pricing">查看套餐</Link>
-              </Button>
+              null
             )}
           </div>
         </div>

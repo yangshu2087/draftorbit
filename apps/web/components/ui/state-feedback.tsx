@@ -8,12 +8,13 @@ import type { UiError } from '../../lib/ui-error';
 function nextActionLabel(nextAction?: string) {
   if (!nextAction) return null;
   const mapping: Record<string, string> = {
-    connect_x_self: '先连接自己的 X 账号',
-    connect_learning_source: '先补充学习来源',
-    run_first_generation: '先运行一次生成',
+    connect_x_self: '先完成 X 账号连接',
+    connect_learning_source: '先补一个学习来源',
+    rebuild_profile: '先更新风格画像',
+    run_first_generation: '先开始生成第一条内容',
     watch_generation: '等待当前生成完成后再试',
-    confirm_publish: '确认账号后继续发布',
-    open_queue: '前往 Queue 查看状态'
+    confirm_publish: '先确认这条内容是否发布',
+    open_queue: '先处理当前待确认内容'
   };
   return mapping[nextAction] ?? nextAction;
 }
