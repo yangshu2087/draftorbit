@@ -1,0 +1,18 @@
+{
+  "label": "POST-/v3/profile/rebuild-expected-failure",
+  "status": 400,
+  "ok": false,
+  "requestId": "73036e54-5982-4fbe-b333-0fbbf99976ee",
+  "payload": {
+    "code": "PROFILE_REBUILD_BLOCKED",
+    "message": "缺少可用的 X 历史数据，请先完成 X 账号绑定后再重建画像",
+    "details": {
+      "nextAction": "connect_x_self",
+      "blockingReason": "X_ACCOUNT_NOT_READY"
+    },
+    "requestId": "73036e54-5982-4fbe-b333-0fbbf99976ee",
+    "statusCode": 400,
+    "timestamp": "2026-04-08T11:43:23.699Z",
+    "path": "/v3/profile/rebuild"
+  }
+}

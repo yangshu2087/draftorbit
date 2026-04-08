@@ -1,0 +1,52 @@
+{
+  "label": "GET-/v3/chat/runs/bbb08275-e6ae-4142-8ba9-c8af0eeeef44",
+  "status": 200,
+  "ok": true,
+  "requestId": "96cd0505-b5f7-41eb-a1bf-d43be761a81a",
+  "payload": {
+    "runId": "bbb08275-e6ae-4142-8ba9-c8af0eeeef44",
+    "status": "FAILED",
+    "format": "tweet",
+    "result": null,
+    "publish": [],
+    "stages": [
+      {
+        "stage": "research",
+        "label": "正在研究话题",
+        "status": "DONE",
+        "summary": "以“ai”为主线，强调流程化执行与可复盘增长。"
+      },
+      {
+        "stage": "strategy",
+        "label": "正在规划结构",
+        "status": "DONE",
+        "summary": "已确定 hook：别再靠灵感写 ai，把流程跑顺才是增长关键。"
+      },
+      {
+        "stage": "draft",
+        "label": "正在生成草稿",
+        "status": "FAILED",
+        "summary": null
+      },
+      {
+        "stage": "voice",
+        "label": "正在匹配你的文风",
+        "status": "PENDING",
+        "summary": null
+      },
+      {
+        "stage": "media",
+        "label": "正在整理配图建议",
+        "status": "PENDING",
+        "summary": null
+      },
+      {
+        "stage": "publish_prep",
+        "label": "正在准备可发布结果",
+        "status": "PENDING",
+        "summary": null
+      }
+    ],
+    "requestId": "96cd0505-b5f7-41eb-a1bf-d43be761a81a"
+  }
+}

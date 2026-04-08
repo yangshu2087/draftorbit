@@ -1,0 +1,49 @@
+{
+  "label": "stream-v3-bbb08275-e6ae-4142-8ba9-c8af0eeeef44",
+  "status": 200,
+  "ok": true,
+  "payload": [
+    {
+      "stage": "research",
+      "label": "正在研究话题",
+      "status": "running",
+      "summary": null,
+      "requestId": "2239bc7c-4fe7-43c8-b05a-0c2029ca8eb0"
+    },
+    {
+      "stage": "research",
+      "label": "正在研究话题",
+      "status": "done",
+      "summary": "以“ai”为主线，强调流程化执行与可复盘增长。",
+      "requestId": "2239bc7c-4fe7-43c8-b05a-0c2029ca8eb0"
+    },
+    {
+      "stage": "strategy",
+      "label": "正在规划结构",
+      "status": "running",
+      "summary": null,
+      "requestId": "2239bc7c-4fe7-43c8-b05a-0c2029ca8eb0"
+    },
+    {
+      "stage": "strategy",
+      "label": "正在规划结构",
+      "status": "done",
+      "summary": "已确定 hook：别再靠灵感写 ai，把流程跑顺才是增长关键。",
+      "requestId": "2239bc7c-4fe7-43c8-b05a-0c2029ca8eb0"
+    },
+    {
+      "stage": "draft",
+      "label": "正在生成草稿",
+      "status": "running",
+      "summary": null,
+      "requestId": "2239bc7c-4fe7-43c8-b05a-0c2029ca8eb0"
+    },
+    {
+      "stage": "error",
+      "label": "生成失败",
+      "status": "failed",
+      "summary": "OPENROUTER_API_KEY not configured",
+      "requestId": "2239bc7c-4fe7-43c8-b05a-0c2029ca8eb0"
+    }
+  ]
+}

@@ -2,7 +2,7 @@
 
 > 评审对象：当前 `codex/design-md-rollout` 工作树中的 V3 改造  
 > 当前分支：`codex/design-md-rollout`  
-> 当前 HEAD：`a8d35bcd21fc63061520a54ecdd52cb5c69466a3`
+> 当前 HEAD：`dacb836f78ec85382ddd6a8ac567c4509ff702f7`
 
 ## 1. 结论
 
@@ -10,8 +10,8 @@
   证据：存在 `/v3/*` API、`/app /connect /queue` 页面、V3 本地 UAT 报告。
 - **结论 2（高）**：V3 当前状态更适合描述为**“本地可验证、尚未完成提交评审”**，而不是“已完成发布候选”。  
   证据：当前工作树存在大量未提交改动；发布报告仍只覆盖 V2。
-- **结论 3（高）**：V3 核心壳层与最小闭环已经连通，但仍带有**V2/V3 混合依赖**和少量文案/路由残留。  
-  证据：`/v3/*` API 已新增；但 OAuth callback 仍走 `/v2/x-accounts/oauth/callback`；错误页/404 页仍写“聊天中枢”并指向 `/chat`。
+- **结论 3（高）**：V3 核心壳层与最小闭环已经连通，且本轮已完成关键 cutover 收口；当前主要剩余项是**端到端验收与发布准备**。  
+  证据：OAuth callback 已切到 `/v3/connections/x-self/callback`；错误页/404 已改为 `/app` / Operator 文案；legacy redirect 仍保留兼容层。
 
 ## 2. 评审范围
 
@@ -206,46 +206,43 @@ UAT 还显示：
 
 ## 7. 当前缺口与混合状态
 
-### 7.1 仍存在 V2/V3 混合依赖
+### 7.1 已收口：OAuth callback 不再主动依赖 V2
 
 例子：
 
-- `apps/web/lib/queries.ts` 中，X OAuth 绑定回调仍调用：
+- `apps/web/lib/queries.ts` 中，X OAuth 绑定回调已切换为：
 
 ```ts
-/v2/x-accounts/oauth/callback
+/v3/connections/x-self/callback
 ```
 
 判断：
 
-- **[高]** V3 前端壳还在复用 V2 callback API。
-- 这不一定是 bug，但它明确说明“V3 尚未完成完全切割”。
+- **[高]** 前端不再主动依赖 `/v2/x-accounts/oauth/callback`。
+- **[中]** V2 callback 仍保留作为历史兼容端点，但本轮无新增 V2 能力。
 
-### 7.2 错误页和 404 文案仍残留“聊天中枢”
+### 7.2 已收口：错误页与 404 文案统一到 Operator
 
 文件：
 
 - `apps/web/app/error.tsx`
 - `apps/web/app/not-found.tsx`
+- `apps/web/app/x-accounts/oauth/callback/page.tsx`
 
 现状：
 
-- 文案仍写“回到聊天中枢”
-- 链接仍指向 `/chat`
+- 文案已改为 Operator/Connect 叙事
+- 链接已改为 `/app`（callback 错误态提示改为返回 Connect）
 
 判断：
 
-- **[高]** 功能上不阻断，因为 `/chat` 已重定向到 `/app`
-- **[高]** 但产品语言已经与 V3 operator 叙事不一致
+- **[高]** 本轮已消除前台“聊天中枢”残留，产品语言与 V3 对齐。
 
-### 7.3 本地 UAT 没覆盖所有 V3 mutation
+### 7.3 本地 UAT 已扩展覆盖关键 mutation（脚本层）
 
 已覆盖：
 
 - bootstrap / profile / queue / run / stream / detail / browser routes
-
-未在本轮本地 UAT 中证明的关键动作：
-
 - `connections/x-self`
 - `connections/x-target`
 - `connections/obsidian`
@@ -255,10 +252,11 @@ UAT 还显示：
 - `publish/prepare`
 - `publish/confirm`
 - `billing/checkout`
+- `publish/prepare` 失败场景（可读错误 + nextAction）
 
 判断：
 
-- **[高]** 这些端点“代码存在”，但还不能仅凭这轮 UAT 就说“已端到端验证完毕”。
+- **[中]** 关键动作已进入 full UAT 脚本覆盖范围；是否在目标环境全绿，仍取决于外部依赖可用性（X/Stripe 测试配置）。
 
 ### 7.4 V3 仍未形成新的生产发布证据
 
@@ -283,20 +281,17 @@ UAT 还显示：
 
 - V3 全功能端到端可用
 - V3 生产可发布
-- V2 依赖已完全切除
-- V3 文案与异常态已全部完成收口
+- 外部依赖（X/Stripe）在目标环境下已全链路稳定
 
 ## 9. 建议的下一步
 
 1. **先做 V3 收口，不急着再扩功能**
-   - 把 `/chat` 话术彻底改成 `/app` / Operator 语言
-   - 清理 error / not-found 等残留文案
+   - 继续保持 `/app` / Operator 语言一致性，不回引旧入口文案
+   - 保留 redirect 兼容层，避免破坏历史链接
 
 2. **补 V3 关键 mutation 验证**
-   - connect 系列
-   - publish prepare / confirm
-   - profile rebuild
-   - billing checkout
+   - 在目标测试环境跑全量 `uat:full`
+   - 明确记录 x-self 与 checkout 在目标环境的通过证据
 
 3. **单独做一次“V3 可提交评审”**
    - 把当前 working tree 中哪些该保留、哪些该拆分、哪些还不该合并讲清楚

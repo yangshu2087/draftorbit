@@ -82,9 +82,9 @@
 
 ### P0：入口索引统一
 
-- [ ] 把后续新增的长期文档都纳入 `docs/README.md`
-- [ ] 明确 `docs/project-entry.md` 是“新会话优先入口”
-- [ ] 明确 `docs/knowledge-recovery-2026-04-08.md` 是“完整事实档案”
+- [x] 把后续新增的长期文档都纳入 `docs/README.md`
+- [x] 明确 `docs/project-entry.md` 是“新会话优先入口”
+- [x] 明确 `docs/knowledge-recovery-2026-04-08.md` 是“完整事实档案”
 
 ### P1：RAG 镜像同步
 

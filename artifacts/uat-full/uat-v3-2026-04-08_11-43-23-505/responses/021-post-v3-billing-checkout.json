@@ -1,0 +1,10 @@
+{
+  "label": "POST-/v3/billing/checkout",
+  "status": 201,
+  "ok": true,
+  "requestId": "45fdc9b8-617a-4853-9859-c4dd2a862f8f",
+  "payload": {
+    "url": "http://localhost:3000/pricing?checkout=mock&plan=STARTER&cycle=MONTHLY",
+    "requestId": "45fdc9b8-617a-4853-9859-c4dd2a862f8f"
+  }
+}

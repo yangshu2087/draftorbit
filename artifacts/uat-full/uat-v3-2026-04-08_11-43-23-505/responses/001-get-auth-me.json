@@ -1,0 +1,25 @@
+{
+  "label": "GET-/auth/me",
+  "status": 200,
+  "ok": true,
+  "requestId": "c882e3df-2163-4f1f-b847-87d844cd58ec",
+  "payload": {
+    "id": "e87a93c6-4ed3-40ae-b8e5-518672ae38e7",
+    "email": "uat.v3.local@draftorbit.local",
+    "handle": "uat_v3_local",
+    "displayName": "UAT V3 Local",
+    "avatarUrl": null,
+    "subscription": {
+      "plan": "STARTER",
+      "status": "TRIALING",
+      "trialEndsAt": "2026-04-11T10:14:59.936Z",
+      "currentPeriodEnd": "2026-04-11T10:14:59.936Z"
+    },
+    "defaultWorkspace": {
+      "id": "ee605462-b8de-4de2-bad6-3a1617dc5722",
+      "slug": "uat-v3-local",
+      "name": "UAT V3 Local",
+      "role": "OWNER"
+    }
+  }
+}

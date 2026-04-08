@@ -58,7 +58,7 @@
 - 技术栈：Next.js / NestJS / Prisma / BullMQ / PostgreSQL / Redis / Tauri shell  
   证据：`README.md`、`apps/desktop/README.md`
 - 当前工作分支：`codex/design-md-rollout`
-- 当前 HEAD：`a8d35bcd21fc63061520a54ecdd52cb5c69466a3`
+- 当前 HEAD：`dacb836f78ec85382ddd6a8ac567c4509ff702f7`
 - 当前主分支：`main` → `cbdbdf48c00cb641b0a4e862b8ef435c11ea82be`
 
 ## 目前最缺的恢复内容
