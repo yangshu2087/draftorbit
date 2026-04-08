@@ -1,5 +1,9 @@
 import type {
-  AuditLogEntity,
+  AuditLogsResponse,
+  AuditSummaryEntity,
+  UsageEventEntity,
+  UsageSummaryEntity,
+  UsageTrendsEntity,
   DraftEntity,
   ProviderEntity,
   PublishJobEntity,
@@ -288,37 +292,23 @@ export async function routeProviderText(input: {
 }
 
 export async function fetchUsageSummary() {
-  return apiFetch<Record<string, unknown>>('/usage/summary');
+  return apiFetch<UsageSummaryEntity>('/usage/summary');
 }
 
 export async function fetchUsageEvents(limit = 100) {
-  return apiFetch<Record<string, unknown>[]>(`/usage/events?limit=${limit}`);
+  return apiFetch<UsageEventEntity[]>(`/usage/events?limit=${limit}`);
 }
 
 export async function fetchUsageTrends(days = 14) {
-  return apiFetch<{
-    workspaceId: string;
-    days: number;
-    from: string;
-    points: Array<{
-      date: string;
-      generation: number;
-      naturalization: number;
-      image: number;
-      reply: number;
-      publish: number;
-      totalEvents: number;
-      costUsd: number;
-    }>;
-  }>(`/usage/trends?days=${days}`);
+  return apiFetch<UsageTrendsEntity>(`/usage/trends?days=${days}`);
 }
 
 export async function fetchAuditLogs(limit = 100) {
-  return apiFetch<AuditLogEntity[]>(`/audit/logs?limit=${limit}`);
+  return apiFetch<AuditLogsResponse>(`/audit/logs?limit=${limit}`);
 }
 
 export async function fetchAuditSummary() {
-  return apiFetch<Record<string, unknown>>('/audit/summary');
+  return apiFetch<AuditSummaryEntity>('/audit/summary');
 }
 
 export async function fetchMediaAssets() {
