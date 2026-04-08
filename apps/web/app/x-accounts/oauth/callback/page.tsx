@@ -37,7 +37,7 @@ function CallbackInner() {
       try {
         await finishXAccountOAuthBind(state, code);
         if (!cancelled) {
-          setMessage('绑定成功，正在返回 Operator…');
+          setMessage('绑定成功，正在返回生成器…');
           setTimeout(() => router.replace('/app?nextAction=connect_x_self&xbind=success'), 400);
         }
       } catch (e) {
@@ -57,7 +57,7 @@ function CallbackInner() {
     <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-white px-4">
       {phase === 'loading' ? <Spinner /> : null}
       <p className={`text-center text-sm ${phase === 'error' ? 'text-red-600' : 'text-slate-700'}`}>{message}</p>
-      {phase === 'error' ? <p className="text-center text-xs text-slate-400">即将返回 Operator…</p> : null}
+      {phase === 'error' ? <p className="text-center text-xs text-slate-400">即将返回生成器…</p> : null}
     </div>
   );
 }

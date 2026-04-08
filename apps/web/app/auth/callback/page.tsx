@@ -52,13 +52,13 @@ function CallbackInner() {
         if (!data?.token) throw new Error('未收到令牌，请重试。');
         if (!cancelled) {
           setToken(data.token);
-          router.replace('/');
+          router.replace('/app?from=auth-login');
         }
       } catch (e) {
         if (cancelled) return;
         setPhase('error');
         setMessage(e instanceof Error ? e.message : '登录失败');
-        setTimeout(() => router.replace('/'), 3000);
+        setTimeout(() => router.replace('/app?from=auth-login'), 3000);
       }
     })();
 

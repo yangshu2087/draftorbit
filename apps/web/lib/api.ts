@@ -3,6 +3,7 @@ const DEFAULT_API_TIMEOUT_MS = Number(process.env.NEXT_PUBLIC_API_TIMEOUT_MS ?? 
 
 const PUBLIC_API_PREFIXES = new Set([
   '/billing/plans',
+  '/v3/billing/plans',
   '/auth/x/authorize',
   '/auth/google/authorize',
   '/auth/local/session'

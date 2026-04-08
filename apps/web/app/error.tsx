@@ -25,7 +25,7 @@ export default function GlobalError({
             重新加载
           </Button>
           <Button asChild size="sm" variant="outline">
-            <Link href="/app">回到 Operator</Link>
+            <Link href="/app">回到生成器</Link>
           </Button>
         </div>
       </div>
