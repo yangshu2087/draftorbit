@@ -49,6 +49,12 @@ const TASK_PANEL_META: Record<string, TaskPanelMeta> = {
     description: '快速看一眼文案和风险，再决定是否发出。',
     primaryLabel: '查看待确认内容',
     tone: 'queue'
+  },
+  export_article: {
+    title: '先复制这篇长文再去发布',
+    description: '当前先通过复制方式发布到 X 文章编辑器，避免误走推文队列。',
+    primaryLabel: '复制长文',
+    tone: 'queue'
   }
 };
 

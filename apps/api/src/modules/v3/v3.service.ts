@@ -107,11 +107,23 @@ export function buildV3PromptEnvelope(input: {
     '自动完成：意图理解、结构规划、文风适配、X 平台合规检查。',
     '不要把问题反抛给用户，不要要求用户再填写复杂 brief。',
     '请你自动判断目标受众、表达角度、hook、thread 结构、CTA 与风险控制。',
+    input.format === 'article'
+      ? '如果输出 article，请按 X 文章格式组织：标题、导语、3-5 个小节、结尾行动句；不要写成 tweet/thread 的短格式。'
+      : '如果输出 tweet/thread，请优先保证可直接发布、读完即可懂。 ',
     input.styleSummary ? `用户风格摘要：${input.styleSummary}` : '用户风格摘要：如有历史内容，请优先匹配其稳定表达方式。',
     input.sourceEvidence && input.sourceEvidence.length > 0
       ? `已连接证据：${input.sourceEvidence.join('；')}`
       : '已连接证据：若缺少外部证据，请基于用户意图与 X 平台语境完成生成。'
   ].join('\n');
+}
+
+export function resolveV3PublishGuard(format: 'tweet' | 'thread' | 'article') {
+  if (format !== 'article') return null;
+  return {
+    blockingReason: 'ARTICLE_PUBLISH_NOT_SUPPORTED',
+    nextAction: 'export_article',
+    message: '当前长文暂不支持直接发布，请先复制到 X 文章编辑器。'
+  };
 }
 
 type SourceRow = {
@@ -162,10 +174,17 @@ function parsePackageResult(result: unknown): PackageResult | null {
   return row as unknown as PackageResult;
 }
 
-function buildRiskFlags(pkg: PackageResult | null): string[] {
+function buildRiskFlags(pkg: PackageResult | null, format: 'tweet' | 'thread' | 'article'): string[] {
   if (!pkg) return ['结果包缺失，请重新生成'];
   const flags: string[] = [];
-  if (pkg.charCount > 280) flags.push('长度超出单条推文限制');
+  if (format === 'article') {
+    const sectionCount = (pkg.tweet.match(/(?:^|\n)[一二三四五六七八九十]、/gu) ?? []).length;
+    if (pkg.charCount < 400) flags.push('长文偏短，建议补充 3-5 个小节');
+    if (sectionCount < 3) flags.push('长文结构偏弱，建议至少保留 3 个小节');
+    if (/#[\p{L}0-9_]+/u.test(pkg.tweet)) flags.push('X 长文正文不建议带 hashtag');
+  } else if (pkg.charCount > 280) {
+    flags.push('长度超出单条推文限制');
+  }
   if ((pkg.quality?.aiTrace ?? 100) < 68) flags.push('AI 痕迹偏重，建议再来一版');
   if ((pkg.quality?.platformFit ?? 100) < 70) flags.push('平台适配度偏低，建议手动编辑');
   if ((pkg.quality?.total ?? 100) < 72) flags.push('整体质量未达到推荐阈值');
@@ -377,15 +396,17 @@ export class V3Service {
       ? Object.values(pkg.stepExplain).filter(Boolean).slice(0, 3)
       : [];
 
+    const format =
+      generation.type === GenerationType.THREAD
+        ? 'thread'
+        : generation.type === GenerationType.LONG
+          ? 'article'
+          : 'tweet';
+
     return {
       runId: generation.id,
       status: generation.status,
-      format:
-        generation.type === GenerationType.THREAD
-          ? 'thread'
-          : generation.type === GenerationType.LONG
-            ? 'article'
-            : 'tweet',
+      format,
       result: pkg
         ? {
             text: pkg.tweet,
@@ -393,7 +414,7 @@ export class V3Service {
             imageKeywords: pkg.imageKeywords,
             qualityScore: pkg.quality?.total ?? null,
             quality: pkg.quality,
-            riskFlags: buildRiskFlags(pkg),
+            riskFlags: buildRiskFlags(pkg, format),
             requestCostUsd: null,
             whySummary,
             evidenceSummary: buildV3SourceEvidence(state.sources),
@@ -572,6 +593,13 @@ export class V3Service {
     }
 
     const pkg = parsePackageResult(generation.result);
+    const format =
+      generation.type === GenerationType.THREAD
+        ? 'thread'
+        : generation.type === GenerationType.LONG
+          ? 'article'
+          : 'tweet';
+    const publishGuard = resolveV3PublishGuard(format);
     const selected = input.xAccountId
       ? state.xAccounts.find((row) => row.id === input.xAccountId) ?? null
       : state.defaultXAccount;
@@ -587,14 +615,14 @@ export class V3Service {
           }
         : null,
       safeMode: input.safeMode ?? true,
-      blockingReason: !selected ? 'NO_ACTIVE_X_ACCOUNT' : null,
-      nextAction: !selected ? 'connect_x_self' : 'confirm_publish',
+      blockingReason: publishGuard?.blockingReason ?? (!selected ? 'NO_ACTIVE_X_ACCOUNT' : null),
+      nextAction: publishGuard?.nextAction ?? (!selected ? 'connect_x_self' : 'confirm_publish'),
       preview: pkg
         ? {
             text: pkg.tweet,
             charCount: pkg.charCount,
             qualityScore: pkg.quality.total,
-            riskFlags: buildRiskFlags(pkg),
+            riskFlags: buildRiskFlags(pkg, format),
             imageKeywords: pkg.imageKeywords
           }
         : null
@@ -620,6 +648,24 @@ export class V3Service {
         details: {
           nextAction: 'watch_generation',
           blockingReason: 'RUN_NOT_READY'
+        }
+      });
+    }
+
+    const format =
+      generation.type === GenerationType.THREAD
+        ? 'thread'
+        : generation.type === GenerationType.LONG
+          ? 'article'
+          : 'tweet';
+    const publishGuard = resolveV3PublishGuard(format);
+    if (publishGuard) {
+      throw new BadRequestException({
+        code: publishGuard.blockingReason,
+        message: publishGuard.message,
+        details: {
+          nextAction: publishGuard.nextAction,
+          blockingReason: publishGuard.blockingReason
         }
       });
     }
@@ -656,15 +702,16 @@ export class V3Service {
       .filter((run) => run.publishJobs.length === 0)
       .map((run) => {
         const pkg = parsePackageResult(run.result);
+        const format =
+          run.type === GenerationType.THREAD ? 'thread' : run.type === GenerationType.LONG ? 'article' : 'tweet';
         return {
           runId: run.id,
-          format:
-            run.type === GenerationType.THREAD ? 'thread' : run.type === GenerationType.LONG ? 'article' : 'tweet',
+          format,
           text: pkg?.tweet ?? null,
           qualityScore: pkg?.quality.total ?? null,
-          riskFlags: buildRiskFlags(pkg),
+          riskFlags: buildRiskFlags(pkg, format),
           createdAt: run.createdAt.toISOString(),
-          nextAction: 'confirm_publish'
+          nextAction: format === 'article' ? 'export_article' : 'confirm_publish'
         };
       });
 

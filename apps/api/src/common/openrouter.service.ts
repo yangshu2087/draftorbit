@@ -146,6 +146,30 @@ export class OpenRouterService {
     }
 
     if (joined.includes('primarytweet') || joined.includes('"thread"')) {
+      if (joined.includes('类型：long') || joined.includes('x 文章')) {
+        return JSON.stringify({
+          primaryTweet: [
+            'AI 产品冷启动，不要从写文案开始',
+            '',
+            '导语',
+            '冷启动最难的不是没人看见，而是你还没把增长动作排成稳定节奏。',
+            '',
+            '一、先把目标收紧到一个动作',
+            '先确认这一轮到底要涨认知、涨互动，还是拿到第一批精准反馈。',
+            '',
+            '二、把内容生产做成固定流程',
+            '把选题、出稿、审批、发布、复盘排成固定节奏，内容质量才会稳定上升。',
+            '',
+            '三、用复盘把下一轮迭代接上',
+            '每次发布后只保留真正有效的结构和表达，下一轮才会越做越顺。',
+            '',
+            '结尾',
+            '如果你愿意，我也可以把这篇再拆成 thread 版本。'
+          ].join('\n'),
+          thread: []
+        });
+      }
+
       return JSON.stringify({
         primaryTweet:
           `多数 X 账号增长慢，不是内容差，而是流程断裂：选题靠灵感、发布靠随机、复盘靠感觉。建议固定“选题→草稿→审批→发布→复盘”节奏，连续两周就能看到互动质量提升。#${marker}`,
@@ -188,8 +212,33 @@ export class OpenRouterService {
 
     if (
       (joined.includes('"tweet"') && joined.includes('"variants"')) ||
-      joined.includes('输出最终 tweet')
+      joined.includes('输出最终 tweet') ||
+      joined.includes('输出最终长文正文')
     ) {
+      if (joined.includes('x 长文发布编辑') || joined.includes('x 文章编辑器')) {
+        return JSON.stringify({
+          tweet: [
+            'AI 产品冷启动，不要从写文案开始',
+            '',
+            '导语',
+            '冷启动最难的不是没人看见，而是你还没把增长动作排成稳定节奏。',
+            '',
+            '一、先把目标收紧到一个动作',
+            '先把问题收紧到一个目标动作，团队判断才会稳定。',
+            '',
+            '二、把内容生产做成固定流程',
+            '把选题、出稿、审批、发布、复盘排成连续动作，质量才不会忽高忽低。',
+            '',
+            '三、用复盘把下一轮迭代接上',
+            '只有把复盘接进下一轮，增长才会逐步变得可复制。',
+            '',
+            '结尾',
+            '如果你愿意，我也可以把这篇再拆成 thread 版本。'
+          ].join('\n'),
+          variants: []
+        });
+      }
+
       return JSON.stringify({
         tweet:
           `别把增长寄托在“灵感爆发”。把 X 运营改成固定流水线：选题→草稿→审批→发布→复盘。流程稳定后，质量和效率会一起上升。#${marker}`,
@@ -207,6 +256,27 @@ export class OpenRouterService {
     }
 
     if (joined.includes('输出纯文本') || joined.includes('重写')) {
+      if (joined.includes('x 长文润色编辑')) {
+        return [
+          'AI 产品冷启动，不要从写文案开始',
+          '',
+          '导语',
+          '冷启动最难的不是没人看见，而是你还没把增长动作排成稳定节奏。',
+          '',
+          '一、先把目标收紧到一个动作',
+          '先明确这一轮最重要的增长动作，内容判断才不会失焦。',
+          '',
+          '二、把内容生产做成固定流程',
+          '把选题、出稿、审批、发布、复盘连成固定节奏，质量才会稳定上升。',
+          '',
+          '三、用复盘把下一轮迭代接上',
+          '每一次复盘都要服务下一次迭代，这样内容才会越来越准。',
+          '',
+          '结尾',
+          '如果你愿意，我也可以把这篇再拆成 thread 版本。'
+        ].join('\n');
+      }
+
       return '流程稳定，增长才可复制。先把内容动作标准化，再追求更高频率。';
     }
 

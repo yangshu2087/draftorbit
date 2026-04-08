@@ -25,6 +25,7 @@ type Props = {
   onConnectLocalFiles: (paths: string[]) => Promise<void>;
   onRebuildProfile: () => Promise<void>;
   onConfirmPublish: (runId: string) => Promise<void>;
+  onExportArticle: (text: string) => Promise<void>;
 };
 
 type LearningMode = 'target' | 'url' | 'obsidian' | 'files';
@@ -288,7 +289,7 @@ export default function OperatorTaskPanel(props: Props) {
             </div>
           ) : null}
 
-          {(props.action === 'open_queue' || props.action === 'confirm_publish') ? (
+          {(props.action === 'open_queue' || props.action === 'confirm_publish' || props.action === 'export_article') ? (
             <div className="space-y-4">
               <div className="flex flex-wrap gap-2">
                 <span className="rounded-full border border-slate-900/10 bg-slate-100 px-3 py-1 text-xs text-slate-600">
@@ -321,24 +322,52 @@ export default function OperatorTaskPanel(props: Props) {
                     )}
                   </div>
 
-                  <Button
-                    className="w-full"
-                    disabled={props.busyAction === `confirm-${selectedReview.runId}`}
-                    onClick={() => {
-                      void (async () => {
-                        try {
-                          await props.onConfirmPublish(selectedReview.runId);
-                        } catch {}
-                      })();
-                    }}
-                  >
-                    {props.busyAction === `confirm-${selectedReview.runId}` ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="mr-2 h-4 w-4" />
-                    )}
-                    确认发布
-                  </Button>
+                  {selectedReview.format === 'article' ? (
+                    <div className="space-y-3">
+                      <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+                        当前长文先通过复制方式发布到 X 文章编辑器，暂不进入推文/串推发布队列。
+                      </div>
+                      <Button
+                        className="w-full"
+                        disabled={props.busyAction === 'export-article' || !selectedReview.text}
+                        onClick={() => {
+                          const articleText = selectedReview.text;
+                          if (!articleText) return;
+                          void (async () => {
+                            try {
+                              await props.onExportArticle(articleText);
+                            } catch {}
+                          })();
+                        }}
+                      >
+                        {props.busyAction === 'export-article' ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <UploadCloud className="mr-2 h-4 w-4" />
+                        )}
+                        复制长文
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      className="w-full"
+                      disabled={props.busyAction === `confirm-${selectedReview.runId}`}
+                      onClick={() => {
+                        void (async () => {
+                          try {
+                            await props.onConfirmPublish(selectedReview.runId);
+                          } catch {}
+                        })();
+                      }}
+                    >
+                      {props.busyAction === `confirm-${selectedReview.runId}` ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="mr-2 h-4 w-4" />
+                      )}
+                      确认发布
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <EmptyState

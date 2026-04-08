@@ -191,6 +191,64 @@ function clampPercent(value: number): number {
   return Math.max(0, Math.min(100, Number(value.toFixed(2))));
 }
 
+const META_STOP_WORDS = new Set([
+  '用户意图',
+  '输出形式',
+  '需要配图',
+  '自动完成',
+  '用户风格摘要',
+  '已连接证据',
+  'draftorbit',
+  'operator',
+  'hook',
+  'thread',
+  'cta',
+  'title',
+  'body',
+  'article',
+  'tweet',
+  'yes',
+  'no',
+  '目标',
+  '受众'
+]);
+
+function stripFormatSuffix(text: string): string {
+  return text
+    .replace(/适合\s*X\s*的发布文案/giu, '')
+    .replace(/的?(观点)?(短推|串推|长文|文章|发布文案)$/u, '')
+    .replace(/的?\s*(tweet|thread|article)$/iu, '')
+    .trim();
+}
+
+export function extractIntentFromPrompt(prompt: string): string {
+  const matched = prompt.match(/^用户意图：(.*)$/m)?.[1]?.trim();
+  return matched && matched.length > 0 ? matched : prompt.trim();
+}
+
+export function extractIntentFocus(prompt: string): string {
+  const intent = extractIntentFromPrompt(prompt).replace(/\s+/g, ' ').trim();
+
+  const about = intent.match(/关于\s*([^，。！？；\n]+)/u)?.[1];
+  if (about) {
+    return stripFormatSuffix(about) || intent;
+  }
+
+  const transform = intent.match(/把(.+?)整理成/u)?.[1];
+  if (transform) {
+    return stripFormatSuffix(transform) || intent;
+  }
+
+  const normalized = stripFormatSuffix(
+    intent
+      .replace(/^(帮我|请|给我|麻烦)\s*/u, '')
+      .replace(/^参考我最近的风格[，,]?\s*/u, '')
+      .replace(/^(写一条|发一条|写一篇|写个|整理成一条|整理成|输出一条|做一条)\s*/u, '')
+  );
+
+  return normalized || intent;
+}
+
 function extractTopKeywords(input: string, max = 8): string[] {
   const tokens = (input.match(/[\p{L}\p{N}_-]{2,}/gu) ?? [])
     .map((token) => token.trim().toLowerCase())
@@ -213,7 +271,7 @@ function extractTopKeywords(input: string, max = 8): string[] {
 
   const counter = new Map<string, number>();
   for (const token of tokens) {
-    if (stopWords.has(token)) continue;
+    if (stopWords.has(token) || META_STOP_WORDS.has(token)) continue;
     counter.set(token, (counter.get(token) ?? 0) + 1);
   }
 
@@ -221,6 +279,59 @@ function extractTopKeywords(input: string, max = 8): string[] {
     .sort((a, b) => b[1] - a[1])
     .slice(0, max)
     .map(([token]) => token);
+}
+
+function ensureSentenceEnding(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return '';
+  return /[。！？!?]$/.test(trimmed) ? trimmed : `${trimmed}。`;
+}
+
+function splitSentences(text: string): string[] {
+  return text
+    .split(/(?<=[。！？!?])\s*/u)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function normalizeSectionTitle(value: string): string {
+  return value
+    .replace(/^\d+[.、]\s*/u, '')
+    .replace(/^[一二三四五六七八九十]+[、.．]\s*/u, '')
+    .replace(/[。！？；：]+$/u, '')
+    .trim();
+}
+
+export function formatXArticleText(input: {
+  title?: string | null;
+  hook?: string | null;
+  body?: string[];
+  cta?: string | null;
+  humanized: string;
+}): string {
+  const sentences = splitSentences(input.humanized);
+  const title = input.title?.trim() || 'X 长文草稿';
+  const lead = ensureSentenceEnding(input.hook?.trim() || sentences[0] || input.humanized.trim());
+  const remaining = sentences.filter((sentence) => sentence !== lead);
+  const sectionTitles = (input.body ?? [])
+    .map(normalizeSectionTitle)
+    .filter(Boolean)
+    .slice(0, 5);
+  const fallbackSections = ['先把目标收紧到一个动作', '把内容生产做成固定流程', '用复盘把下一轮迭代接上'];
+  const finalSectionTitles = sectionTitles.length > 0 ? sectionTitles : fallbackSections;
+  const numerals = ['一', '二', '三', '四', '五'];
+  const ending = ensureSentenceEnding(input.cta?.trim() || '如果你愿意，我也可以继续把它拆成 thread 版本。');
+
+  const blocks: string[] = [title.trim(), '', '导语', lead];
+  finalSectionTitles.forEach((section, index) => {
+    const paragraph = ensureSentenceEnding(
+      remaining[index] || `这一节重点是“${section}”。请把它落实成清晰动作，再进入下一步。`
+    );
+    blocks.push('', `${numerals[index] ?? `${index + 1}`}、${section}`, paragraph);
+  });
+  blocks.push('', '结尾', ending);
+
+  return blocks.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 @Injectable()
@@ -288,10 +399,14 @@ export class GenerateService {
   }
 
   private buildFastResearchPayload(prompt: string): ResearchStepPayload {
-    const keywords = extractTopKeywords(prompt, 4);
-    const anchor = keywords[0] ?? '内容运营';
-    const secondary = keywords[1] ?? '执行效率';
-    const tertiary = keywords[2] ?? '互动反馈';
+    const focus = extractIntentFocus(prompt);
+    const keywords = extractTopKeywords(focus, 4);
+    const anchor = focus || keywords[0] || '内容运营';
+    const supportingKeywords = keywords.filter(
+      (item) => item !== anchor.toLowerCase() && item !== 'ai' && item !== 'x'
+    );
+    const secondary = supportingKeywords[0] ?? '执行效率';
+    const tertiary = supportingKeywords[1] ?? '互动反馈';
 
     return {
       researchPoints: [
@@ -309,7 +424,8 @@ export class GenerateService {
   }
 
   private buildFastOutlinePayload(prompt: string, research: ResearchStepPayload): OutlineStepPayload {
-    const titleSeed = extractTopKeywords(prompt, 2).join(' · ') || 'X 运营提效';
+    const focus = extractIntentFocus(prompt);
+    const titleSeed = focus || extractTopKeywords(prompt, 2).join(' · ') || 'X 运营提效';
     const body = research.researchPoints
       .slice(0, 3)
       .map((row, index) => `${index + 1}. ${row.replace(/^.+：/, '')}`)
@@ -349,7 +465,21 @@ export class GenerateService {
     humanized: string;
     outline: OutlineStepPayload | null;
     media: MediaStepPayload;
+    type: GenerationType;
   }): PackageStepPayload {
+    if (params.type === GenerationType.LONG) {
+      return {
+        tweet: formatXArticleText({
+          title: params.outline?.title,
+          hook: params.outline?.hook,
+          body: params.outline?.body,
+          cta: params.outline?.cta,
+          humanized: params.humanized
+        }),
+        variants: []
+      };
+    }
+
     const outlineHook = params.outline?.hook?.trim();
     const base = this.enforceTweetLength(params.humanized);
     const hookPrefix = outlineHook ? `${outlineHook.replace(/[。！!？?]+$/, '')} ` : '';
@@ -484,6 +614,54 @@ export class GenerateService {
       aiTrace,
       total
     };
+  }
+
+  private scoreArticleQuality(text: string): PackageResult['quality'] {
+    const chars = [...text].length;
+    const sections = (text.match(/(?:^|\n)[一二三四五六七八九十]、/gu) ?? []).length;
+    const paragraphs = text.split(/\n{2,}/).filter((block) => block.trim()).length;
+    const hashtagCount = (text.match(/#[\p{L}0-9_]+/gu) ?? []).length;
+
+    const readabilityBase =
+      chars < 320 ? 56 : chars > 5000 ? 60 : 84 - Math.abs(1100 - chars) * 0.018;
+    const readability = clampPercent(readabilityBase + Math.min(3, paragraphs) * 2);
+
+    const signalTokens = ['问题', '流程', '步骤', '建议', '复盘', '结论', '动作', '策略', '节奏'];
+    const densityHits = signalTokens.reduce((sum, token) => (text.includes(token) ? sum + 1 : sum), 0);
+    const density = clampPercent(48 + densityHits * 6 + Math.min(4, sections) * 5);
+
+    const platformFit = clampPercent(
+      52 +
+        Math.min(5, sections) * 7 +
+        (text.includes('导语') ? 6 : 0) +
+        (text.includes('结尾') ? 6 : 0) -
+        hashtagCount * 12
+    );
+
+    const aiTracePatterns = [
+      /总而言之/g,
+      /综上所述/g,
+      /作为.?AI/g,
+      /首先[^。!?]{0,24}其次/g,
+      /在这个时代/g,
+      /我们可以看到/g
+    ];
+    const aiTraceHits = aiTracePatterns.reduce((sum, rule) => sum + (text.match(rule)?.length ?? 0), 0);
+    const aiTrace = clampPercent(95 - aiTraceHits * 18);
+
+    const total = clampPercent(readability * 0.28 + density * 0.24 + platformFit * 0.28 + aiTrace * 0.2);
+
+    return {
+      readability,
+      density,
+      platformFit,
+      aiTrace,
+      total
+    };
+  }
+
+  private scoreGeneratedContent(text: string, type: GenerationType): PackageResult['quality'] {
+    return type === GenerationType.LONG ? this.scoreArticleQuality(text) : this.scoreTweetQuality(text);
   }
 
   private async recordUsage(params: {
@@ -829,6 +1007,8 @@ export class GenerateService {
     );
 
     const prompt = gen.prompt;
+    const userIntent = extractIntentFromPrompt(prompt);
+    const intentFocus = extractIntentFocus(prompt);
     const language = gen.language;
     const styleInjection = gen.style
       ? `Match this learned voice/style (JSON hints): ${gen.style}.`
@@ -883,7 +1063,8 @@ export class GenerateService {
                 {
                   role: 'user',
                   content: [
-                    `主题：${prompt}`,
+                    `原始需求：${userIntent}`,
+                    `聚焦主题：${intentFocus}`,
                     `语言：${language}`,
                     '请产出：2-5 个研究角度 researchPoints、2-5 个开头钩子 hookCandidates、一个 angleSummary。'
                   ].join('\n')
@@ -921,7 +1102,8 @@ export class GenerateService {
                 {
                   role: 'user',
                   content: [
-                    `主题：${prompt}`,
+                    `原始需求：${userIntent}`,
+                    `聚焦主题：${intentFocus}`,
                     `研究角度：${researchPayload.researchPoints.join(' | ')}`,
                     `候选钩子：${researchPayload.hookCandidates.join(' | ')}`,
                     '请生成可直接用于 X 的结构化大纲。'
@@ -951,18 +1133,25 @@ export class GenerateService {
             promptMessages: [
               {
                 role: 'system',
-                content: `你是 X 平台写作专家。${styleInjection} 输出 JSON。`
+                content:
+                  gen.type === GenerationType.LONG
+                    ? `你是 X 长文编辑。${styleInjection} 输出 JSON。primaryTweet 字段必须是适合 X 文章的完整长文初稿，包含标题、导语、3-5 个小节、结尾行动句；不要加 hashtag；thread 留空即可。`
+                    : `你是 X 平台写作专家。${styleInjection} 输出 JSON。`
               },
               {
                 role: 'user',
                 content: [
                   `语言：${language}`,
+                  `原始需求：${userIntent}`,
+                  `聚焦主题：${intentFocus}`,
                   `标题：${outlinePayload.title}`,
                   `Hook：${outlinePayload.hook}`,
                   `Body：${outlinePayload.body.join(' / ')}`,
                   `CTA：${outlinePayload.cta}`,
                   `类型：${gen.type}`,
-                  '要求：primaryTweet 必须可发布；thread 可选。'
+                  gen.type === GenerationType.LONG
+                    ? '要求：primaryTweet 必须是 X 文章格式正文；不要写成 tweet/thread 的短格式。'
+                    : '要求：primaryTweet 必须可发布；thread 可选。'
                 ].join('\n')
               }
             ]
@@ -987,7 +1176,10 @@ export class GenerateService {
             promptMessages: [
               {
                 role: 'system',
-                content: '你是中文母语编辑。去 AI 味但不改变观点，返回 JSON。'
+                content:
+                  gen.type === GenerationType.LONG
+                    ? '你是中文母语长文编辑。去 AI 味但不改变观点，保留标题、导语、小节与换行结构，返回 JSON。'
+                    : '你是中文母语编辑。去 AI 味但不改变观点，返回 JSON。'
               },
               {
                 role: 'user',
@@ -1049,7 +1241,8 @@ export class GenerateService {
             packagePayload = this.buildFastPackagePayload({
               humanized: humanizedPayload.humanized,
               outline: outlinePayload,
-              media: mediaPayload
+              media: mediaPayload,
+              type: gen.type
             });
             packageRouted = humanizeRouted ?? draftRouted ?? this.buildHeuristicRoutedResult();
             fastPathApplied.package = true;
@@ -1088,14 +1281,21 @@ export class GenerateService {
               promptMessages: [
                 {
                   role: 'system',
-                  content: '你是发布编辑。输出严格 JSON。'
+                  content:
+                    gen.type === GenerationType.LONG
+                      ? '你是 X 长文发布编辑。输出严格 JSON。tweet 字段必须是适合 X 文章编辑器的完整长文，包含标题、导语、3-5 个小节、结尾行动句；不要加 hashtag；不要输出 thread。'
+                      : '你是发布编辑。输出严格 JSON。'
                 },
                 {
                   role: 'user',
                   content: [
+                    `原始需求：${userIntent}`,
                     `主文案：${humanizedPayload.humanized}`,
+                    `结构：${outlinePayload?.body.join(' | ') ?? ''}`,
                     `配图关键词：${mediaPayload.searchKeywords.join(' | ')}`,
-                    '输出最终 tweet 和不少于2条 variants（不同语气）。'
+                    gen.type === GenerationType.LONG
+                      ? '输出最终长文正文到 tweet 字段；variants 可为空。'
+                      : '输出最终 tweet 和不少于2条 variants（不同语气）。'
                   ].join('\n')
                 }
               ]
@@ -1106,19 +1306,22 @@ export class GenerateService {
           }
 
           let finalTweet = packagePayload.tweet.trim();
-          let quality = this.scoreTweetQuality(finalTweet);
+          let quality = this.scoreGeneratedContent(finalTweet, gen.type);
 
           if (quality.total < QUALITY_THRESHOLD) {
             const rewrite = await this.openRouter.chatWithRouting(
               [
                 {
                   role: 'system',
-                  content: '你是 X 平台写作润色专家，输出纯文本。'
+                  content:
+                    gen.type === GenerationType.LONG
+                      ? '你是 X 长文润色编辑，保留标题、导语、小节、结尾结构，输出纯文本，不要 hashtag。'
+                      : '你是 X 平台写作润色专家，输出纯文本。'
                 },
                 {
                   role: 'user',
                   content: [
-                    `请在不改变观点的前提下重写以下文案，目标质量分 >= ${QUALITY_THRESHOLD}。`,
+                    `请在不改变观点的前提下重写以下${gen.type === GenerationType.LONG ? '长文' : '文案'}，目标质量分 >= ${QUALITY_THRESHOLD}。`,
                     `文案：${finalTweet}`
                   ].join('\n')
                 }
@@ -1144,7 +1347,7 @@ export class GenerateService {
             });
 
             if (rewritten) {
-              const rewriteQuality = this.scoreTweetQuality(rewritten);
+              const rewriteQuality = this.scoreGeneratedContent(rewritten, gen.type);
               if (rewriteQuality.total >= quality.total) {
                 finalTweet = rewritten;
                 quality = rewriteQuality;
