@@ -11,7 +11,8 @@
     "test": "node -e \"console.log('web tests pending')\"",
     "ui:check": "pnpm lint && pnpm test",
     "ui:handoff": "bash ../../scripts/handoff-refresh.sh --verify \"git status --short -- apps/web\"",
-    "ui:review": "bash ./scripts/ui-review.sh"
+    "ui:review": "bash ./scripts/ui-review.sh",
+    "ui:browser": "bash ./scripts/ui-browser-verify.sh"
   },
   "dependencies": {
     "@draftorbit/shared": "workspace:*",

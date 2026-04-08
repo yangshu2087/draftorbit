@@ -49,8 +49,9 @@ Before continuing existing UI work, read these files in order:
 - Run the smallest useful web verification from `apps/web/`:
   - `pnpm lint` for most component and style edits
   - `pnpm test` when UI logic or helpers changed
+  - `pnpm ui:browser -- --url <url>` for standalone real browser verification
   - `pnpm build` when routes, layouts, metadata, or rendering boundaries changed
-  - `pnpm ui:review` for the default review path before handoff or PR
+  - `pnpm ui:review -- --url <url>` for the default lint + test + browser + handoff path
 - If the change is visual, prefer browser verification over static code inspection alone.
 - If browser verification is skipped, state the gap explicitly in the handoff or PR summary.
 
