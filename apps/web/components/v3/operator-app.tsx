@@ -27,7 +27,7 @@ import {
   type V3RunResponse
 } from '../../lib/queries';
 import { buildAppTaskHref, getTaskPanelMeta } from '../../lib/v3-ui';
-import { normalizeStageSummary, summarizeWhySummary } from '../../lib/v3-result-copy';
+import { normalizeResultText, normalizeStageSummary, summarizeWhySummary } from '../../lib/v3-result-copy';
 import { toUiError, type UiError } from '../../lib/ui-error';
 import { cn } from '../../lib/utils';
 import { Button } from '../ui/button';
@@ -179,6 +179,11 @@ export default function OperatorApp() {
     [runDetail?.result?.whySummary]
   );
 
+  const cleanedResultText = useMemo(
+    () => normalizeResultText(runDetail?.result?.text ?? ''),
+    [runDetail?.result?.text]
+  );
+
   const runPipeline = useCallback(async (customIntent?: string) => {
     const finalIntent = (customIntent ?? intent).trim();
     if (!finalIntent) {
@@ -210,7 +215,7 @@ export default function OperatorApp() {
 
       const detail = await fetchRun(started.runId);
       setRunDetail(detail);
-      setManualDraft(detail.result?.text ?? '');
+      setManualDraft(normalizeResultText(detail.result?.text ?? ''));
       await loadPage();
     } catch (error) {
       setRunError(toUiError(error, '生成失败，请稍后重试。'));
@@ -581,7 +586,7 @@ export default function OperatorApp() {
                     className="min-h-[220px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm leading-7 text-white placeholder:text-slate-400"
                   />
                 ) : (
-                  <pre className="whitespace-pre-wrap text-sm leading-7 text-slate-50">{runDetail.result.text}</pre>
+                  <pre className="whitespace-pre-wrap text-sm leading-7 text-slate-50">{cleanedResultText}</pre>
                 )}
               </div>
 
@@ -636,7 +641,7 @@ export default function OperatorApp() {
                 <Button
                   variant="outline"
                   onClick={() => {
-                    void navigator.clipboard.writeText(manualMode ? manualDraft : runDetail.result?.text ?? '');
+                    void navigator.clipboard.writeText(manualMode ? manualDraft : cleanedResultText);
                     pushToast({ title: '已复制结果文本', variant: 'success' });
                   }}
                 >
