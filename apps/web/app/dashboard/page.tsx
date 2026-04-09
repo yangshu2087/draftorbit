@@ -150,6 +150,7 @@ export default function DashboardPage() {
           </div>
 
           <div className="grid gap-2 pt-2 sm:grid-cols-2 xl:grid-cols-4">
+            <QuickLink href="/snapshot" label="查看系统快照" />
             <QuickLink href="/topics" label="创建选题" />
             <QuickLink href="/drafts" label="编写草稿" />
             <QuickLink href="/publish-queue" label="查看发布队列" />

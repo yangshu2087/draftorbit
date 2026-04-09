@@ -40,6 +40,7 @@ const NAV_GROUPS = [
   {
     label: '系统',
     items: [
+      { href: '/snapshot', label: '系统快照' },
       { href: '/dashboard', label: '运营总览' },
       { href: '/ops', label: '队列健康' },
       { href: '/providers', label: '模型服务中心' },
