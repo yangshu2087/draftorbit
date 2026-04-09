@@ -1,6 +1,7 @@
 import type {
   AuditLogsResponse,
   AuditSummaryEntity,
+  OpsQueuesResponse,
   UsageEventEntity,
   UsageSummaryEntity,
   UsageTrendsEntity,
@@ -389,5 +390,5 @@ export async function naturalizePreview(input: {
 }
 
 export async function fetchQueueHealth() {
-  return apiFetch<Record<string, unknown>>('/ops/queues');
+  return apiFetch<OpsQueuesResponse & { ok: true; now: string }>('/ops/queues');
 }

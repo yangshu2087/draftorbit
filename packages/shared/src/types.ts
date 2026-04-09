@@ -219,6 +219,30 @@ export interface UsageTrendsEntity {
   points: UsageTrendPoint[];
 }
 
+export interface OpsQueueStats {
+  waiting: number;
+  active: number;
+  completed: number;
+  failed: number | null;
+  delayed: number | null;
+  paused: number | null;
+}
+
+export interface OpsVisibility {
+  role: WorkspaceRoleValue;
+  accessTier: UsageSnapshotAccessTier;
+  canViewPerQueue: boolean;
+  canViewFailureDetails: boolean;
+  redactedFields: string[];
+}
+
+export interface OpsQueuesResponse {
+  visibility: OpsVisibility;
+  summary: OpsQueueStats;
+  queues: Record<string, OpsQueueStats> | null;
+  hiddenQueueCount: number;
+}
+
 export interface XAccountEntity {
   id: string;
   twitterUserId: string;
