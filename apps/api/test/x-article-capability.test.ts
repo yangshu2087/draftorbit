@@ -5,12 +5,14 @@ import {
   resolveXArticlePublishCapability
 } from '@draftorbit/shared';
 
-test('resolveXArticlePublishCapability returns manual-web fallback metadata', () => {
+test('resolveXArticlePublishCapability returns a future-proof manual capability contract', () => {
   assert.deepEqual(resolveXArticlePublishCapability(), {
     mode: 'manual_x_web',
+    availability: 'available',
     nativeApiAvailable: false,
     nextAction: 'export_article',
     openUrl: 'https://x.com',
+    reasonCode: 'NO_PUBLIC_API',
     description: '当前公开的 X Developer API 没有提供 Articles 发布端点，长文需要先在 X 网页端完成发布。'
   });
 });
