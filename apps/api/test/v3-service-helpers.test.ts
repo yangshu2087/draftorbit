@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { GenerationType } from '@draftorbit/db';
 import {
   buildV3PromptEnvelope,
   buildV3SourceEvidence,
   mapGenerationStepToV3Stage,
-  resolveV3PublishGuard
+  resolveV3PublishGuard,
+  serializeV3PublishedItem
 } from '../src/modules/v3/v3.service';
 
 test('buildV3PromptEnvelope turns a one-line intent into an agent-first generation brief', () => {
@@ -44,8 +46,58 @@ test('resolveV3PublishGuard blocks direct publishing for article format', () => 
   assert.deepEqual(resolveV3PublishGuard('article'), {
     blockingReason: 'ARTICLE_PUBLISH_NOT_SUPPORTED',
     nextAction: 'export_article',
-    message: '当前长文暂不支持直接发布，请先复制到 X 文章编辑器。'
+    message: '当前长文暂不支持直接发布，请先复制到 X 网页端完成发布。'
   });
+});
+
+test('serializeV3PublishedItem normalizes manual article publish metadata', () => {
+  assert.deepEqual(
+    serializeV3PublishedItem({
+      id: 'pub_manual_1',
+      runId: 'run_article_1',
+      generationType: GenerationType.LONG,
+      status: 'MANUAL_RECORDED',
+      xAccountHandle: null,
+      externalPostId: 'https://x.com/i/articles/1775694065891',
+      updatedAt: new Date('2026-04-08T23:38:21.483Z')
+    }),
+    {
+      id: 'pub_manual_1',
+      runId: 'run_article_1',
+      status: 'MANUAL_RECORDED',
+      publishKind: 'x_article',
+      publishMode: 'manual_x_web',
+      xAccountHandle: null,
+      externalUrl: 'https://x.com/i/articles/1775694065891',
+      externalPostId: 'https://x.com/i/articles/1775694065891',
+      updatedAt: '2026-04-08T23:38:21.483Z'
+    }
+  );
+});
+
+test('serializeV3PublishedItem keeps x posts in native mode', () => {
+  assert.deepEqual(
+    serializeV3PublishedItem({
+      id: 'pub_job_1',
+      runId: 'run_tweet_1',
+      generationType: GenerationType.TWEET,
+      status: 'SUCCEEDED',
+      xAccountHandle: '@yangshu_ai',
+      externalPostId: '1888888888888888888',
+      updatedAt: new Date('2026-04-08T23:40:00.000Z')
+    }),
+    {
+      id: 'pub_job_1',
+      runId: 'run_tweet_1',
+      status: 'SUCCEEDED',
+      publishKind: 'x_post',
+      publishMode: 'native_x_api',
+      xAccountHandle: '@yangshu_ai',
+      externalUrl: null,
+      externalPostId: '1888888888888888888',
+      updatedAt: '2026-04-08T23:40:00.000Z'
+    }
+  );
 });
 
 test('mapGenerationStepToV3Stage converts legacy steps into user-facing V3 stages', () => {

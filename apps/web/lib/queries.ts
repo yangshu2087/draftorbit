@@ -57,10 +57,13 @@ export type V3RunResponse = {
   publish: Array<{
     id: string;
     status: string;
+    publishKind: 'x_post' | 'x_article';
+    publishMode: 'manual_x_web' | 'native_x_api';
     xAccountId: string | null;
     xAccountHandle: string | null;
     createdAt: string;
     updatedAt: string;
+    externalUrl: string | null;
     externalPostId?: string | null;
     lastError?: string | null;
   }>;
@@ -120,7 +123,10 @@ export type V3QueueResponse = {
     id: string;
     runId: string;
     status: string;
+    publishKind: 'x_post' | 'x_article';
+    publishMode: 'manual_x_web' | 'native_x_api';
     xAccountHandle: string | null;
+    externalUrl: string | null;
     externalPostId?: string | null;
     updatedAt: string;
   }>;

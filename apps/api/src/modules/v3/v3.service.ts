@@ -125,7 +125,7 @@ export function resolveV3PublishGuard(format: 'tweet' | 'thread' | 'article') {
   return {
     blockingReason: 'ARTICLE_PUBLISH_NOT_SUPPORTED',
     nextAction: capability.nextAction,
-    message: '当前长文暂不支持直接发布，请先复制到 X 文章编辑器。'
+    message: '当前长文暂不支持直接发布，请先复制到 X 网页端完成发布。'
   };
 }
 
@@ -147,6 +147,30 @@ function formatFromGenerationType(type: GenerationType): 'tweet' | 'thread' | 'a
   if (type === GenerationType.THREAD) return 'thread';
   if (type === GenerationType.LONG) return 'article';
   return 'tweet';
+}
+
+export function serializeV3PublishedItem(input: {
+  id: string;
+  runId: string;
+  generationType: GenerationType;
+  status: string;
+  xAccountHandle: string | null;
+  externalPostId: string | null;
+  updatedAt: Date;
+}) {
+  const publishKind = input.generationType === GenerationType.LONG ? 'x_article' : 'x_post';
+  const publishMode = input.status === 'MANUAL_RECORDED' ? 'manual_x_web' : 'native_x_api';
+  return {
+    id: input.id,
+    runId: input.runId,
+    status: input.status,
+    publishKind,
+    publishMode,
+    xAccountHandle: input.xAccountHandle,
+    externalUrl: publishKind === 'x_article' ? input.externalPostId : null,
+    externalPostId: input.externalPostId,
+    updatedAt: input.updatedAt.toISOString()
+  };
 }
 
 function normalizeTargetRef(raw: string): string {
@@ -409,13 +433,17 @@ export class V3Service {
     const format = formatFromGenerationType(generation.type);
     const manualPublish = generation.publishRecord
       ? [{
-          id: generation.publishRecord.id,
-          status: 'MANUAL_RECORDED',
+          ...serializeV3PublishedItem({
+            id: generation.publishRecord.id,
+            runId: generation.id,
+            generationType: generation.type,
+            status: 'MANUAL_RECORDED',
+            xAccountHandle: null,
+            externalPostId: generation.publishRecord.externalTweetId,
+            updatedAt: generation.publishRecord.publishedAt
+          }),
           xAccountId: null,
-          xAccountHandle: null,
           createdAt: generation.publishRecord.publishedAt.toISOString(),
-          updatedAt: generation.publishRecord.publishedAt.toISOString(),
-          externalPostId: generation.publishRecord.externalTweetId,
           lastError: null
         }]
       : [];
@@ -441,13 +469,17 @@ export class V3Service {
       publish: [
         ...manualPublish,
         ...generation.publishJobs.map((job) => ({
-          id: job.id,
-          status: job.status,
+          ...serializeV3PublishedItem({
+            id: job.id,
+            runId: generation.id,
+            generationType: generation.type,
+            status: job.status,
+            xAccountHandle: job.xAccount?.handle ?? null,
+            externalPostId: job.externalPostId,
+            updatedAt: job.updatedAt
+          }),
           xAccountId: job.xAccountId,
-          xAccountHandle: job.xAccount?.handle ?? null,
           createdAt: job.createdAt.toISOString(),
-          updatedAt: job.updatedAt.toISOString(),
-          externalPostId: job.externalPostId,
           lastError: job.lastError
         }))
       ],
@@ -779,25 +811,31 @@ export class V3Service {
 
     const publishedByJobs = jobs
       .filter((job) => job.status === PublishJobStatus.SUCCEEDED)
-      .map((job) => ({
-        id: job.id,
-        runId: job.generationId,
-        status: job.status,
-        xAccountHandle: job.xAccount?.handle ?? null,
-        externalPostId: job.externalPostId,
-        updatedAt: job.updatedAt.toISOString()
-      }));
+      .map((job) =>
+        serializeV3PublishedItem({
+          id: job.id,
+          runId: job.generationId ?? job.id,
+          generationType: GenerationType.TWEET,
+          status: job.status,
+          xAccountHandle: job.xAccount?.handle ?? null,
+          externalPostId: job.externalPostId,
+          updatedAt: job.updatedAt
+        })
+      );
 
     const publishedByManualArticles = runs
       .filter((run) => Boolean(run.publishRecord))
-      .map((run) => ({
-        id: run.publishRecord!.id,
-        runId: run.id,
-        status: 'MANUAL_RECORDED',
-        xAccountHandle: null,
-        externalPostId: run.publishRecord?.externalTweetId ?? null,
-        updatedAt: run.publishRecord?.publishedAt.toISOString() ?? run.updatedAt.toISOString()
-      }));
+      .map((run) =>
+        serializeV3PublishedItem({
+          id: run.publishRecord!.id,
+          runId: run.id,
+          generationType: run.type,
+          status: 'MANUAL_RECORDED',
+          xAccountHandle: null,
+          externalPostId: run.publishRecord?.externalTweetId ?? null,
+          updatedAt: run.publishRecord?.publishedAt ?? run.updatedAt
+        })
+      );
 
     return {
       review: pendingReview,
