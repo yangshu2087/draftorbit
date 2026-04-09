@@ -49,5 +49,12 @@ test('task panel metadata uses action-focused copy instead of backend page label
     tone: 'queue'
   });
 
+  assert.deepEqual(getTaskPanelMeta('publish_article'), {
+    title: '确认是否直接发布这篇长文',
+    description: '快速确认长文内容和风险，再直接发布到 X。',
+    primaryLabel: '查看长文发布确认',
+    tone: 'queue'
+  });
+
   assert.equal(getTaskPanelMeta('watch_generation'), null);
 });

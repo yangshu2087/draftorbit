@@ -4,8 +4,10 @@ import { CheckCircle2, Copy, ExternalLink, Loader2, RefreshCcw, Sparkles, Upload
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '../ui/button';
 import { EmptyState, SuccessNotice } from '../ui/state-feedback';
+import { getDefaultArticleCapability } from '../../lib/article-publish-ui';
 import type { V3ProfileResponse, V3QueueResponse } from '../../lib/queries';
 import type { TaskPanelMeta } from '../../lib/v3-ui';
+import { ArticlePublishTask } from './article-publish-task';
 import { cn } from '../../lib/utils';
 
 type Props = {
@@ -344,76 +346,16 @@ export default function OperatorTaskPanel(props: Props) {
                   </div>
 
                   {selectedReview.format === 'article' ? (
-                    <div className="space-y-3">
-                      <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
-                        当前长文走 X 网页端发布：复制正文、去 X 完成发布，再把最终文章链接贴回来。
-                      </div>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <Button
-                          className="w-full"
-                          disabled={props.busyAction === 'export-article' || !articlePreviewText}
-                          onClick={() => {
-                            const text = articlePreviewText;
-                            if (!text) return;
-                            void (async () => {
-                              try {
-                                await props.onExportArticle(text);
-                              } catch {}
-                            })();
-                          }}
-                        >
-                          {props.busyAction === 'export-article' ? (
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          ) : (
-                            <Copy className="mr-2 h-4 w-4" />
-                          )}
-                          复制长文
-                        </Button>
-                        <Button className="w-full" variant="outline" onClick={props.onOpenXArticle}>
-                          <ExternalLink className="mr-2 h-4 w-4" />
-                          打开 X 网页端
-                        </Button>
-                      </div>
-                      <div className="space-y-3 rounded-2xl border border-sky-200/70 bg-white px-4 py-4">
-                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">发布后把文章链接贴回来</p>
-                        <input
-                          value={articleUrlInput}
-                          onChange={(event) => setArticleUrlInput(event.target.value)}
-                          placeholder="https://x.com/i/articles/..."
-                        />
-                        <Button
-                          className="w-full"
-                          disabled={props.busyAction === 'complete-article' || !articleTargetRunId || !articleUrlInput.trim()}
-                          onClick={() => {
-                            if (!articleTargetRunId) return;
-                            void (async () => {
-                              try {
-                                await props.onCompleteArticlePublish(articleTargetRunId, articleUrlInput);
-                              } catch {}
-                            })();
-                          }}
-                        >
-                          {props.busyAction === 'complete-article' ? (
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          ) : (
-                            <CheckCircle2 className="mr-2 h-4 w-4" />
-                          )}
-                          保存文章链接
-                        </Button>
-                        <p className="text-xs leading-5 text-slate-500">保存后，这篇长文会从待处理移到已发布，你下次回来也能继续追踪。</p>
-                        {articleRecordedUrl ? (
-                          <a
-                            href={articleRecordedUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-2 text-sm font-medium text-sky-700 underline decoration-sky-300 underline-offset-4"
-                          >
-                            <ExternalLink className="h-4 w-4" />
-                            查看已记录文章
-                          </a>
-                        ) : null}
-                      </div>
-                    </div>
+                    <ArticlePublishTask
+                      capability={getDefaultArticleCapability()}
+                      draftText={articlePreviewText}
+                      runId={articleTargetRunId}
+                      publishedUrl={articleRecordedUrl}
+                      busyAction={props.busyAction}
+                      onCopy={props.onExportArticle}
+                      onOpenX={props.onOpenXArticle}
+                      onSaveUrl={props.onCompleteArticlePublish}
+                    />
                   ) : (
                     <Button
                       className="w-full"

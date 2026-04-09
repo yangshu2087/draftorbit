@@ -27,6 +27,7 @@ import {
   type V3QueueResponse,
   type V3RunResponse
 } from '../../lib/queries';
+import { getArticlePrimaryAction, getDefaultArticleCapability } from '../../lib/article-publish-ui';
 import { buildAppTaskHref, getTaskPanelMeta } from '../../lib/v3-ui';
 import { normalizeResultText, normalizeStageSummary, summarizeWhySummary } from '../../lib/v3-result-copy';
 import { toUiError, type UiError } from '../../lib/ui-error';
@@ -34,6 +35,7 @@ import { cn } from '../../lib/utils';
 import { Button } from '../ui/button';
 import { EmptyState, ErrorState, LoadingState, SuccessNotice } from '../ui/state-feedback';
 import { useToast } from '../ui/toast';
+import { ArticlePublishCard } from './article-publish-card';
 import OperatorTaskPanel from './operator-task-panel';
 import { AppShell } from './shell';
 
@@ -187,13 +189,23 @@ export default function OperatorApp() {
   );
 
   const articlePublishedRecord = useMemo(
-    () => runDetail?.publish.find((item) => item.status === 'MANUAL_RECORDED') ?? null,
+    () => runDetail?.publish.find((item) => item.publishKind === 'x_article') ?? null,
     [runDetail?.publish]
   );
 
+  const articleCapability = useMemo(
+    () => (runDetail?.format === 'article' ? getDefaultArticleCapability() : null),
+    [runDetail?.format]
+  );
+
+  const articlePrimaryAction = useMemo(
+    () => (articleCapability ? getArticlePrimaryAction(articleCapability) : null),
+    [articleCapability]
+  );
+
   useEffect(() => {
-    if (articlePublishedRecord?.externalPostId) {
-      setArticleUrlInput(articlePublishedRecord.externalPostId);
+    if (articlePublishedRecord?.externalUrl ?? articlePublishedRecord?.externalPostId) {
+      setArticleUrlInput(articlePublishedRecord.externalUrl ?? articlePublishedRecord.externalPostId ?? '');
       return;
     }
     if (runDetail?.format !== 'article') {
@@ -696,65 +708,19 @@ export default function OperatorApp() {
                 </div>
               )}
 
-              {runDetail.format === 'article' ? (
-                <div className="space-y-4 rounded-2xl border border-sky-200 bg-sky-50 p-4">
-                  <div className="flex items-start gap-2 text-sm text-sky-800">
-                    <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-                    <span>长文当前走 X 网页端发布：先复制正文，再去 X 完成发布，最后把文章链接贴回来。</span>
-                  </div>
-                  <ol className="space-y-2 rounded-2xl border border-sky-200/70 bg-white/80 px-4 py-3 text-sm text-slate-700">
-                    <li>1. 复制这篇长文。</li>
-                    <li>2. 打开 X 网页端，把内容粘贴到文章编辑器。</li>
-                    <li>3. 发布后把最终文章链接贴回来，系统会把它记为“已发布”。</li>
-                  </ol>
-                  <div className="flex flex-wrap gap-3">
-                    <Button
-                      variant="outline"
-                      onClick={() => void exportArticleAction(manualMode ? manualDraft : cleanedResultText)}
-                    >
-                      <Copy className="mr-2 h-4 w-4" />
-                      先复制长文
-                    </Button>
-                    <Button variant="outline" onClick={openXArticleAction}>
-                      <ExternalLink className="mr-2 h-4 w-4" />
-                      打开 X 网页端
-                    </Button>
-                  </div>
-                  <div className="space-y-2 rounded-2xl border border-sky-200/70 bg-white/80 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">发布后把文章链接贴回来</p>
-                    <div className="flex flex-col gap-3 sm:flex-row">
-                      <input
-                        value={articleUrlInput}
-                        onChange={(event) => setArticleUrlInput(event.target.value)}
-                        placeholder="https://x.com/i/articles/..."
-                        className="min-w-0 flex-1"
-                      />
-                      <Button
-                        disabled={busyAction === 'complete-article' || !articleUrlInput.trim()}
-                        onClick={() => void completeArticlePublishAction(runDetail.runId, articleUrlInput)}
-                      >
-                        {busyAction === 'complete-article' ? (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                          <CheckCircle2 className="mr-2 h-4 w-4" />
-                        )}
-                        保存文章链接
-                      </Button>
-                    </div>
-                    <p className="text-xs leading-5 text-sky-700">保存后，这篇长文会从“待处理”移到“已发布”，后续 agent 就能继续追踪这篇文章。</p>
-                    {articlePublishedRecord?.externalPostId ? (
-                      <a
-                        href={articlePublishedRecord.externalPostId}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-2 text-sm font-medium text-sky-700 underline decoration-sky-300 underline-offset-4"
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                        查看已记录文章
-                      </a>
-                    ) : null}
-                  </div>
-                </div>
+              {runDetail.format === 'article' && articleCapability ? (
+                <ArticlePublishCard
+                  capability={articleCapability}
+                  draftText={manualMode ? manualDraft : cleanedResultText}
+                  articleUrl={articleUrlInput}
+                  saving={busyAction === 'complete-article'}
+                  publishedUrl={articlePublishedRecord?.externalUrl ?? articlePublishedRecord?.externalPostId ?? null}
+                  onArticleUrlChange={setArticleUrlInput}
+                  onCopy={() => exportArticleAction(manualMode ? manualDraft : cleanedResultText)}
+                  onCopyAndOpen={() => exportArticleAction(manualMode ? manualDraft : cleanedResultText, { openX: true })}
+                  onOpenX={openXArticleAction}
+                  onSaveUrl={(url) => completeArticlePublishAction(runDetail.runId, url)}
+                />
               ) : null}
 
               <details className="rounded-2xl border border-slate-900/10 bg-slate-50 p-4">
@@ -798,7 +764,7 @@ export default function OperatorApp() {
                   }}
                 >
                   <Copy className="mr-2 h-4 w-4" />
-                  {runDetail.format === 'article' ? '复制长文' : '复制文本'}
+                  {runDetail.format === 'article' ? articlePrimaryAction?.secondaryLabel ?? '复制长文' : '复制文本'}
                 </Button>
                 <Button disabled={busyAction === 'queue-result'} onClick={() => void handleQueueAction()}>
                   {busyAction === 'queue-result' ? (
@@ -810,7 +776,7 @@ export default function OperatorApp() {
                   ) : (
                     <Send className="mr-2 h-4 w-4" />
                   )}
-                  {runDetail.format === 'article' ? '复制并去 X 发布' : safeMode ? '加入待确认' : '进入发布队列'}
+                  {runDetail.format === 'article' ? articlePrimaryAction?.label ?? '复制并去 X 发布' : safeMode ? '加入待确认' : '进入发布队列'}
                 </Button>
               </div>
             </div>
@@ -838,7 +804,7 @@ export default function OperatorApp() {
           onConfirmPublish={confirmQueueItemAction}
           onExportArticle={exportQueueItemAction}
           articleDraftText={runDetail?.format === 'article' ? (manualMode ? manualDraft : cleanedResultText) : null}
-          articlePublishedUrl={articlePublishedRecord?.externalPostId ?? null}
+          articlePublishedUrl={articlePublishedRecord?.externalUrl ?? articlePublishedRecord?.externalPostId ?? null}
           onOpenXArticle={openXArticleAction}
           onCompleteArticlePublish={completeArticlePublishAction}
         />
