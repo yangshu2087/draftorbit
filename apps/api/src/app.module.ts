@@ -23,6 +23,7 @@ import { UsageModule } from './modules/usage/usage.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { OpsModule } from './modules/ops/ops.module';
 import { V2Module } from './modules/v2/v2.module';
+import { V3Module } from './modules/v3/v3.module';
 
 @Module({
   controllers: [HealthController],
@@ -49,7 +50,8 @@ import { V2Module } from './modules/v2/v2.module';
     UsageModule,
     AuditModule,
     OpsModule,
-    V2Module
+    V2Module,
+    V3Module
   ]
 })
 export class AppModule {}

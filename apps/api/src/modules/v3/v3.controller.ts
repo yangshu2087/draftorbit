@@ -23,6 +23,7 @@ import {
   V3ConnectObsidianDto,
   V3ConnectTargetDto,
   V3ConnectUrlsDto,
+  V3PublishArticleCompleteDto,
   V3PublishConfirmDto,
   V3PublishPrepareDto,
   V3QueueQueryDto,
@@ -164,6 +165,13 @@ export class V3Controller {
   @UseGuards(AuthGuard)
   async confirmPublish(@Req() req: RequestWithUser, @Body() body: V3PublishConfirmDto) {
     const result = await this.v3.confirmPublish((req.user as AuthUser).userId, body);
+    return withRequestId(req, result);
+  }
+
+  @Post('publish/article/complete')
+  @UseGuards(AuthGuard)
+  async completeArticlePublish(@Req() req: RequestWithUser, @Body() body: V3PublishArticleCompleteDto) {
+    const result = await this.v3.completeArticlePublish((req.user as AuthUser).userId, body);
     return withRequestId(req, result);
   }
 

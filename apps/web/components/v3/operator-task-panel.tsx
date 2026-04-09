@@ -1,7 +1,7 @@
 'use client';
 
-import { CheckCircle2, ExternalLink, Loader2, RefreshCcw, Sparkles, UploadCloud, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { CheckCircle2, Copy, ExternalLink, Loader2, RefreshCcw, Sparkles, UploadCloud, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from '../ui/button';
 import { EmptyState, SuccessNotice } from '../ui/state-feedback';
 import type { V3ProfileResponse, V3QueueResponse } from '../../lib/queries';
@@ -26,6 +26,10 @@ type Props = {
   onRebuildProfile: () => Promise<void>;
   onConfirmPublish: (runId: string) => Promise<void>;
   onExportArticle: (text: string) => Promise<void>;
+  articleDraftText?: string | null;
+  articlePublishedUrl?: string | null;
+  onOpenXArticle: () => void;
+  onCompleteArticlePublish: (runId: string, url: string) => Promise<void>;
 };
 
 type LearningMode = 'target' | 'url' | 'obsidian' | 'files';
@@ -72,6 +76,7 @@ export default function OperatorTaskPanel(props: Props) {
   const [urlInput, setUrlInput] = useState('');
   const [obsidianPath, setObsidianPath] = useState('');
   const [localPaths, setLocalPaths] = useState('');
+  const [articleUrlInput, setArticleUrlInput] = useState('');
 
   const selectedReview = useMemo(() => {
     const review = props.queue?.review ?? [];
@@ -82,12 +87,28 @@ export default function OperatorTaskPanel(props: Props) {
     return review[0];
   }, [props.highlight, props.queue?.review]);
 
+  const highlightedPublished = useMemo(() => {
+    if (!props.highlight) return null;
+    return props.queue?.published.find((item) => item.runId === props.highlight) ?? null;
+  }, [props.highlight, props.queue?.published]);
+
+  const articleTargetRunId = selectedReview?.runId ?? props.highlight ?? null;
+  const articleRecordedUrl = props.articlePublishedUrl ?? highlightedPublished?.externalPostId ?? null;
+  const articlePreviewText = props.articleDraftText ?? selectedReview?.text ?? null;
+
+  useEffect(() => {
+    if (articleRecordedUrl) {
+      setArticleUrlInput(articleRecordedUrl);
+    }
+  }, [articleRecordedUrl]);
+
   const summaryNotice = useMemo(() => {
     if (props.xbind === 'success') return '连接已完成，回到主界面后就可以继续生成。';
     if (props.xbind === 'error') return '这次连接没有完成，你可以直接在这里重新发起连接。';
+    if (props.published && props.action === 'export_article') return '这篇长文的发布链接已记录。现在可以关闭面板，继续生成下一条。';
     if (props.published) return '这条内容已经进入发布队列。你可以关闭面板后继续生成下一条。';
     return null;
-  }, [props.published, props.xbind]);
+  }, [props.action, props.published, props.xbind]);
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-slate-950/30 backdrop-blur-[2px]">
@@ -325,28 +346,73 @@ export default function OperatorTaskPanel(props: Props) {
                   {selectedReview.format === 'article' ? (
                     <div className="space-y-3">
                       <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
-                        当前长文先通过复制方式发布到 X 文章编辑器，暂不进入推文/串推发布队列。
+                        当前长文走 X 网页端发布：复制正文、去 X 完成发布，再把最终文章链接贴回来。
                       </div>
-                      <Button
-                        className="w-full"
-                        disabled={props.busyAction === 'export-article' || !selectedReview.text}
-                        onClick={() => {
-                          const articleText = selectedReview.text;
-                          if (!articleText) return;
-                          void (async () => {
-                            try {
-                              await props.onExportArticle(articleText);
-                            } catch {}
-                          })();
-                        }}
-                      >
-                        {props.busyAction === 'export-article' ? (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                          <UploadCloud className="mr-2 h-4 w-4" />
-                        )}
-                        复制长文
-                      </Button>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Button
+                          className="w-full"
+                          disabled={props.busyAction === 'export-article' || !articlePreviewText}
+                          onClick={() => {
+                            const text = articlePreviewText;
+                            if (!text) return;
+                            void (async () => {
+                              try {
+                                await props.onExportArticle(text);
+                              } catch {}
+                            })();
+                          }}
+                        >
+                          {props.busyAction === 'export-article' ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Copy className="mr-2 h-4 w-4" />
+                          )}
+                          复制长文
+                        </Button>
+                        <Button className="w-full" variant="outline" onClick={props.onOpenXArticle}>
+                          <ExternalLink className="mr-2 h-4 w-4" />
+                          打开 X 网页端
+                        </Button>
+                      </div>
+                      <div className="space-y-3 rounded-2xl border border-sky-200/70 bg-white px-4 py-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">发布后把文章链接贴回来</p>
+                        <input
+                          value={articleUrlInput}
+                          onChange={(event) => setArticleUrlInput(event.target.value)}
+                          placeholder="https://x.com/i/articles/..."
+                        />
+                        <Button
+                          className="w-full"
+                          disabled={props.busyAction === 'complete-article' || !articleTargetRunId || !articleUrlInput.trim()}
+                          onClick={() => {
+                            if (!articleTargetRunId) return;
+                            void (async () => {
+                              try {
+                                await props.onCompleteArticlePublish(articleTargetRunId, articleUrlInput);
+                              } catch {}
+                            })();
+                          }}
+                        >
+                          {props.busyAction === 'complete-article' ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="mr-2 h-4 w-4" />
+                          )}
+                          保存文章链接
+                        </Button>
+                        <p className="text-xs leading-5 text-slate-500">保存后，这篇长文会从待处理移到已发布，你下次回来也能继续追踪。</p>
+                        {articleRecordedUrl ? (
+                          <a
+                            href={articleRecordedUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-2 text-sm font-medium text-sky-700 underline decoration-sky-300 underline-offset-4"
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                            查看已记录文章
+                          </a>
+                        ) : null}
+                      </div>
                     </div>
                   ) : (
                     <Button
@@ -370,10 +436,28 @@ export default function OperatorTaskPanel(props: Props) {
                   )}
                 </div>
               ) : (
-                <EmptyState
-                  title="当前没有待确认内容"
-                  description="这次任务没有卡在确认步骤。你可以关闭面板后继续生成下一条。"
-                />
+                props.action === 'export_article' && articleRecordedUrl ? (
+                  <div className="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4" />
+                      <span>这篇长文已经记录为已发布。</span>
+                    </div>
+                    <a
+                      href={articleRecordedUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-2 font-medium text-emerald-700 underline decoration-emerald-300 underline-offset-4"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      查看已记录文章
+                    </a>
+                  </div>
+                ) : (
+                  <EmptyState
+                    title="当前没有待确认内容"
+                    description="这次任务没有卡在确认步骤。你可以关闭面板后继续生成下一条。"
+                  />
+                )
               )}
             </div>
           ) : null}

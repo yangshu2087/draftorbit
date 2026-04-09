@@ -7,6 +7,7 @@ import {
   StepName,
   SubscriptionPlan
 } from '@draftorbit/db';
+import { resolveXArticlePublishCapability } from '@draftorbit/shared';
 import { PrismaService } from '../../common/prisma.service';
 import { WorkspaceContextService } from '../../common/workspace-context.service';
 import { BillingService } from '../billing/billing.service';
@@ -21,6 +22,7 @@ import type {
   V3ConnectObsidianDto,
   V3ConnectTargetDto,
   V3ConnectUrlsDto,
+  V3PublishArticleCompleteDto,
   V3PublishConfirmDto,
   V3PublishPrepareDto,
   V3RunChatDto
@@ -119,9 +121,10 @@ export function buildV3PromptEnvelope(input: {
 
 export function resolveV3PublishGuard(format: 'tweet' | 'thread' | 'article') {
   if (format !== 'article') return null;
+  const capability = resolveXArticlePublishCapability();
   return {
     blockingReason: 'ARTICLE_PUBLISH_NOT_SUPPORTED',
-    nextAction: 'export_article',
+    nextAction: capability.nextAction,
     message: '当前长文暂不支持直接发布，请先复制到 X 文章编辑器。'
   };
 }
@@ -138,6 +141,12 @@ function generationTypeFromFormat(format: 'tweet' | 'thread' | 'article'): Gener
   if (format === 'thread') return GenerationType.THREAD;
   if (format === 'article') return GenerationType.LONG;
   return GenerationType.TWEET;
+}
+
+function formatFromGenerationType(type: GenerationType): 'tweet' | 'thread' | 'article' {
+  if (type === GenerationType.THREAD) return 'thread';
+  if (type === GenerationType.LONG) return 'article';
+  return 'tweet';
 }
 
 function normalizeTargetRef(raw: string): string {
@@ -377,6 +386,7 @@ export class V3Service {
     const generation = await this.prisma.db.generation.findFirst({
       where: { id, userId },
       include: {
+        publishRecord: true,
         steps: true,
         publishJobs: {
           include: {
@@ -396,12 +406,19 @@ export class V3Service {
       ? Object.values(pkg.stepExplain).filter(Boolean).slice(0, 3)
       : [];
 
-    const format =
-      generation.type === GenerationType.THREAD
-        ? 'thread'
-        : generation.type === GenerationType.LONG
-          ? 'article'
-          : 'tweet';
+    const format = formatFromGenerationType(generation.type);
+    const manualPublish = generation.publishRecord
+      ? [{
+          id: generation.publishRecord.id,
+          status: 'MANUAL_RECORDED',
+          xAccountId: null,
+          xAccountHandle: null,
+          createdAt: generation.publishRecord.publishedAt.toISOString(),
+          updatedAt: generation.publishRecord.publishedAt.toISOString(),
+          externalPostId: generation.publishRecord.externalTweetId,
+          lastError: null
+        }]
+      : [];
 
     return {
       runId: generation.id,
@@ -421,16 +438,19 @@ export class V3Service {
             stepLatencyMs: pkg.stepLatencyMs ?? null
           }
         : null,
-      publish: generation.publishJobs.map((job) => ({
-        id: job.id,
-        status: job.status,
-        xAccountId: job.xAccountId,
-        xAccountHandle: job.xAccount?.handle ?? null,
-        createdAt: job.createdAt.toISOString(),
-        updatedAt: job.updatedAt.toISOString(),
-        externalPostId: job.externalPostId,
-        lastError: job.lastError
-      })),
+      publish: [
+        ...manualPublish,
+        ...generation.publishJobs.map((job) => ({
+          id: job.id,
+          status: job.status,
+          xAccountId: job.xAccountId,
+          xAccountHandle: job.xAccount?.handle ?? null,
+          createdAt: job.createdAt.toISOString(),
+          updatedAt: job.updatedAt.toISOString(),
+          externalPostId: job.externalPostId,
+          lastError: job.lastError
+        }))
+      ],
       stages: generation.steps.map((step) => {
         const mapped = mapGenerationStepToV3Stage(step.step);
         return {
@@ -593,16 +613,12 @@ export class V3Service {
     }
 
     const pkg = parsePackageResult(generation.result);
-    const format =
-      generation.type === GenerationType.THREAD
-        ? 'thread'
-        : generation.type === GenerationType.LONG
-          ? 'article'
-          : 'tweet';
+    const format = formatFromGenerationType(generation.type);
     const publishGuard = resolveV3PublishGuard(format);
     const selected = input.xAccountId
       ? state.xAccounts.find((row) => row.id === input.xAccountId) ?? null
       : state.defaultXAccount;
+    const articleCapability = format === 'article' ? resolveXArticlePublishCapability() : null;
 
     return {
       runId: input.runId,
@@ -617,6 +633,14 @@ export class V3Service {
       safeMode: input.safeMode ?? true,
       blockingReason: publishGuard?.blockingReason ?? (!selected ? 'NO_ACTIVE_X_ACCOUNT' : null),
       nextAction: publishGuard?.nextAction ?? (!selected ? 'connect_x_self' : 'confirm_publish'),
+      exportGuide: articleCapability
+        ? {
+            mode: articleCapability.mode,
+            openUrl: articleCapability.openUrl,
+            nativeApiAvailable: articleCapability.nativeApiAvailable,
+            description: articleCapability.description
+          }
+        : null,
       preview: pkg
         ? {
             text: pkg.tweet,
@@ -652,12 +676,7 @@ export class V3Service {
       });
     }
 
-    const format =
-      generation.type === GenerationType.THREAD
-        ? 'thread'
-        : generation.type === GenerationType.LONG
-          ? 'article'
-          : 'tweet';
+    const format = formatFromGenerationType(generation.type);
     const publishGuard = resolveV3PublishGuard(format);
     if (publishGuard) {
       throw new BadRequestException({
@@ -681,10 +700,54 @@ export class V3Service {
     };
   }
 
+  async completeArticlePublish(userId: string, input: V3PublishArticleCompleteDto) {
+    const generation = await this.prisma.db.generation.findFirst({
+      where: { id: input.runId, userId }
+    });
+    if (!generation) {
+      throw new NotFoundException({
+        code: 'RUN_NOT_FOUND',
+        message: '生成任务不存在',
+        details: {
+          nextAction: 'run_first_generation',
+          blockingReason: 'RUN_NOT_FOUND'
+        }
+      });
+    }
+    if (generation.status !== GenerationStatus.DONE) {
+      throw new BadRequestException({
+        code: 'RUN_NOT_READY',
+        message: '生成尚未完成，无法记录文章发布结果',
+        details: {
+          nextAction: 'watch_generation',
+          blockingReason: 'RUN_NOT_READY'
+        }
+      });
+    }
+    if (generation.type !== GenerationType.LONG) {
+      throw new BadRequestException({
+        code: 'ARTICLE_ONLY',
+        message: '只有长文结果才能记录 X 文章发布链接',
+        details: {
+          nextAction: 'open_queue',
+          blockingReason: 'ARTICLE_ONLY'
+        }
+      });
+    }
+
+    const result = await this.publish.completeManualArticlePublish(userId, input.runId, input.url, input.xAccountId);
+    return {
+      ...result,
+      runId: input.runId,
+      nextAction: 'export_article'
+    };
+  }
+
   async getQueue(userId: string, limit = 20) {
     const runs = await this.prisma.db.generation.findMany({
       where: { userId, status: GenerationStatus.DONE },
       include: {
+        publishRecord: true,
         publishJobs: {
           include: {
             xAccount: {
@@ -699,11 +762,10 @@ export class V3Service {
 
     const jobs = await this.publish.listJobs(userId, { limit: Math.min(Math.max(limit, 1), 50) });
     const pendingReview = runs
-      .filter((run) => run.publishJobs.length === 0)
+      .filter((run) => run.publishJobs.length === 0 && !run.publishRecord)
       .map((run) => {
         const pkg = parsePackageResult(run.result);
-        const format =
-          run.type === GenerationType.THREAD ? 'thread' : run.type === GenerationType.LONG ? 'article' : 'tweet';
+        const format = formatFromGenerationType(run.type);
         return {
           runId: run.id,
           format,
@@ -714,6 +776,28 @@ export class V3Service {
           nextAction: format === 'article' ? 'export_article' : 'confirm_publish'
         };
       });
+
+    const publishedByJobs = jobs
+      .filter((job) => job.status === PublishJobStatus.SUCCEEDED)
+      .map((job) => ({
+        id: job.id,
+        runId: job.generationId,
+        status: job.status,
+        xAccountHandle: job.xAccount?.handle ?? null,
+        externalPostId: job.externalPostId,
+        updatedAt: job.updatedAt.toISOString()
+      }));
+
+    const publishedByManualArticles = runs
+      .filter((run) => Boolean(run.publishRecord))
+      .map((run) => ({
+        id: run.publishRecord!.id,
+        runId: run.id,
+        status: 'MANUAL_RECORDED',
+        xAccountHandle: null,
+        externalPostId: run.publishRecord?.externalTweetId ?? null,
+        updatedAt: run.publishRecord?.publishedAt.toISOString() ?? run.updatedAt.toISOString()
+      }));
 
     return {
       review: pendingReview,
@@ -730,16 +814,9 @@ export class V3Service {
           lastError: job.lastError,
           nextAction: 'wait_publish'
         })),
-      published: jobs
-        .filter((job) => job.status === PublishJobStatus.SUCCEEDED)
-        .map((job) => ({
-          id: job.id,
-          runId: job.generationId,
-          status: job.status,
-          xAccountHandle: job.xAccount?.handle ?? null,
-          externalPostId: job.externalPostId,
-          updatedAt: job.updatedAt.toISOString()
-        })),
+      published: [...publishedByJobs, ...publishedByManualArticles].sort(
+        (left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()
+      ),
       failed: jobs
         .filter((job) => FAILED_JOB_STATUSES.includes(job.status as (typeof FAILED_JOB_STATUSES)[number]))
         .map((job) => ({

@@ -51,9 +51,9 @@ const TASK_PANEL_META: Record<string, TaskPanelMeta> = {
     tone: 'queue'
   },
   export_article: {
-    title: '先复制这篇长文再去发布',
-    description: '当前先通过复制方式发布到 X 文章编辑器，避免误走推文队列。',
-    primaryLabel: '复制长文',
+    title: '先把长文发到 X 网页端',
+    description: '复制长文、打开 X 网页端完成发布，再把文章链接贴回来。',
+    primaryLabel: '去发布长文',
     tone: 'queue'
   }
 };

@@ -214,6 +214,12 @@ export async function preparePublish(input: { runId: string; xAccountId?: string
     safeMode: boolean;
     blockingReason: string | null;
     nextAction: string;
+    exportGuide: {
+      mode: string;
+      openUrl: string;
+      nativeApiAvailable: boolean;
+      description: string;
+    } | null;
     preview: {
       text: string;
       charCount: number;
@@ -222,6 +228,25 @@ export async function preparePublish(input: { runId: string; xAccountId?: string
       imageKeywords: string[];
     } | null;
   }>('/v3/publish/prepare', {
+    method: 'POST',
+    body: JSON.stringify(input)
+  });
+}
+
+export async function completeArticlePublish(input: { runId: string; url: string; xAccountId?: string }) {
+  return apiFetch<{
+    requestId?: string;
+    traceId: string;
+    publishRecordId: string;
+    generationId: string;
+    runId: string;
+    status: string;
+    externalUrl: string;
+    publishedAt: string;
+    xAccountId: string | null;
+    xAccountHandle: string | null;
+    nextAction: string;
+  }>('/v3/publish/article/complete', {
     method: 'POST',
     body: JSON.stringify(input)
   });
