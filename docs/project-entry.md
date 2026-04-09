@@ -67,6 +67,13 @@
   这份入口和知识恢复包恢复的是“项目知识”，不是“原会话文本”。  
   证据：`memory/` 为空、`/Volumes/AI_SSD/05-docs-media/documents-archive/021-draftorbit.io` 为空、未发现 transcript/conversation 导出
 
+## Article publish
+
+- `docs/v3-article-publish-phase1.md`  
+  作用：当前 article 真实能力、证据入口与正确用户路径。
+- `docs/v3-article-publish-phase2-native-seam.md`  
+  作用：未来 native article publish 的 capability seam、UI 映射与数据迁移设计。
+
 ## 关联文档
 
 - 完整恢复包：`docs/knowledge-recovery-2026-04-08.md`
