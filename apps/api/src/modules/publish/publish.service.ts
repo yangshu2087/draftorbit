@@ -14,9 +14,9 @@ import {
   WorkspaceRole,
   XAccountStatus
 } from '@draftorbit/db';
-import { normalizeXArticleUrl } from '@draftorbit/shared';
 import { PrismaService } from '../../common/prisma.service';
 import { QueueService } from '../../common/queue.service';
+import { X_ARTICLE_PUBLISHER, type XArticlePublisherProvider } from './x-article-publisher';
 
 function extractTweetText(result: unknown): string {
   if (typeof result === 'string') return result;
@@ -47,7 +47,9 @@ function extractThreadTexts(result: unknown): string[] {
 export class PublishService {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
-    @Inject(QueueService) private readonly queue: QueueService
+    @Inject(QueueService) private readonly queue: QueueService,
+    @Inject(X_ARTICLE_PUBLISHER)
+    private readonly articlePublisher: XArticlePublisherProvider
   ) {}
 
   private async resolveWorkspace(userId: string): Promise<{ workspaceId: string; role: WorkspaceRole }> {
@@ -232,86 +234,21 @@ export class PublishService {
     return result;
   }
 
+  async getArticlePublishCapability(userId: string) {
+    return this.articlePublisher.getCapability(userId);
+  }
+
+  async prepareArticlePublish(userId: string, generationId: string) {
+    return this.articlePublisher.prepare(generationId, userId);
+  }
+
   async completeManualArticlePublish(
     userId: string,
     generationId: string,
     rawUrl: string,
     xAccountId?: string
   ) {
-    const normalizedUrl = normalizeXArticleUrl(rawUrl);
-    if (!normalizedUrl) {
-      throw new BadRequestException({
-        code: 'INVALID_ARTICLE_URL',
-        message: '请输入有效的 X 文章链接（https://x.com/...）',
-        details: {
-          nextAction: 'export_article',
-          blockingReason: 'INVALID_ARTICLE_URL'
-        }
-      });
-    }
-
-    const generation = await this.prisma.db.generation.findUnique({
-      where: { id: generationId }
-    });
-    if (!generation) throw new NotFoundException('生成记录不存在');
-    if (generation.userId !== userId) throw new ForbiddenException('无权操作该生成');
-    if (generation.status !== GenerationStatus.DONE) {
-      throw new BadRequestException('生成未完成，无法记录文章发布结果');
-    }
-    if (generation.type !== GenerationType.LONG) {
-      throw new BadRequestException('当前内容不是长文，不能记录为 X 文章发布');
-    }
-
-    const { workspaceId } = await this.resolveWorkspace(userId);
-    const xAccount = xAccountId
-      ? await this.resolvePublishAccount(workspaceId, xAccountId)
-      : await this.prisma.db.xAccount.findFirst({
-          where: { workspaceId, status: XAccountStatus.ACTIVE },
-          orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }]
-        });
-
-    const publishedAt = new Date();
-    const record = await this.prisma.db.publishRecord.upsert({
-      where: { generationId },
-      update: {
-        externalTweetId: normalizedUrl,
-        publishedAt
-      },
-      create: {
-        userId,
-        workspaceId,
-        generationId,
-        externalTweetId: normalizedUrl,
-        publishedAt
-      }
-    });
-
-    await this.prisma.db.auditLog.create({
-      data: {
-        workspaceId,
-        userId,
-        action: 'PUBLISH',
-        resourceType: 'publish_record',
-        resourceId: record.id,
-        payload: {
-          generationId,
-          mode: 'manual_x_web',
-          externalUrl: normalizedUrl,
-          xAccountId: xAccount?.id ?? null
-        }
-      }
-    });
-
-    return {
-      traceId: record.id,
-      publishRecordId: record.id,
-      generationId,
-      status: 'MANUAL_RECORDED' as const,
-      externalUrl: normalizedUrl,
-      publishedAt: record.publishedAt,
-      xAccountId: xAccount?.id ?? null,
-      xAccountHandle: xAccount?.handle ?? null
-    };
+    return this.articlePublisher.recordManualCompletion(generationId, userId, rawUrl, xAccountId);
   }
 
   async listJobs(
