@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import type { AuditSummaryEntity, OpsQueuesResponse, UsageSummaryEntity } from '@draftorbit/shared';
 import { WorkbenchShell } from '../../components/shell/workbench-shell';
 import { EmptyState, ErrorState, LoadingState } from '../../components/ui/page-states';
 import { WorkspaceRecovery, isWorkspaceMissing, normalizeErrorMessage } from '../../components/ui/workspace-recovery';
@@ -23,9 +24,9 @@ type DashboardData = {
   draftsCount: number;
   publishCount: number;
   replyCount: number;
-  usage: Record<string, any>;
-  audit: Record<string, any>;
-  queue: Record<string, any>;
+  usage: UsageSummaryEntity;
+  audit: AuditSummaryEntity;
+  queue: OpsQueuesResponse & { ok: true; now: string };
 };
 
 export default function DashboardPage() {
@@ -114,18 +115,42 @@ export default function DashboardPage() {
 
           <div className="rounded-lg border border-gray-200 p-3">
             <p className="text-sm font-semibold text-gray-900">队列健康</p>
+            <p className="mt-1 text-xs text-gray-500">
+              {roleLabel(data.queue.visibility.role)} · {tierLabel(data.queue.visibility.accessTier)}
+              {data.queue.visibility.redactedFields.length
+                ? ` · 已隐藏 ${data.queue.visibility.redactedFields.join('、')}`
+                : ' · 当前角色可查看完整队列健康数据'}
+            </p>
             <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              {Object.entries((data.queue?.queues ?? {}) as Record<string, any>).map(([name, stats]) => (
-                <div key={name} className="rounded border border-gray-200 bg-gray-50 p-2">
-                  <p className="text-xs font-semibold text-gray-700">{name}</p>
-                  <p className="mt-1 text-xs text-gray-500">waiting {stats.waiting} · active {stats.active}</p>
-                  <p className="text-xs text-gray-500">failed {stats.failed} · delayed {stats.delayed}</p>
+              {data.queue.queues ? (
+                Object.entries(data.queue.queues).map(([name, stats]) => (
+                  <div key={name} className="rounded border border-gray-200 bg-gray-50 p-2">
+                    <p className="text-xs font-semibold text-gray-700">{name}</p>
+                    <p className="mt-1 text-xs text-gray-500">waiting {stats.waiting} · active {stats.active}</p>
+                    <p className="text-xs text-gray-500">
+                      completed {stats.completed}
+                      {stats.failed != null ? ` · failed ${stats.failed}` : ''}
+                      {stats.delayed != null ? ` · delayed ${stats.delayed}` : ''}
+                      {stats.paused != null ? ` · paused ${stats.paused}` : ''}
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded border border-gray-200 bg-gray-50 p-3 sm:col-span-2 lg:col-span-4">
+                  <p className="text-xs font-semibold text-gray-700">队列总览</p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    waiting {data.queue.summary.waiting} · active {data.queue.summary.active} · completed {data.queue.summary.completed}
+                  </p>
+                  <p className="text-xs text-amber-700">
+                    当前角色仅可查看总览，{data.queue.hiddenQueueCount} 个队列明细已隐藏。
+                  </p>
                 </div>
-              ))}
+              )}
             </div>
           </div>
 
           <div className="grid gap-2 pt-2 sm:grid-cols-2 xl:grid-cols-4">
+            <QuickLink href="/snapshot" label="查看系统快照" />
             <QuickLink href="/topics" label="创建选题" />
             <QuickLink href="/drafts" label="编写草稿" />
             <QuickLink href="/publish-queue" label="查看发布队列" />
@@ -134,6 +159,7 @@ export default function DashboardPage() {
             <QuickLink href="/providers" label="检查模型路由" />
             <QuickLink href="/usage" label="查看成本趋势" />
             <QuickLink href="/audit" label="查看审计日志" />
+            <QuickLink href="/ops" label="查看队列健康" />
           </div>
         </>
       ) : null}
@@ -160,4 +186,20 @@ function QuickLink(props: { href: string; label: string }) {
       {props.label}
     </Link>
   );
+}
+
+function roleLabel(role: 'OWNER' | 'ADMIN' | 'EDITOR' | 'VIEWER') {
+  const labels = {
+    OWNER: 'Owner',
+    ADMIN: 'Admin',
+    EDITOR: 'Editor',
+    VIEWER: 'Viewer'
+  } as const;
+  return labels[role] ?? role;
+}
+
+function tierLabel(tier: 'FULL' | 'LIMITED' | 'OVERVIEW') {
+  if (tier === 'FULL') return '完整队列视图';
+  if (tier === 'LIMITED') return '受限队列视图';
+  return '概览队列视图';
 }

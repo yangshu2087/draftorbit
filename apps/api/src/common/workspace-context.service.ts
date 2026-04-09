@@ -138,8 +138,16 @@ export class WorkspaceContextService {
   }
 
   async getDefaultWorkspaceId(userId: string, options?: { autoBootstrap?: boolean }): Promise<string> {
+    const membership = await this.getDefaultMembership(userId, options);
+    return membership.workspaceId;
+  }
+
+  async getDefaultMembership(
+    userId: string,
+    options?: { autoBootstrap?: boolean }
+  ): Promise<{ workspaceId: string; role: WorkspaceRole }> {
     const autoBootstrap = options?.autoBootstrap ?? true;
-    const member = await this.resolveMembership(userId);
+    let member = await this.resolveMembership(userId);
     if (!member) {
       if (!autoBootstrap) {
         throw new NotFoundException({
@@ -151,8 +159,14 @@ export class WorkspaceContextService {
         });
       }
 
-      const bootstrapped = await this.bootstrapDefaultWorkspace(userId);
-      return bootstrapped.workspaceId;
+      await this.bootstrapDefaultWorkspace(userId);
+      member = await this.resolveMembership(userId);
+      if (!member) {
+        throw new NotFoundException({
+          code: 'WORKSPACE_NOT_FOUND',
+          message: '默认工作区初始化后仍未找到成员关系'
+        });
+      }
     }
 
     if (!member.isDefault) {
@@ -162,6 +176,9 @@ export class WorkspaceContextService {
       });
     }
 
-    return member.workspaceId;
+    return {
+      workspaceId: member.workspaceId,
+      role: member.role
+    };
   }
 }

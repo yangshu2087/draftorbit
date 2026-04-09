@@ -1,7 +1,15 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable } from '@nestjs/common';
 import { CreditDirection } from '@draftorbit/db';
+import type { UsageEventEntity, UsageSummaryEntity, UsageTrendsEntity } from '@draftorbit/shared';
 import { PrismaService } from '../../common/prisma.service';
 import { WorkspaceContextService } from '../../common/workspace-context.service';
+import {
+  buildUsageVisibility,
+  sanitizeCreditLedger,
+  sanitizeUsageBilling,
+  sanitizeUsageEvent,
+  sanitizeUsageTrendPoint
+} from './usage-visibility';
 
 @Injectable()
 export class UsageService {
@@ -10,8 +18,10 @@ export class UsageService {
     @Inject(WorkspaceContextService) private readonly workspaceContext: WorkspaceContextService
   ) {}
 
-  async summary(userId: string) {
-    const workspaceId = await this.workspaceContext.getDefaultWorkspaceId(userId);
+  async summary(userId: string): Promise<UsageSummaryEntity> {
+    const membership = await this.workspaceContext.getDefaultMembership(userId);
+    const visibility = buildUsageVisibility(membership.role);
+    const workspaceId = membership.workspaceId;
 
     const monthStart = new Date();
     monthStart.setDate(1);
@@ -31,51 +41,77 @@ export class UsageService {
       this.prisma.db.publishJob.count({ where: { workspaceId, createdAt: { gte: monthStart } } }),
       this.prisma.db.replyJob.count({ where: { workspaceId, createdAt: { gte: monthStart } } }),
       this.prisma.db.generation.count({ where: { workspaceId, createdAt: { gte: monthStart } } }),
-      this.prisma.db.tokenCostLog.aggregate({
-        where: { workspaceId, createdAt: { gte: monthStart } },
-        _sum: { inputTokens: true, outputTokens: true, costUsd: true }
-      }),
-      this.prisma.db.creditLedger.findMany({
-        where: { workspaceId },
-        orderBy: { createdAt: 'desc' },
-        take: 20
-      })
+      visibility.canViewCosts
+        ? this.prisma.db.tokenCostLog.aggregate({
+            where: { workspaceId, createdAt: { gte: monthStart } },
+            _sum: { inputTokens: true, outputTokens: true, costUsd: true }
+          })
+        : Promise.resolve({
+            _sum: {
+              inputTokens: 0,
+              outputTokens: 0,
+              costUsd: 0
+            }
+          }),
+      visibility.canViewLedgerDetails
+        ? this.prisma.db.creditLedger.findMany({
+            where: { workspaceId },
+            orderBy: { createdAt: 'desc' },
+            take: 20
+          })
+        : Promise.resolve([])
     ]);
 
     return {
       workspaceId,
       periodStart: monthStart.toISOString(),
-      billing,
+      billing: sanitizeUsageBilling(billing, visibility),
       counters: {
         usageEvents: usageLogs,
         generations: generationCount,
         publishJobs: publishCount,
         replyJobs: replyCount
       },
-      tokenCost: {
-        inputTokens: tokenCost._sum.inputTokens ?? 0,
-        outputTokens: tokenCost._sum.outputTokens ?? 0,
-        costUsd: tokenCost._sum.costUsd ?? 0
-      },
-      latestLedgers
+      tokenCost: visibility.canViewCosts
+        ? {
+            inputTokens: tokenCost._sum.inputTokens ?? 0,
+            outputTokens: tokenCost._sum.outputTokens ?? 0,
+            costUsd: Number(tokenCost._sum.costUsd ?? 0)
+          }
+        : null,
+      latestLedgers: latestLedgers.map((ledger) => sanitizeCreditLedger(ledger, visibility)),
+      visibility
     };
   }
 
-  async listEvents(userId: string, limit = 100) {
-    const workspaceId = await this.workspaceContext.getDefaultWorkspaceId(userId);
+  async listEvents(userId: string, limit = 100): Promise<UsageEventEntity[]> {
+    const membership = await this.workspaceContext.getDefaultMembership(userId);
+    const visibility = buildUsageVisibility(membership.role);
+    const workspaceId = membership.workspaceId;
+    const safeLimit = Math.min(Math.max(limit, 1), 500);
 
-    return this.prisma.db.usageLog.findMany({
+    const events = await this.prisma.db.usageLog.findMany({
       where: { workspaceId },
-      include: {
-        tokenCosts: true
+      select: {
+        id: true,
+        eventType: true,
+        model: true,
+        inputTokens: true,
+        outputTokens: true,
+        costUsd: true,
+        createdAt: true
       },
       orderBy: { createdAt: 'desc' },
-      take: Math.min(Math.max(limit, 1), 500)
+      take: safeLimit
     });
+
+    return events.map((event) => sanitizeUsageEvent(event, visibility));
   }
 
-  async trends(userId: string, days = 14) {
-    const workspaceId = await this.workspaceContext.getDefaultWorkspaceId(userId);
+  async trends(userId: string, days = 14): Promise<UsageTrendsEntity> {
+    const membership = await this.workspaceContext.getDefaultMembership(userId);
+    const visibility = buildUsageVisibility(membership.role);
+    const workspaceId = membership.workspaceId;
     const safeDays = Math.min(Math.max(days, 3), 90);
     const start = new Date();
     start.setHours(0, 0, 0, 0);
@@ -177,12 +213,26 @@ export class UsageService {
       workspaceId,
       days: safeDays,
       from: start.toISOString(),
-      points: [...buckets.values()]
+      visibility,
+      points: [...buckets.values()].map((point) => sanitizeUsageTrendPoint(point, visibility))
     };
   }
 
   async addCredits(userId: string, amount: number, reason: string) {
-    const workspaceId = await this.workspaceContext.getDefaultWorkspaceId(userId);
+    const membership = await this.workspaceContext.getDefaultMembership(userId);
+    const visibility = buildUsageVisibility(membership.role);
+    const workspaceId = membership.workspaceId;
+
+    if (!visibility.canManageCredits) {
+      throw new ForbiddenException({
+        code: 'USAGE_SNAPSHOT_FORBIDDEN',
+        message: '当前角色无权调整额度',
+        details: {
+          currentRole: membership.role,
+          requiredRoles: ['OWNER', 'ADMIN']
+        }
+      });
+    }
 
     const account = await this.prisma.db.billingAccount.upsert({
       where: { workspaceId },

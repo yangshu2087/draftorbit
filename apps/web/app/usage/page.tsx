@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import type { UsageEventEntity, UsageSummaryEntity, UsageTrendPoint, UsageVisibility, WorkspaceRoleValue } from '@draftorbit/shared';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { WorkbenchShell } from '../../components/shell/workbench-shell';
 import { EmptyState, ErrorState, LoadingState } from '../../components/ui/page-states';
@@ -8,9 +9,9 @@ import { WorkspaceRecovery, isWorkspaceMissing, normalizeErrorMessage } from '..
 import { fetchUsageEvents, fetchUsageSummary, fetchUsageTrends } from '../../lib/queries';
 
 export default function UsagePage() {
-  const [summary, setSummary] = useState<Record<string, any> | null>(null);
-  const [events, setEvents] = useState<Record<string, any>[]>([]);
-  const [points, setPoints] = useState<Array<Record<string, any>>>([]);
+  const [summary, setSummary] = useState<UsageSummaryEntity | null>(null);
+  const [events, setEvents] = useState<UsageEventEntity[]>([]);
+  const [points, setPoints] = useState<UsageTrendPoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
@@ -44,6 +45,7 @@ export default function UsagePage() {
     () => points.reduce((sum, item) => sum + Number(item.costUsd ?? 0), 0),
     [points]
   );
+  const usageVisibility = summary?.visibility;
 
   return (
     <WorkbenchShell title="用量与计费" description="查看用量趋势、模块分布与近期成本事件。">
@@ -66,14 +68,34 @@ export default function UsagePage() {
       {summary ? (
         <>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <MetricCard title="剩余额度" value={String(summary?.billing?.remainingCredits ?? 0)} />
-            <MetricCard title="本期生成次数" value={String(summary?.counters?.generations ?? 0)} />
-            <MetricCard title="本期发布任务" value={String(summary?.counters?.publishJobs ?? 0)} />
-            <MetricCard title="14日估算成本" value={`$${totalCost.toFixed(4)}`} />
+            <MetricCard title="剩余额度" value={String(summary.billing?.remainingCredits ?? 0)} />
+            <MetricCard title="本期生成次数" value={String(summary.counters.generations ?? 0)} />
+            <MetricCard title="本期发布任务" value={String(summary.counters.publishJobs ?? 0)} />
+            <MetricCard
+              title="14日估算成本"
+              value={usageVisibility?.canViewCosts ? `$${totalCost.toFixed(4)}` : '受限'}
+            />
           </div>
+
+          {usageVisibility ? (
+            <VisibilityPanel
+              title="快照权限分级"
+              description={`${roleLabel(usageVisibility.role)} · ${tierLabel(usageVisibility)} · ${
+                usageVisibility.canManageCredits ? '可调整额度' : '不可调整额度'
+              }`}
+              extra={
+                usageVisibility.redactedFields.length > 0
+                  ? `已隐藏字段：${usageVisibility.redactedFields.join('、')}`
+                  : '当前角色可查看完整用量与计费快照。'
+              }
+            />
+          ) : null}
 
           <div className="rounded-lg border border-gray-200 p-3">
             <p className="text-sm font-semibold">近 14 日用量趋势</p>
+            {!usageVisibility?.canViewCosts ? (
+              <p className="mt-1 text-xs text-amber-700">当前角色仅可查看趋势数量，成本曲线已隐藏。</p>
+            ) : null}
             <div className="mt-3 h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={points}>
@@ -94,11 +116,19 @@ export default function UsagePage() {
             {events.map((event) => (
               <div key={String(event.id)} className="rounded-lg border border-gray-200 p-3">
                 <p className="text-sm">
-                  {String(event.eventType)} · {String(event.model ?? 'N/A')}
+                  {String(event.eventType)} · {event.model ?? '明细已隐藏'}
                 </p>
-                <p className="text-xs text-gray-500">
-                  input={String(event.inputTokens ?? 0)} output={String(event.outputTokens ?? 0)} cost={String(event.costUsd ?? 0)}
-                </p>
+                <p className="text-xs text-gray-500">{new Date(event.createdAt).toLocaleString('zh-CN')}</p>
+                {event.detailsRedacted ? (
+                  <p className="mt-1 text-xs text-amber-700">
+                    当前角色仅可查看事件概览，模型、token 与成本明细已隐藏。
+                  </p>
+                ) : (
+                  <p className="text-xs text-gray-500">
+                    input={String(event.inputTokens ?? 0)} output={String(event.outputTokens ?? 0)} cost=
+                    {String(event.costUsd ?? 0)}
+                  </p>
+                )}
               </div>
             ))}
             {events.length === 0 ? <p className="text-sm text-gray-500">暂无用量事件</p> : null}
@@ -116,4 +146,30 @@ function MetricCard(props: { title: string; value: string }) {
       <p className="mt-1 text-lg font-semibold text-gray-900">{props.value}</p>
     </div>
   );
+}
+
+function VisibilityPanel(props: { title: string; description: string; extra?: string }) {
+  return (
+    <div className="rounded-lg border border-blue-200 bg-blue-50/70 p-3">
+      <p className="text-sm font-semibold text-blue-900">{props.title}</p>
+      <p className="mt-1 text-sm text-blue-800">{props.description}</p>
+      {props.extra ? <p className="mt-2 text-xs text-blue-700">{props.extra}</p> : null}
+    </div>
+  );
+}
+
+function roleLabel(role: WorkspaceRoleValue) {
+  const labels: Record<WorkspaceRoleValue, string> = {
+    OWNER: 'Owner',
+    ADMIN: 'Admin',
+    EDITOR: 'Editor',
+    VIEWER: 'Viewer'
+  };
+  return labels[role] ?? role;
+}
+
+function tierLabel(visibility: UsageVisibility) {
+  if (visibility.accessTier === 'FULL') return '完整快照';
+  if (visibility.accessTier === 'LIMITED') return '受限快照';
+  return '概览快照';
 }

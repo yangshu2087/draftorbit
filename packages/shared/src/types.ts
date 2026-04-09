@@ -83,6 +83,31 @@ export interface ProviderEntity {
   baseUrl?: string | null;
 }
 
+export type WorkspaceRoleValue = 'OWNER' | 'ADMIN' | 'EDITOR' | 'VIEWER';
+
+export type AuditVisibilityDomain =
+  | 'CONTENT'
+  | 'LEARNING'
+  | 'MEDIA'
+  | 'PUBLISHING'
+  | 'REPLY'
+  | 'WORKFLOW'
+  | 'INTEGRATIONS'
+  | 'BILLING'
+  | 'WORKSPACE_ADMIN'
+  | 'UNKNOWN';
+
+export type AuditVisibilityScope = 'FULL_WORKSPACE' | 'OPERATIONS_ONLY';
+export type AuditPayloadAccess = 'FULL' | 'NONE';
+
+export interface AuditVisibility {
+  role: WorkspaceRoleValue;
+  scope: AuditVisibilityScope;
+  payloadAccess: AuditPayloadAccess;
+  visibleDomains: AuditVisibilityDomain[];
+  hiddenDomains: AuditVisibilityDomain[];
+}
+
 export interface AuditLogEntity {
   id: string;
   action: string;
@@ -90,6 +115,132 @@ export interface AuditLogEntity {
   resourceId: string | null;
   payload: Record<string, unknown> | null;
   createdAt: string;
+  visibilityDomain?: AuditVisibilityDomain;
+  payloadRedacted?: boolean;
+}
+
+export interface AuditLogsResponse {
+  items: AuditLogEntity[];
+  hiddenCount: number;
+  visibility: AuditVisibility;
+  limit: number;
+}
+
+export interface AuditSummaryEntity {
+  workspaceId: string;
+  total: number;
+  last24h: number;
+  workspaceTotal: number;
+  workspaceLast24h: number;
+  hiddenTotal: number;
+  hiddenLast24h: number;
+  visibility: AuditVisibility;
+}
+
+export type UsageSnapshotAccessTier = 'FULL' | 'LIMITED' | 'OVERVIEW';
+
+export interface UsageVisibility {
+  role: WorkspaceRoleValue;
+  accessTier: UsageSnapshotAccessTier;
+  canViewCosts: boolean;
+  canViewLedgerDetails: boolean;
+  canManageCredits: boolean;
+  redactedFields: string[];
+}
+
+export interface UsageBillingSnapshot {
+  plan: string;
+  status: string;
+  monthlyQuota: number;
+  remainingCredits: number;
+  cycleStart: string | null;
+  cycleEnd: string | null;
+  stripeCustomerId?: string | null;
+}
+
+export interface UsageTokenCostSnapshot {
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+}
+
+export interface CreditLedgerSnapshot {
+  id: string;
+  direction: string;
+  amount: number;
+  balanceAfter: number | null;
+  reason: string;
+  createdAt: string;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface UsageSummaryEntity {
+  workspaceId: string;
+  periodStart: string;
+  billing: UsageBillingSnapshot | null;
+  counters: {
+    usageEvents: number;
+    generations: number;
+    publishJobs: number;
+    replyJobs: number;
+  };
+  tokenCost: UsageTokenCostSnapshot | null;
+  latestLedgers: CreditLedgerSnapshot[];
+  visibility: UsageVisibility;
+}
+
+export interface UsageEventEntity {
+  id: string;
+  eventType: string;
+  model: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  costUsd: number | null;
+  createdAt: string;
+  detailsRedacted: boolean;
+}
+
+export interface UsageTrendPoint {
+  date: string;
+  generation: number;
+  naturalization: number;
+  image: number;
+  reply: number;
+  publish: number;
+  totalEvents: number;
+  costUsd: number | null;
+}
+
+export interface UsageTrendsEntity {
+  workspaceId: string;
+  days: number;
+  from: string;
+  visibility: UsageVisibility;
+  points: UsageTrendPoint[];
+}
+
+export interface OpsQueueStats {
+  waiting: number;
+  active: number;
+  completed: number;
+  failed: number | null;
+  delayed: number | null;
+  paused: number | null;
+}
+
+export interface OpsVisibility {
+  role: WorkspaceRoleValue;
+  accessTier: UsageSnapshotAccessTier;
+  canViewPerQueue: boolean;
+  canViewFailureDetails: boolean;
+  redactedFields: string[];
+}
+
+export interface OpsQueuesResponse {
+  visibility: OpsVisibility;
+  summary: OpsQueueStats;
+  queues: Record<string, OpsQueueStats> | null;
+  hiddenQueueCount: number;
 }
 
 export interface XAccountEntity {
