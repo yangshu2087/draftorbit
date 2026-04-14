@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildV3SuggestedAction,
   buildV3PromptEnvelope,
   buildV3SourceEvidence,
   mapGenerationStepToV3Stage,
   resolveV3PublishGuard
-} from '../src/modules/v3/v3.service';
+} from '../src/modules/v3/v3.helpers';
 
 test('buildV3PromptEnvelope turns a one-line intent into an agent-first generation brief', () => {
   const prompt = buildV3PromptEnvelope({
@@ -91,4 +92,34 @@ test('buildV3SourceEvidence summarizes connected sources for the app and connect
     '已学习目标账号 / 推文链接',
     '已接入 Obsidian / 本地知识库'
   ]);
+});
+
+test('buildV3SuggestedAction allows first generation before x connection on a fresh workspace', () => {
+  assert.equal(
+    buildV3SuggestedAction({
+      defaultXAccount: null,
+      sources: [],
+      styleSummary: null
+    }),
+    'run_first_generation'
+  );
+});
+
+test('buildV3SuggestedAction still recommends learning/profile upgrades after first-use path is open', () => {
+  assert.equal(
+    buildV3SuggestedAction({
+      defaultXAccount: null,
+      sources: [{ id: 'src_1' }],
+      styleSummary: null
+    }),
+    'rebuild_profile'
+  );
+  assert.equal(
+    buildV3SuggestedAction({
+      defaultXAccount: { id: 'x_1' },
+      sources: [],
+      styleSummary: '结论先行'
+    }),
+    'connect_learning_source'
+  );
 });

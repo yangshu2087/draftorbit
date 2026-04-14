@@ -180,6 +180,56 @@ check_https() {
   return 1
 }
 
+check_legacy_route_compat() {
+  local specs=(
+    "chat|/app|告诉我你今天要在 X 上完成什么"
+    "dashboard|/app|告诉我你今天要在 X 上完成什么"
+    "usage|/app|告诉我你今天要在 X 上完成什么"
+    "settings|/connect|连接后系统会自动学什么？"
+    "providers|/connect|连接后系统会自动学什么？"
+    "x-accounts|/connect|连接后系统会自动学什么？"
+  )
+  local failed=0
+
+  for spec in "${specs[@]}"; do
+    local route expected_path expected_text tmp_file meta status effective_url effective_path
+    IFS='|' read -r route expected_path expected_text <<<"$spec"
+    tmp_file="$(mktemp)"
+    meta="$(curl -sS -L --http1.1 --max-time 12 -w '%{http_code}|%{url_effective}' -o "$tmp_file" "https://${DOMAIN}/${route}" || true)"
+    status="${meta%%|*}"
+    effective_url="${meta#*|}"
+    effective_path="$(printf '%s' "$effective_url" | sed -E 's#https?://[^/]+##; s#\?.*$##')"
+
+    if [[ "$status" != "200" ]]; then
+      fail "兼容路由 /${route} 返回异常（HTTP ${status:-N/A}）"
+      failed=1
+      rm -f "$tmp_file"
+      continue
+    fi
+
+    if [[ "$effective_path" != "$expected_path" ]]; then
+      fail "兼容路由 /${route} 未落到 ${expected_path}（实际 ${effective_path:-unknown}）"
+      failed=1
+      rm -f "$tmp_file"
+      continue
+    fi
+
+    if ! grep -q "$expected_text" "$tmp_file"; then
+      fail "兼容路由 /${route} 缺少 V3 目标页关键文案"
+      failed=1
+      rm -f "$tmp_file"
+      continue
+    fi
+
+    ok "兼容路由 /${route} 正常（/${route} -> ${expected_path}）"
+    rm -f "$tmp_file"
+  done
+
+  if [[ "$failed" -ne 0 ]]; then
+    return 1
+  fi
+}
+
 check_vercel_envs() {
   local tmp_file
   tmp_file="$(mktemp)"
@@ -311,9 +361,10 @@ ensure_local_acceptance_stack() {
     (
       set -a
       [[ -f ./.env ]] && source ./.env
+      export OPENROUTER_ROUTING_PROFILE="${OPENROUTER_ROUTING_PROFILE:-test_high}"
       export OPENROUTER_FREE_MODELS="${OPENROUTER_FREE_MODELS:-openrouter/free}"
-      export OPENROUTER_FLOOR_MODELS="${OPENROUTER_FLOOR_MODELS:-openrouter/free}"
-      export OPENROUTER_HIGH_MODELS="${OPENROUTER_HIGH_MODELS:-openrouter/free}"
+      export OPENROUTER_FLOOR_MODELS="${OPENROUTER_FLOOR_MODELS:-google/gemini-3-flash-preview,openai/gpt-5.4-mini,deepseek/deepseek-v3.2}"
+      export OPENROUTER_HIGH_MODELS="${OPENROUTER_HIGH_MODELS:-anthropic/claude-sonnet-4.6,openai/gpt-5.4,google/gemini-3.1-pro-preview}"
       if [[ -z "${OPENROUTER_API_KEY:-}" && "${W1_ACCEPTANCE_ALLOW_MOCK_OPENROUTER}" == "1" ]]; then
         export OPENROUTER_MOCK_MODE=1
       fi
@@ -468,6 +519,9 @@ main() {
   check_dns "$API_DOMAIN" || failed=1
   check_https "https://${DOMAIN}" || failed=1
   check_https "https://${API_DOMAIN}/health" || failed=1
+
+  step 'V3 兼容路由检查'
+  check_legacy_route_compat || failed=1
 
   step 'Stripe 钱包域名条件检查'
   check_stripe_wallet_domain || failed=1

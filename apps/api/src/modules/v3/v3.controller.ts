@@ -8,6 +8,7 @@ import {
   Post,
   Query,
   Req,
+  Res,
   Sse,
   UseGuards
 } from '@nestjs/common';
@@ -23,6 +24,7 @@ import {
   V3ConnectObsidianDto,
   V3ConnectTargetDto,
   V3ConnectUrlsDto,
+  V3PublishArticleCompleteDto,
   V3PublishConfirmDto,
   V3PublishPrepareDto,
   V3QueueQueryDto,
@@ -61,6 +63,32 @@ export class V3Controller {
   @UseGuards(AuthGuard)
   async getRun(@Req() req: RequestWithUser, @Param('id') id: string) {
     const result = await this.v3.getRun((req.user as AuthUser).userId, id);
+    return withRequestId(req, result);
+  }
+
+  @Get('chat/runs/:id/assets/:assetId')
+  async getRunAsset(
+    @Param('id') id: string,
+    @Param('assetId') assetId: string,
+    @Res() res: any
+  ) {
+    const result = await this.v3.getRunAssetPublic(id, assetId);
+    res.type(result.contentType).send(result.data);
+  }
+
+  @Get('chat/runs/:id/assets.zip')
+  async getRunAssetsZip(@Param('id') id: string, @Res() res: any) {
+    const result = await this.v3.getRunAssetsZipPublic(id);
+    res
+      .type(result.contentType)
+      .setHeader('Content-Disposition', `attachment; filename="${result.filename}"`)
+      .send(result.data);
+  }
+
+  @Post('chat/runs/:id/assets/retry')
+  @UseGuards(AuthGuard)
+  async retryRunAssets(@Req() req: RequestWithUser, @Param('id') id: string) {
+    const result = await this.v3.retryRunVisualAssets((req.user as AuthUser).userId, id);
     return withRequestId(req, result);
   }
 
@@ -164,6 +192,13 @@ export class V3Controller {
   @UseGuards(AuthGuard)
   async confirmPublish(@Req() req: RequestWithUser, @Body() body: V3PublishConfirmDto) {
     const result = await this.v3.confirmPublish((req.user as AuthUser).userId, body);
+    return withRequestId(req, result);
+  }
+
+  @Post('publish/article/complete')
+  @UseGuards(AuthGuard)
+  async completeArticlePublish(@Req() req: RequestWithUser, @Body() body: V3PublishArticleCompleteDto) {
+    const result = await this.v3.completeArticlePublish((req.user as AuthUser).userId, body);
     return withRequestId(req, result);
   }
 

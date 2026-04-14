@@ -21,20 +21,20 @@ const SIGNED_IN_NAV: ShellNavItem[] = [{ href: '/app', label: '生成器' }];
 
 const TASK_PANEL_META: Record<string, TaskPanelMeta> = {
   connect_x_self: {
-    title: '先连接你的 X 账号',
-    description: '连上后就能直接生成，并准备正式发出。',
+    title: '连接 X 账号后再发布会更顺',
+    description: '现在就能先生成；连上之后再发布，也能让后续学习你的风格更稳。',
     primaryLabel: '连接 X 账号',
     tone: 'connect'
   },
   connect_learning_source: {
     title: '补一个学习来源',
-    description: '补一个样本或资料，让下一条更贴近你想要的方向。',
+    description: '补一个样本或资料，让下一条更贴近你想要的方向；不影响你先生成。',
     primaryLabel: '继续补充',
     tone: 'connect'
   },
   rebuild_profile: {
-    title: '先更新你的风格画像',
-    description: '更新后，下一条会更像你平时的表达。',
+    title: '补建风格画像，让下一条更像你',
+    description: '你现在可以先生成，之后再补建画像让后续表达更稳。',
     primaryLabel: '重建画像',
     tone: 'connect'
   },

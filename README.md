@@ -99,6 +99,8 @@ RUN_ID=20260403-001 npx pnpm@10.23.0 smoke:p0
 - `X_CLIENT_ID` / `X_CLIENT_SECRET` / `X_CALLBACK_URL`
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_CALLBACK_URL`
 - `OPENROUTER_API_KEY`（平台托管调用通道）
+- `OPENROUTER_ROUTING_PROFILE`（`local` / `test_high` / `prod_balanced`）
+- `OPENROUTER_FREE_MODELS` / `OPENROUTER_FLOOR_MODELS` / `OPENROUTER_HIGH_MODELS`
 - `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET`
 - `STRIPE_STARTER_MONTHLY_PRICE_ID` / `STRIPE_STARTER_YEARLY_PRICE_ID`
 - `STRIPE_PRO_MONTHLY_PRICE_ID` / `STRIPE_PRO_YEARLY_PRICE_ID`
@@ -106,6 +108,22 @@ RUN_ID=20260403-001 npx pnpm@10.23.0 smoke:p0
 - `BILLING_TRIAL_DAYS`（默认 3）
 - `BILLING_PAYPAL_FALLBACK_ENABLED`（生产默认 `false`）
 - `PAYPAL_API_BASE` / `PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET` / `PAYPAL_WEBHOOK_ID`
+
+---
+
+### OpenRouter 路由档位建议
+
+- `local`：本地开发 / 低成本 smoke，允许 `free -> floor -> high`
+- `test_high`：测试 / QA / UAT / 回归，所有文本步骤默认 `high -> floor`
+- `prod_balanced`：线上默认，`hook / draft / humanize / package` 走高质量优先，`research / outline / media` 走平衡层优先
+
+建议模型池：
+
+- `OPENROUTER_FREE_MODELS=openrouter/free`
+- `OPENROUTER_FLOOR_MODELS=google/gemini-3-flash-preview,openai/gpt-5.4-mini,deepseek/deepseek-v3.2`
+- `OPENROUTER_HIGH_MODELS=anthropic/claude-sonnet-4.6,openai/gpt-5.4,google/gemini-3.1-pro-preview`
+
+这样测试阶段的 real-model regression 才能稳定证明“真的走了高质量层”，而不是名义分层、实际全走 `openrouter/free`。
 
 ---
 

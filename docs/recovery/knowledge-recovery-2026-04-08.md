@@ -1,5 +1,8 @@
 # DraftOrbit 知识恢复包（2026-04-08）
 
+> **Current recovery note (2026-04-13/14):** this document is a historical knowledge-recovery artifact. The current requested target root is `/Volumes/AI_DEV_2T/01-projects/active/openclaw-workspace/projects/002-draftorbit.io` and the implementation worktree is `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/recover-draftorbit-final`. Older `/Volumes/AI_SSD/...` paths below are retained as historical evidence unless explicitly superseded by `RECOVERY-SOURCE.md`.
+
+
 > 当前项目根路径（唯一真实根路径）：`/Volumes/AI_SSD/04-projects-large/openclaw-workspace/projects/021-draftorbit.io`
 >
 > 本包是**恢复项目上下文**的事实档案，不包含不可验证的旧对话原文，也不伪造“之前对话中说过什么”。

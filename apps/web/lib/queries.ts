@@ -48,6 +48,93 @@ export type V3RunResponse = {
     imageKeywords: string[];
     qualityScore: number | null;
     quality?: Record<string, number>;
+    routing?: {
+      trialMode?: boolean;
+      primaryModel?: string;
+      routingTier?: string;
+      profile?: 'local' | 'local_free' | 'local_quality' | 'test_high' | 'prod_balanced';
+      provider?: 'openai' | 'openrouter' | 'ollama' | 'codex-local';
+    } | null;
+    usage?: Array<{
+      model: string;
+      modelUsed: string;
+      routingTier: string | null;
+      costUsd: number;
+      inputTokens?: number | null;
+      outputTokens?: number | null;
+    }>;
+    qualitySignals?: {
+      hookStrength: number;
+      specificity: number;
+      evidenceDensity: number;
+      humanLikeness: number;
+      conversationalFlow: number;
+      visualizability: number;
+      ctaNaturalness: number;
+    } | null;
+    visualPlan?: {
+      primaryAsset: string;
+      visualizablePoints: string[];
+      keywords: string[];
+      items: Array<{
+        kind: string;
+        priority: 'primary' | 'supporting';
+        type: string;
+        layout: string;
+        style: string;
+        palette: string;
+        cue: string;
+        reason: string;
+      }>;
+    } | null;
+    visualAssets?: Array<{
+      id: string;
+      kind: string;
+      status: 'ready' | 'generating' | 'failed';
+      renderer?: 'template-svg' | 'provider-image';
+      aspectRatio?: '1:1' | '16:9';
+      textLayer?: 'app-rendered' | 'none';
+      assetUrl?: string;
+      assetPath?: string;
+      promptPath?: string;
+      cue: string;
+      reason?: string;
+      error?: string;
+    }>;
+    sourceArtifacts?: Array<{
+      kind: 'url' | 'x' | 'youtube' | 'search';
+      url?: string;
+      title?: string;
+      markdownPath: string;
+      capturedAt: string;
+      status: 'ready' | 'failed' | 'skipped';
+      evidenceUrl?: string;
+      error?: string;
+    }>;
+    runtime?: {
+      engine: 'baoyu-skills';
+      commit: string;
+      skills: string[];
+    } | null;
+    derivativeReadiness?: {
+      html?: { ready: boolean; score: number; reason: string };
+      cards?: { ready: boolean; score: number; reason: string };
+      infographic?: { ready: boolean; score: number; reason: string };
+      slideSummary?: { ready: boolean; score: number; reason: string };
+      markdown?: { ready: boolean; score: number; reason: string };
+      translation?: { ready: boolean; score: number; reason: string };
+    } | null;
+    qualityGate?: {
+      status: 'passed' | 'failed';
+      safeToDisplay: boolean;
+      hardFails: string[];
+      visualHardFails?: string[];
+      sourceRequired?: boolean;
+      sourceStatus?: 'ready' | 'failed' | 'ambiguous' | 'not_configured';
+      userMessage?: string;
+      recoveryAction?: 'retry' | 'add_source' | 'narrow_topic';
+      judgeNotes: string[];
+    } | null;
     riskFlags: string[];
     requestCostUsd: number | null;
     whySummary: string[];
@@ -189,6 +276,13 @@ export async function runChat(input: {
 
 export async function fetchRun(runId: string) {
   return apiFetch<V3RunResponse>(`/v3/chat/runs/${runId}`);
+}
+
+export async function retryRunVisualAssets(runId: string) {
+  return apiFetch<V3RunResponse>(`/v3/chat/runs/${runId}/assets/retry`, {
+    method: 'POST',
+    body: JSON.stringify({})
+  });
 }
 
 export async function fetchProfile() {

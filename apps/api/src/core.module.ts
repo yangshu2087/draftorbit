@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { PrismaService } from './common/prisma.service';
+import { ModelGatewayService } from './common/model-gateway.service';
 import { OpenRouterService } from './common/openrouter.service';
 import { TwitterService } from './common/twitter.service';
 import { SubscriptionGuard } from './common/subscription.guard';
@@ -14,6 +15,11 @@ import { WorkspaceContextService } from './common/workspace-context.service';
   providers: [
     PrismaService,
     OpenRouterService,
+    {
+      provide: ModelGatewayService,
+      useFactory: (openRouter: OpenRouterService) => new ModelGatewayService(openRouter),
+      inject: [OpenRouterService]
+    },
     TwitterService,
     SubscriptionGuard,
     QueueService,
@@ -24,6 +30,7 @@ import { WorkspaceContextService } from './common/workspace-context.service';
   ],
   exports: [
     PrismaService,
+    ModelGatewayService,
     OpenRouterService,
     TwitterService,
     SubscriptionGuard,

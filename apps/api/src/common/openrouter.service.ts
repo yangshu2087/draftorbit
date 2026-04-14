@@ -23,6 +23,7 @@ export type RouterTaskType =
   | 'generic';
 
 export type RoutingTier = 'trial_high' | 'free_first' | 'floor' | 'quality_fallback';
+export type OpenRouterRoutingProfile = 'local' | 'test_high' | 'prod_balanced';
 
 export type RoutedChatOptions = {
   taskType?: RouterTaskType;
@@ -31,6 +32,7 @@ export type RoutedChatOptions = {
   forceHighTier?: boolean;
   timeoutMs?: number;
   maxCandidates?: number;
+  maxTokens?: number;
   maxPrice?: {
     prompt?: number;
     completion?: number;
@@ -47,13 +49,32 @@ export type RoutedChatResult = {
   inputTokens: number;
   outputTokens: number;
   costUsd: number;
+  provider?: 'openrouter';
 };
 
 // 默认使用 OpenRouter 免费路由，保证“开箱即跑”与成本可控。
 // 生产环境可通过 OPENROUTER_*_MODELS 覆盖为更激进的分层模型组合。
 const DEFAULT_FREE_MODELS = ['openrouter/free'] as const;
-const DEFAULT_FLOOR_MODELS = ['openrouter/free'] as const;
-const DEFAULT_HIGH_MODELS = ['openrouter/free'] as const;
+const DEFAULT_FLOOR_MODELS = [
+  'google/gemini-3-flash-preview',
+  'openai/gpt-5.4-mini',
+  'deepseek/deepseek-v3.2',
+  'google/gemma-4-31b-it'
+] as const;
+const DEFAULT_HIGH_MODELS = [
+  'anthropic/claude-sonnet-4.6',
+  'openai/gpt-5.4',
+  'google/gemini-3.1-pro-preview',
+  // Account/provider-access fallback: some OpenRouter accounts can see the
+  // frontier model ids but receive provider ToS 403 at runtime. Keep these
+  // quality-oriented alternatives ahead of the floor pool so `test_high`
+  // still uses a real high-quality path instead of silently dropping to floor.
+  'x-ai/grok-4.20',
+  'qwen/qwen3-max',
+  'moonshotai/kimi-k2-thinking',
+  'z-ai/glm-4.6',
+  'deepseek/deepseek-v3.2'
+] as const;
 const DEFAULT_TASK_TIMEOUT_MS = 20000;
 const DEFAULT_TASK_MAX_CANDIDATES = 2;
 
@@ -78,6 +99,20 @@ const TASK_MAX_CANDIDATES: Record<RouterTaskType, number> = {
   package: 2,
   generic: DEFAULT_TASK_MAX_CANDIDATES
 };
+
+const TASK_MAX_TOKENS: Record<RouterTaskType, number> = {
+  research: 1600,
+  hook: 900,
+  outline: 1800,
+  draft: 4096,
+  humanize: 4096,
+  media: 1200,
+  package: 3000,
+  generic: 1600
+};
+
+const QUALITY_CRITICAL_TASKS = new Set<RouterTaskType>(['hook', 'draft', 'humanize', 'package']);
+const CONTEXT_BUILDING_TASKS = new Set<RouterTaskType>(['research', 'outline', 'media']);
 
 function parseModelList(value: string | undefined, fallback: readonly string[]): string[] {
   const raw = (value ?? '').trim();
@@ -105,6 +140,17 @@ function parseCost(value: unknown): number {
   return 0;
 }
 
+export function resolveOpenRouterRoutingProfile(
+  rawProfile = process.env.OPENROUTER_ROUTING_PROFILE,
+  nodeEnv = process.env.NODE_ENV
+): OpenRouterRoutingProfile {
+  const normalized = rawProfile?.trim().toLowerCase();
+  if (normalized === 'local' || normalized === 'test_high' || normalized === 'prod_balanced') {
+    return normalized;
+  }
+  return nodeEnv === 'production' ? 'prod_balanced' : 'local';
+}
+
 @Injectable()
 export class OpenRouterService {
   private readonly baseUrl = 'https://openrouter.ai/api/v1';
@@ -127,9 +173,17 @@ export class OpenRouterService {
 
     if (joined.includes('researchpoints') && joined.includes('hookcandidates')) {
       return JSON.stringify({
-        researchPoints: ['痛点识别：账号增长慢', '策略拆解：高表现主题结构'],
-        hookCandidates: ['一个月从 0 到 1 万粉，做对了什么？', '别再盲发了，这 3 步让互动翻倍'],
-        angleSummary: '聚焦“可复制方法 + 真实运营节奏”'
+        researchPoints: [
+          '受众假设：这条内容应该先打中已经在做内容、但第一句总抓不住人的创作者。',
+          '核心判断：内容不讲人话，往往不是知识不够，而是开头没有先给判断。',
+          '证据计划：给一个真实例子，说明“同一条内容为什么这样写会更容易被读完”。'
+        ],
+        hookCandidates: [
+          '多数内容没人停下来，不是主题不行，而是第一句没有给判断。',
+          '如果你的推文总像说明书，问题通常不在知识，而在开头。',
+          '同样一个观点，先给判断再给例子，读完率会高很多。'
+        ],
+        angleSummary: '先给结论，再补例子，最后用一个带选择的问题拉回复。'
       });
     }
 
@@ -138,10 +192,10 @@ export class OpenRouterService {
       (joined.includes('"title"') && joined.includes('"hook"') && joined.includes('"cta"'))
     ) {
       return JSON.stringify({
-        title: '用运营节奏替代灵感写作',
-        hook: '多数账号不缺想法，缺的是可执行节奏。',
-        body: ['先确定目标场景', '再用固定模板快速出稿', '最后用复盘数据迭代下一轮'],
-        cta: '你现在卡在哪一步？留言我给你建议。'
+        title: '别把内容写成说明书',
+        hook: '多数推文没人停下来，不是观点不够，而是第一句没先给判断。',
+        body: ['先把最想让读者记住的判断说出来', '马上补一个例子或反例', '最后抛出一个让人愿意回复的问题'],
+        cta: '如果只能先改一个地方，你会先改开头、例子，还是结尾？'
       });
     }
 
@@ -172,11 +226,12 @@ export class OpenRouterService {
 
       return JSON.stringify({
         primaryTweet:
-          `多数 X 账号增长慢，不是内容差，而是流程断裂：选题靠灵感、发布靠随机、复盘靠感觉。建议固定“选题→草稿→审批→发布→复盘”节奏，连续两周就能看到互动质量提升。#${marker}`,
+          `多数 X 账号发不起来，不是因为没观点，而是第一句总在解释背景。先把判断说出来，再补一个具体例子，读者才会愿意继续看。`,
         thread: [
-          '① 先定目标：涨粉 / 互动 / 转化，只选一个。',
-          '② 用模板出稿：减少空白页焦虑。',
-          '③ 发布后 24h 复盘：保留有效结构，淘汰低效写法。'
+          '1/4\n先别急着铺背景。\n\n第一句先告诉读者：这条内容最重要的判断是什么。',
+          '2/4\n再补一个具体例子。\n\n比如同样写 AI 产品冷启动，直接讲“第一条别同时讲定位、功能和故事”，比空谈方法更容易让人停下来。',
+          '3/4\n中段只推进一个意思。\n\n一条说判断，一条说例子，一条说动作，不要一条里塞完三个层次。',
+          '4/4\n最后再抛问题。\n\n如果只能先改一个位置，你会先改开头、例子，还是结尾？'
         ]
       });
     }
@@ -184,7 +239,7 @@ export class OpenRouterService {
     if (joined.includes('humanized') || joined.includes('aitracerisk')) {
       return JSON.stringify({
         humanized:
-          `很多账号发不起来，不是因为你不会写，而是流程太散。把动作固定成“选题—起稿—审批—发布—复盘”，连续执行两周，互动质量通常会明显改善。(${marker})`,
+          `很多内容看起来信息很多，但读者读完一句就滑走了。问题通常不是你懂得不够，而是第一句没有先给判断。先把立场讲清楚，再补一个具体例子，读者才知道为什么要继续看。`,
         aiTraceRisk: 0.18
       });
     }
@@ -241,15 +296,15 @@ export class OpenRouterService {
 
       return JSON.stringify({
         tweet:
-          `别把增长寄托在“灵感爆发”。把 X 运营改成固定流水线：选题→草稿→审批→发布→复盘。流程稳定后，质量和效率会一起上升。#${marker}`,
+          `多数推文没人停下来，不是主题不对，而是第一句还在绕。先把判断说出来，再补一个具体例子，读者才会愿意继续看。你现在最常卡在开头、例子，还是结尾？`,
         variants: [
           {
             tone: '专业',
-            text: 'X 运营真正的杠杆是流程，而不是偶然爆款。先把生产和复盘节奏固定，再谈规模增长。'
+            text: '真正影响读完率的，往往不是信息量，而是你有没有先给读者一个明确判断。'
           },
           {
             tone: '简洁',
-            text: '流程稳定，增长才可复制。今天就把你的内容动作排成一条线。'
+            text: '别先解释背景。先给判断，再给例子。'
           }
         ]
       });
@@ -295,6 +350,10 @@ export class OpenRouterService {
     return parseModelList(process.env.OPENROUTER_HIGH_MODELS, DEFAULT_HIGH_MODELS);
   }
 
+  private get routingProfile(): OpenRouterRoutingProfile {
+    return resolveOpenRouterRoutingProfile();
+  }
+
   private readPositiveIntEnv(name: string): number | null {
     const raw = process.env[name]?.trim();
     if (!raw) return null;
@@ -316,23 +375,66 @@ export class OpenRouterService {
     return TASK_MAX_CANDIDATES[taskType ?? 'generic'] ?? DEFAULT_TASK_MAX_CANDIDATES;
   }
 
+  private resolveTaskMaxTokens(taskType: RouterTaskType | undefined): number {
+    const globalMaxTokens = this.readPositiveIntEnv('OPENROUTER_MAX_TOKENS');
+    if (globalMaxTokens) return globalMaxTokens;
+    return TASK_MAX_TOKENS[taskType ?? 'generic'] ?? TASK_MAX_TOKENS.generic;
+  }
+
+  private resolveReducedMaxTokensAfter402(error: Error, currentMaxTokens: number): number | null {
+    if (!/OpenRouter error 402/u.test(error.message)) return null;
+    const affordable = Number(error.message.match(/(?:can only afford|can afford)\s+(\d+)/iu)?.[1] ?? 0);
+    if (Number.isFinite(affordable) && affordable > 0 && affordable < 16) return null;
+    const parsedBudget = Number.isFinite(affordable) && affordable > 0 ? Math.max(16, Math.floor(affordable * 0.9)) : 0;
+    const fallbackBudget = Math.floor(currentMaxTokens * 0.65);
+    const localCeiling = currentMaxTokens > 320 ? currentMaxTokens - 256 : currentMaxTokens - 1;
+    const reduced = Math.min(localCeiling, parsedBudget || fallbackBudget);
+    if (!Number.isFinite(reduced) || reduced < 16 || reduced >= currentMaxTokens) return null;
+    return reduced;
+  }
+
   private buildCandidates(options: RoutedChatOptions): Array<{ model: string; tier: RoutingTier }> {
     const task = options.taskType ?? 'generic';
     const trialMode = options.trialMode === true;
-    const shouldPreferHighTier =
-      options.forceHighTier === true ||
-      (trialMode && ['draft', 'humanize', 'package', 'hook'].includes(task));
+    const highTier: RoutingTier = trialMode ? 'trial_high' : 'quality_fallback';
+    const profile = this.routingProfile;
+    const forceHigh = options.forceHighTier === true;
+    const prefersHigh = QUALITY_CRITICAL_TASKS.has(task);
+    const prefersContext = CONTEXT_BUILDING_TASKS.has(task);
 
-    const candidates = shouldPreferHighTier
-      ? [
-        ...this.highModels.map((model) => ({ model, tier: trialMode ? 'trial_high' : 'quality_fallback' as RoutingTier })),
+    let candidates: Array<{ model: string; tier: RoutingTier }>;
+    if (forceHigh) {
+      candidates = [
+        ...this.highModels.map((model) => ({ model, tier: highTier })),
         ...this.floorModels.map((model) => ({ model, tier: 'floor' as RoutingTier }))
-      ]
-      : [
-        ...this.freeModels.map((model) => ({ model, tier: 'free_first' as RoutingTier })),
-        ...this.floorModels.map((model) => ({ model, tier: 'floor' as RoutingTier })),
-        ...this.highModels.map((model) => ({ model, tier: 'quality_fallback' as RoutingTier }))
       ];
+    } else if (profile === 'test_high') {
+      candidates = [
+        ...this.highModels.map((model) => ({ model, tier: highTier })),
+        ...this.floorModels.map((model) => ({ model, tier: 'floor' as RoutingTier }))
+      ];
+    } else if (profile === 'prod_balanced') {
+      candidates = prefersHigh
+        ? [
+            ...this.highModels.map((model) => ({ model, tier: highTier })),
+            ...this.floorModels.map((model) => ({ model, tier: 'floor' as RoutingTier }))
+          ]
+        : [
+            ...this.floorModels.map((model) => ({ model, tier: 'floor' as RoutingTier })),
+            ...this.highModels.map((model) => ({ model, tier: 'quality_fallback' as RoutingTier }))
+          ];
+    } else {
+      candidates = prefersContext
+        ? [
+            ...this.freeModels.map((model) => ({ model, tier: 'free_first' as RoutingTier })),
+            ...this.floorModels.map((model) => ({ model, tier: 'floor' as RoutingTier })),
+            ...this.highModels.map((model) => ({ model, tier: 'quality_fallback' as RoutingTier }))
+          ]
+        : [
+            ...this.floorModels.map((model) => ({ model, tier: 'floor' as RoutingTier })),
+            ...this.highModels.map((model) => ({ model, tier: highTier }))
+          ];
+    }
 
     const seen = new Set<string>();
     const deduped: Array<{ model: string; tier: RoutingTier }> = [];
@@ -344,11 +446,40 @@ export class OpenRouterService {
     return deduped;
   }
 
+  private resolveProfileCandidateFloor(task: RouterTaskType, forceHighTier: boolean): number {
+    const profile = this.routingProfile;
+    const freeCount = this.freeModels.length > 0 ? 1 : 0;
+    const floorCount = this.floorModels.length > 0 ? 1 : 0;
+    const highCount = this.highModels.length > 0 ? 1 : 0;
+
+    if (forceHighTier) {
+      return this.highModels.length + this.floorModels.length;
+    }
+
+    if (profile === 'test_high') {
+      return this.highModels.length + this.floorModels.length;
+    }
+
+    if (profile === 'prod_balanced') {
+      if (QUALITY_CRITICAL_TASKS.has(task)) {
+        return this.highModels.length + this.floorModels.length;
+      }
+      return this.floorModels.length + this.highModels.length;
+    }
+
+    if (CONTEXT_BUILDING_TASKS.has(task)) {
+      return Math.min(freeCount + floorCount + highCount, this.freeModels.length + this.floorModels.length + this.highModels.length);
+    }
+
+    return Math.min(this.floorModels.length + highCount, this.floorModels.length + this.highModels.length);
+  }
+
   private async runChatRequest(input: {
     model: string;
     messages: ChatMessage[];
     temperature: number;
     timeoutMs: number;
+    maxTokens: number;
     maxPrice?: RoutedChatOptions['maxPrice'];
     providerSortByPrice?: boolean;
   }) {
@@ -377,6 +508,7 @@ export class OpenRouterService {
       model: input.model,
       messages: input.messages,
       temperature: input.temperature,
+      max_tokens: input.maxTokens,
       stream: false
     };
 
@@ -389,34 +521,45 @@ export class OpenRouterService {
     }
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), input.timeoutMs);
+    const deadline = Date.now() + input.timeoutMs;
     let res: Response;
     try {
-      res = await fetch(`${this.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-          'X-Title': 'DraftOrbit'
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal
+      res = await this.fetchWithTimeout({
+        model: input.model,
+        timeoutMs: input.timeoutMs,
+        controller,
+        request: () =>
+          fetch(`${this.baseUrl}/chat/completions`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${apiKey}`,
+              'X-Title': 'DraftOrbit'
+            },
+            body: JSON.stringify(body),
+            signal: controller.signal
+          })
       });
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         throw new Error(`OpenRouter timeout after ${input.timeoutMs}ms (${input.model})`);
       }
       throw error;
-    } finally {
-      clearTimeout(timer);
     }
+
+    const remainingMs = Math.max(1, deadline - Date.now());
+    const bodyText = await this.readResponseTextWithTimeout({
+      response: res,
+      timeoutMs: remainingMs,
+      model: input.model,
+      controller
+    });
 
     if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`OpenRouter error ${res.status}: ${text}`);
+      throw new Error(`OpenRouter error ${res.status}: ${bodyText}`);
     }
 
-    const data = (await res.json()) as {
+    const data = JSON.parse(bodyText) as {
       model?: string;
       choices?: Array<{ message?: { content?: string } }>;
       usage?: {
@@ -438,13 +581,69 @@ export class OpenRouterService {
     };
   }
 
+  private async fetchWithTimeout<T>(input: {
+    model: string;
+    timeoutMs: number;
+    controller: AbortController;
+    request: () => Promise<T>;
+  }): Promise<T> {
+    return await new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        input.controller.abort();
+        reject(new Error(`OpenRouter timeout after ${input.timeoutMs}ms (${input.model})`));
+      }, input.timeoutMs);
+
+      input
+        .request()
+        .then((value) => {
+          clearTimeout(timer);
+          resolve(value);
+        })
+        .catch((error) => {
+          clearTimeout(timer);
+          if (error instanceof Error && error.name === 'AbortError') {
+            reject(new Error(`OpenRouter timeout after ${input.timeoutMs}ms (${input.model})`));
+            return;
+          }
+          reject(error);
+        });
+    });
+  }
+
+  private async readResponseTextWithTimeout(input: {
+    response: Response;
+    timeoutMs: number;
+    model: string;
+    controller: AbortController;
+  }): Promise<string> {
+    return await new Promise<string>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        input.controller.abort();
+        reject(new Error(`OpenRouter timeout after ${input.timeoutMs}ms (${input.model})`));
+      }, input.timeoutMs);
+
+      input.response
+        .text()
+        .then((value) => {
+          clearTimeout(timer);
+          resolve(value);
+        })
+        .catch((error) => {
+          clearTimeout(timer);
+          reject(error);
+        });
+    });
+  }
+
   async chatWithRouting(messages: ChatMessage[], options: RoutedChatOptions = {}): Promise<RoutedChatResult> {
-    const timeoutMs = options.timeoutMs ?? this.resolveTaskTimeoutMs(options.taskType);
+    const taskType = options.taskType ?? 'generic';
+    const timeoutMs = options.timeoutMs ?? this.resolveTaskTimeoutMs(taskType);
+    const maxTokens = options.maxTokens ?? this.resolveTaskMaxTokens(taskType);
     const candidatePool = this.buildCandidates(options);
-    const maxCandidates = Math.max(
-      1,
-      Math.min(candidatePool.length, options.maxCandidates ?? this.resolveTaskMaxCandidates(options.taskType))
-    );
+    const explicitMaxCandidates = options.maxCandidates ?? this.readPositiveIntEnv('OPENROUTER_MAX_CANDIDATES');
+    const profileCandidateFloor = this.resolveProfileCandidateFloor(taskType, options.forceHighTier === true);
+    const targetCandidates = explicitMaxCandidates ?? Math.max(this.resolveTaskMaxCandidates(taskType), profileCandidateFloor);
+    const maxCandidates = Math.max(1, Math.min(candidatePool.length, targetCandidates));
     const candidates = candidatePool.slice(0, maxCandidates);
     if (candidates.length === 0) {
       throw new Error('No OpenRouter model candidates configured');
@@ -455,14 +654,34 @@ export class OpenRouterService {
     for (let i = 0; i < candidates.length; i += 1) {
       const candidate = candidates[i];
       try {
-        const result = await this.runChatRequest({
-          model: candidate.model,
-          messages,
-          temperature: options.temperature ?? 0.7,
-          timeoutMs,
-          maxPrice: options.maxPrice,
-          providerSortByPrice: candidate.tier === 'free_first' || candidate.tier === 'floor'
-        });
+        let attemptMaxTokens = maxTokens;
+        let result: {
+          content: string;
+          model: string;
+          usage: { promptTokens: number; completionTokens: number; costUsd: number };
+        } | null = null;
+
+        for (let tokenAttempt = 0; tokenAttempt < 4; tokenAttempt += 1) {
+          try {
+            result = await this.runChatRequest({
+              model: candidate.model,
+              messages,
+              temperature: options.temperature ?? 0.7,
+              timeoutMs,
+              maxTokens: attemptMaxTokens,
+              maxPrice: options.maxPrice,
+              providerSortByPrice: candidate.tier === 'free_first' || candidate.tier === 'floor'
+            });
+            break;
+          } catch (err) {
+            const error = err instanceof Error ? err : new Error(String(err));
+            const reducedMaxTokens = this.resolveReducedMaxTokensAfter402(error, attemptMaxTokens);
+            if (!reducedMaxTokens) throw error;
+            attemptMaxTokens = reducedMaxTokens;
+          }
+        }
+
+        if (!result) throw new Error(`OpenRouter request failed after token-budget retries (${candidate.model})`);
 
         return {
           content: result.content,
@@ -471,7 +690,8 @@ export class OpenRouterService {
           fallbackDepth: i,
           inputTokens: result.usage.promptTokens,
           outputTokens: result.usage.completionTokens,
-          costUsd: result.usage.costUsd
+          costUsd: result.usage.costUsd,
+          provider: 'openrouter'
         };
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
@@ -487,9 +707,60 @@ export class OpenRouterService {
       messages,
       temperature,
       timeoutMs: this.resolveTaskTimeoutMs('generic'),
+      maxTokens: this.resolveTaskMaxTokens('generic'),
       providerSortByPrice: false
     });
     return result.content;
+  }
+
+  async chatWithModel(
+    model: string,
+    messages: ChatMessage[],
+    options: RoutedChatOptions & { routingTier?: RoutingTier } = {}
+  ): Promise<RoutedChatResult> {
+    const taskType = options.taskType ?? 'generic';
+    const timeoutMs = options.timeoutMs ?? this.resolveTaskTimeoutMs(taskType);
+    const maxTokens = options.maxTokens ?? this.resolveTaskMaxTokens(taskType);
+    const routingTier = options.routingTier ?? (options.forceHighTier ? 'quality_fallback' : 'floor');
+    let attemptMaxTokens = maxTokens;
+    let result: {
+      content: string;
+      model: string;
+      usage: { promptTokens: number; completionTokens: number; costUsd: number };
+    } | null = null;
+
+    for (let tokenAttempt = 0; tokenAttempt < 4; tokenAttempt += 1) {
+      try {
+        result = await this.runChatRequest({
+          model,
+          messages,
+          temperature: options.temperature ?? 0.7,
+          timeoutMs,
+          maxTokens: attemptMaxTokens,
+          maxPrice: options.maxPrice,
+          providerSortByPrice: routingTier === 'free_first' || routingTier === 'floor'
+        });
+        break;
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        const reducedMaxTokens = this.resolveReducedMaxTokensAfter402(error, attemptMaxTokens);
+        if (!reducedMaxTokens) throw error;
+        attemptMaxTokens = reducedMaxTokens;
+      }
+    }
+
+    if (!result) throw new Error(`OpenRouter request failed after token-budget retries (${model})`);
+
+    return {
+      content: result.content,
+      modelUsed: result.model,
+      routingTier,
+      fallbackDepth: 0,
+      inputTokens: result.usage.promptTokens,
+      outputTokens: result.usage.completionTokens,
+      costUsd: result.usage.costUsd,
+      provider: 'openrouter'
+    };
   }
 
   async *chatStream(
@@ -516,7 +787,7 @@ export class OpenRouterService {
         Authorization: `Bearer ${apiKey}`,
         'X-Title': 'DraftOrbit'
       },
-      body: JSON.stringify({ model, messages, temperature, stream: true })
+      body: JSON.stringify({ model, messages, temperature, max_tokens: this.resolveTaskMaxTokens('generic'), stream: true })
     });
 
     if (!res.ok) {

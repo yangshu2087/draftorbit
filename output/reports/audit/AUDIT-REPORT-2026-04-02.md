@@ -1,7 +1,7 @@
 # DraftOrbit 全量审计报告（阶段A已改 + 阶段B/C同步收敛）
 
 审计时间：2026-04-02（America/Los_Angeles）  
-审计范围：`/Users/yangshu/.openclaw/workspace/projects/021-draftorbit.io`
+审计范围：`/Users/yangshu/.openclaw/workspace/projects/002-draftorbit.io`
 
 ---
 

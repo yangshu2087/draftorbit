@@ -1,4 +1,6 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import {
   GenerationStatus,
   GenerationType,
@@ -10,11 +12,15 @@ import {
 import { PrismaService } from '../../common/prisma.service';
 import { WorkspaceContextService } from '../../common/workspace-context.service';
 import { BillingService } from '../billing/billing.service';
+import { BaoyuRuntimeService } from '../generate/baoyu-runtime.service';
+import { buildContentQualityGate } from '../generate/content-quality-gate';
+import type { ContentFormat } from '../generate/content-strategy';
 import { GenerateService, type PackageResult } from '../generate/generate.service';
 import { HistoryService } from '../history/history.service';
 import { LearningSourcesService } from '../learning-sources/learning-sources.service';
 import { PublishService } from '../publish/publish.service';
 import { XAccountsService } from '../x-accounts/x-accounts.service';
+import { buildV3SuggestedAction, normalizeXArticleUrl, resolveXArticlePublishCapability } from './v3.helpers';
 import type {
   V3BillingCheckoutDto,
   V3ConnectLocalFilesDto,
@@ -140,6 +146,12 @@ function generationTypeFromFormat(format: 'tweet' | 'thread' | 'article'): Gener
   return GenerationType.TWEET;
 }
 
+function formatFromGenerationType(type: GenerationType): ContentFormat {
+  if (type === GenerationType.THREAD) return 'thread';
+  if (type === GenerationType.LONG) return 'article';
+  return 'tweet';
+}
+
 function normalizeTargetRef(raw: string): string {
   const trimmed = raw.trim();
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
@@ -151,6 +163,9 @@ function normalizeTargetRef(raw: string): string {
 function extractStyleSummary(analysis: unknown): string | null {
   if (!analysis || typeof analysis !== 'object') return null;
   const record = analysis as Record<string, unknown>;
+  if (typeof record.voice_summary === 'string' && record.voice_summary.trim()) {
+    return record.voice_summary.trim();
+  }
   const pieces: string[] = [];
   for (const key of ['tone', 'vocabulary', 'sentence_structure', 'topic_preferences', 'emoji_usage']) {
     const value = record[key];
@@ -174,14 +189,95 @@ function parsePackageResult(result: unknown): PackageResult | null {
   return row as unknown as PackageResult;
 }
 
+function crc32(buffer: Buffer): number {
+  let crc = 0xffffffff;
+  for (const byte of buffer) {
+    crc ^= byte;
+    for (let index = 0; index < 8; index += 1) {
+      crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function buildStoredZip(entries: Array<{ name: string; data: Buffer }>): Buffer {
+  const localParts: Buffer[] = [];
+  const centralParts: Buffer[] = [];
+  let offset = 0;
+
+  for (const entry of entries) {
+    const name = Buffer.from(entry.name.replace(/^\/+/u, ''), 'utf8');
+    const checksum = crc32(entry.data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0, 6);
+    local.writeUInt16LE(0, 8);
+    local.writeUInt16LE(0, 10);
+    local.writeUInt16LE(0, 12);
+    local.writeUInt32LE(checksum, 14);
+    local.writeUInt32LE(entry.data.length, 18);
+    local.writeUInt32LE(entry.data.length, 22);
+    local.writeUInt16LE(name.length, 26);
+    local.writeUInt16LE(0, 28);
+    localParts.push(local, name, entry.data);
+
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(0, 8);
+    central.writeUInt16LE(0, 10);
+    central.writeUInt16LE(0, 12);
+    central.writeUInt16LE(0, 14);
+    central.writeUInt32LE(checksum, 16);
+    central.writeUInt32LE(entry.data.length, 20);
+    central.writeUInt32LE(entry.data.length, 24);
+    central.writeUInt16LE(name.length, 28);
+    central.writeUInt16LE(0, 30);
+    central.writeUInt16LE(0, 32);
+    central.writeUInt16LE(0, 34);
+    central.writeUInt16LE(0, 36);
+    central.writeUInt32LE(0, 38);
+    central.writeUInt32LE(offset, 42);
+    centralParts.push(central, name);
+    offset += local.length + name.length + entry.data.length;
+  }
+
+  const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(0, 4);
+  end.writeUInt16LE(0, 6);
+  end.writeUInt16LE(entries.length, 8);
+  end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(centralSize, 12);
+  end.writeUInt32LE(offset, 16);
+  end.writeUInt16LE(0, 20);
+  return Buffer.concat([...localParts, ...centralParts, end]);
+}
+
+function isInsideBaoyuArtifactRoot(candidatePath: string): boolean {
+  const artifactRoot = path.resolve(process.cwd(), 'artifacts', 'baoyu-runtime');
+  const normalized = path.resolve(candidatePath);
+  return normalized === artifactRoot || normalized.startsWith(`${artifactRoot}${path.sep}`);
+}
+
 function buildRiskFlags(pkg: PackageResult | null, format: 'tweet' | 'thread' | 'article'): string[] {
   if (!pkg) return ['结果包缺失，请重新生成'];
   const flags: string[] = [];
+  if (pkg.qualityGate?.status === 'failed') {
+    flags.push('质量门未通过，坏稿已被拦截，请再来一版或调整输入。');
+  }
   if (format === 'article') {
     const sectionCount = (pkg.tweet.match(/(?:^|\n)[一二三四五六七八九十]、/gu) ?? []).length;
     if (pkg.charCount < 400) flags.push('长文偏短，建议补充 3-5 个小节');
     if (sectionCount < 3) flags.push('长文结构偏弱，建议至少保留 3 个小节');
     if (/#[\p{L}0-9_]+/u.test(pkg.tweet)) flags.push('X 长文正文不建议带 hashtag');
+  } else if (format === 'thread') {
+    const posts = pkg.thread?.length ? pkg.thread : pkg.tweet.split(/\n{2,}/).map((item) => item.trim()).filter(Boolean);
+    if (posts.length < 3) flags.push('串推展开偏弱，建议至少拆成 3 条');
+    if (posts.some((post) => [...post].length > 280)) flags.push('至少有一条串推超出 280 字限制');
   } else if (pkg.charCount > 280) {
     flags.push('长度超出单条推文限制');
   }
@@ -199,7 +295,7 @@ function summarizeStepContent(step: string, content?: string): string | null {
       return parsed.angleSummary;
     }
     if ((step === 'OUTLINE' || step === StepName.OUTLINE) && typeof parsed.hook === 'string') {
-      return `已确定 hook：${parsed.hook}`;
+      return `开头切入点：${parsed.hook}`;
     }
     if ((step === 'DRAFT' || step === StepName.DRAFT) && typeof parsed.primaryTweet === 'string') {
       return String(parsed.primaryTweet).slice(0, 100);
@@ -208,12 +304,12 @@ function summarizeStepContent(step: string, content?: string): string | null {
       return String(parsed.humanized).slice(0, 100);
     }
     if ((step === 'IMAGE' || step === StepName.IMAGE) && Array.isArray(parsed.searchKeywords)) {
-      return `配图关键词：${parsed.searchKeywords.slice(0, 3).join(' / ')}`;
+      return `配图方向：${parsed.searchKeywords.slice(0, 3).join(' / ')}`;
     }
     if ((step === 'PACKAGE' || step === StepName.PACKAGE) && typeof parsed.tweet === 'string') {
       const quality = parsed.quality && typeof parsed.quality === 'object' ? parsed.quality as Record<string, unknown> : null;
       const total = quality && typeof quality.total === 'number' ? ` · 质量 ${quality.total}` : '';
-      return `结果包已就绪${total}`;
+      return `结果已准备好${total}`;
     }
   } catch {
     return content.slice(0, 100);
@@ -231,7 +327,8 @@ export class V3Service {
     @Inject(XAccountsService) private readonly xAccounts: XAccountsService,
     @Inject(HistoryService) private readonly history: HistoryService,
     @Inject(PublishService) private readonly publish: PublishService,
-    @Inject(BillingService) private readonly billing: BillingService
+    @Inject(BillingService) private readonly billing: BillingService,
+    @Inject(BaoyuRuntimeService) private readonly baoyuRuntime: BaoyuRuntimeService
   ) {}
 
   private async getWorkspaceScopedState(userId: string) {
@@ -250,17 +347,6 @@ export class V3Service {
 
     const defaultXAccount = xAccounts.find((row) => row.isDefault) ?? xAccounts[0] ?? null;
     return { workspaceId, user, xAccounts, sources: sources as SourceRow[], style, defaultXAccount };
-  }
-
-  private buildSuggestedAction(input: {
-    defaultXAccount: { id: string } | null;
-    sources: SourceRow[];
-    styleSummary: string | null;
-  }) {
-    if (!input.defaultXAccount) return 'connect_x_self';
-    if (!input.styleSummary) return 'rebuild_profile';
-    if (input.sources.length === 0) return 'connect_learning_source';
-    return 'run_first_generation';
   }
 
   async bootstrapSession(userId: string) {
@@ -293,7 +379,7 @@ export class V3Service {
         styleSummary,
         sourceCount: state.sources.length
       },
-      suggestedAction: this.buildSuggestedAction({
+      suggestedAction: buildV3SuggestedAction({
         defaultXAccount: state.defaultXAccount,
         sources: state.sources,
         styleSummary
@@ -378,6 +464,17 @@ export class V3Service {
       where: { id, userId },
       include: {
         steps: true,
+        usageLogs: {
+          select: {
+            model: true,
+            modelUsed: true,
+            routingTier: true,
+            costUsd: true,
+            inputTokens: true,
+            outputTokens: true
+          },
+          orderBy: { createdAt: 'asc' }
+        },
         publishJobs: {
           include: {
             xAccount: {
@@ -414,10 +511,42 @@ export class V3Service {
             imageKeywords: pkg.imageKeywords,
             qualityScore: pkg.quality?.total ?? null,
             quality: pkg.quality,
+            routing: pkg.routing ?? null,
+            qualitySignals: pkg.qualitySignals
+              ? {
+                  hookStrength: pkg.qualitySignals.hookStrength,
+                  specificity: pkg.qualitySignals.specificity,
+                  evidenceDensity: pkg.qualitySignals.evidence,
+                  humanLikeness: pkg.qualitySignals.humanLikeness,
+                  conversationalFlow: pkg.qualitySignals.conversationality,
+                  visualizability: pkg.qualitySignals.visualizability,
+                  ctaNaturalness: pkg.qualitySignals.ctaNaturalness
+                }
+              : null,
+            visualPlan: pkg.visualPlan ?? null,
+            visualAssets: pkg.visualAssets ?? [],
+            sourceArtifacts: pkg.sourceArtifacts ?? [],
+            runtime: pkg.runtime ?? null,
+            derivativeReadiness: pkg.derivativeReadiness ?? null,
+            qualityGate: pkg.qualityGate ?? null,
+            usage: generation.usageLogs.map((log) => ({
+              model: log.model,
+              modelUsed: log.modelUsed ?? log.model,
+              routingTier: log.routingTier ?? null,
+              costUsd: Number(log.costUsd ?? 0),
+              inputTokens: log.inputTokens,
+              outputTokens: log.outputTokens
+            })),
             riskFlags: buildRiskFlags(pkg, format),
             requestCostUsd: null,
             whySummary,
-            evidenceSummary: buildV3SourceEvidence(state.sources),
+            evidenceSummary: [
+              ...buildV3SourceEvidence(state.sources),
+              ...(pkg.sourceArtifacts ?? [])
+                .filter((artifact) => artifact.status === 'ready')
+                .map((artifact) => artifact.title || artifact.url || artifact.kind)
+                .filter(Boolean)
+            ],
             stepLatencyMs: pkg.stepLatencyMs ?? null
           }
         : null,
@@ -441,6 +570,130 @@ export class V3Service {
         };
       })
     };
+  }
+
+  async getRunAsset(userId: string, id: string, assetId: string) {
+    const generation = await this.prisma.db.generation.findFirst({ where: { id, userId } });
+    if (!generation) throw new NotFoundException('生成任务不存在');
+    return this.readRunAssetFromGeneration(generation.result, assetId);
+  }
+
+  async retryRunVisualAssets(userId: string, id: string) {
+    const generation = await this.prisma.db.generation.findFirst({ where: { id, userId } });
+    if (!generation) throw new NotFoundException('生成任务不存在');
+    const pkg = parsePackageResult(generation.result);
+    if (!pkg?.visualPlan) throw new BadRequestException('当前结果没有可重试的图文规划');
+    if (!pkg.tweet?.trim()) throw new BadRequestException('当前结果没有可用于重试图片的正文');
+
+    const format = formatFromGenerationType(generation.type);
+    const focus =
+      pkg.imageKeywords.find((item) => item.trim()) ??
+      pkg.visualPlan.visualizablePoints.find((item) => item.trim()) ??
+      pkg.tweet.slice(0, 80);
+    const visualArtifacts = await this.baoyuRuntime.generateVisualArtifacts({
+      runId: generation.id,
+      format,
+      focus,
+      text: pkg.tweet,
+      visualPlan: pkg.visualPlan,
+      withImage: true
+    });
+    const refreshedGate = buildContentQualityGate({
+      format,
+      focus,
+      text: pkg.tweet,
+      visualPlan: pkg.visualPlan,
+      visualAssets: visualArtifacts.assets,
+      requireVisualAssets: true
+    });
+    const mergedStatus: 'failed' | 'passed' =
+      pkg.qualityGate?.status === 'failed' || refreshedGate.status === 'failed' ? 'failed' : 'passed';
+    const mergedQualityGate = {
+      status: mergedStatus,
+      safeToDisplay: pkg.qualityGate?.safeToDisplay !== false && refreshedGate.safeToDisplay !== false,
+      hardFails: Array.from(new Set([...(pkg.qualityGate?.hardFails ?? []), ...refreshedGate.hardFails])),
+      visualHardFails: refreshedGate.visualHardFails ?? [],
+      userMessage: refreshedGate.userMessage ?? pkg.qualityGate?.userMessage,
+      recoveryAction: refreshedGate.recoveryAction ?? pkg.qualityGate?.recoveryAction,
+      judgeNotes: Array.from(new Set([...(pkg.qualityGate?.judgeNotes ?? []), ...refreshedGate.judgeNotes]))
+    };
+    const nextPkg: PackageResult = {
+      ...pkg,
+      visualAssets: visualArtifacts.assets,
+      runtime: this.baoyuRuntime.runtimeMeta([
+        ...new Set([...(pkg.runtime?.skills ?? []), ...visualArtifacts.runtime.skills])
+      ]),
+      qualityGate: mergedQualityGate
+    };
+
+    await this.prisma.db.generation.update({
+      where: { id: generation.id },
+      data: { result: nextPkg as unknown as object }
+    });
+
+    return this.getRun(userId, id);
+  }
+
+  async getRunAssetPublic(id: string, assetId: string) {
+    const generation = await this.prisma.db.generation.findFirst({ where: { id } });
+    if (!generation) throw new NotFoundException('生成任务不存在');
+    return this.readRunAssetFromGeneration(generation.result, assetId);
+  }
+
+  async getRunAssetsZipPublic(id: string) {
+    const generation = await this.prisma.db.generation.findFirst({ where: { id } });
+    if (!generation) throw new NotFoundException('生成任务不存在');
+    const pkg = parsePackageResult(generation.result);
+    const readyAssets = (pkg?.visualAssets ?? []).filter((asset) => asset.status === 'ready' && asset.assetPath);
+    const entries: Array<{ name: string; data: Buffer }> = [];
+
+    for (const asset of readyAssets) {
+      const normalized = path.resolve(asset.assetPath!);
+      if (!isInsideBaoyuArtifactRoot(normalized)) continue;
+      const data = await fs.readFile(normalized);
+      const ext = path.extname(normalized) || '.svg';
+      entries.push({ name: `${asset.id || path.basename(normalized, ext)}${ext}`, data });
+      if (asset.promptPath) {
+        const promptPath = path.resolve(asset.promptPath);
+        if (isInsideBaoyuArtifactRoot(promptPath)) {
+          entries.push({ name: `prompts/${asset.id || path.basename(promptPath, path.extname(promptPath))}.md`, data: await fs.readFile(promptPath) });
+        }
+      }
+    }
+
+    for (const sourceArtifact of pkg?.sourceArtifacts ?? []) {
+      if (sourceArtifact.status !== 'ready' || !sourceArtifact.markdownPath) continue;
+      const markdownPath = path.resolve(sourceArtifact.markdownPath);
+      if (!isInsideBaoyuArtifactRoot(markdownPath)) continue;
+      const slug = `${sourceArtifact.kind}-${path.basename(markdownPath, path.extname(markdownPath)) || 'source'}.md`;
+      entries.push({ name: `sources/${slug}`, data: await fs.readFile(markdownPath) });
+    }
+
+    if (entries.length === 0) throw new NotFoundException('没有可下载的视觉资产');
+    return { data: buildStoredZip(entries), contentType: 'application/zip', filename: `${id}-visual-assets.zip` };
+  }
+
+  private async readRunAssetFromGeneration(result: unknown, assetId: string) {
+    const pkg = parsePackageResult(result);
+    const asset = pkg?.visualAssets?.find((item) => item.id === assetId && item.status === 'ready');
+    if (!asset?.assetPath) throw new NotFoundException('视觉资产不存在或尚未生成');
+
+    const normalized = path.resolve(asset.assetPath);
+    if (!normalized.includes(`${path.sep}artifacts${path.sep}baoyu-runtime${path.sep}`)) {
+      throw new NotFoundException('视觉资产路径无效');
+    }
+
+    const data = await fs.readFile(normalized);
+    const ext = path.extname(normalized).toLowerCase();
+    const contentType =
+      ext === '.jpg' || ext === '.jpeg'
+        ? 'image/jpeg'
+        : ext === '.webp'
+          ? 'image/webp'
+          : ext === '.svg'
+            ? 'image/svg+xml'
+            : 'image/png';
+    return { data, contentType };
   }
 
   async connectSelfX(userId: string) {
@@ -681,10 +934,72 @@ export class V3Service {
     };
   }
 
+  async completeArticlePublish(userId: string, input: { runId: string; url: string; xAccountId?: string }) {
+    const generation = await this.prisma.db.generation.findFirst({
+      where: { id: input.runId, userId }
+    });
+    if (!generation) {
+      throw new NotFoundException('生成任务不存在');
+    }
+    if (generation.type !== GenerationType.LONG) {
+      throw new BadRequestException('只有长文支持记录文章链接');
+    }
+
+    const normalizedUrl = normalizeXArticleUrl(input.url);
+    if (!normalizedUrl) {
+      throw new BadRequestException('请输入有效的 X 文章链接');
+    }
+
+    const state = await this.getWorkspaceScopedState(userId);
+    const capability = resolveXArticlePublishCapability();
+    const publishedAt = new Date();
+
+    const record = await this.prisma.db.publishRecord.upsert({
+      where: { generationId: input.runId },
+      create: {
+        userId,
+        workspaceId: state.workspaceId,
+        generationId: input.runId,
+        externalTweetId: normalizedUrl,
+        publishedAt
+      },
+      update: {
+        workspaceId: state.workspaceId,
+        externalTweetId: normalizedUrl,
+        publishedAt
+      }
+    });
+
+    await this.prisma.db.auditLog.create({
+      data: {
+        workspaceId: state.workspaceId,
+        userId,
+        action: 'UPDATE',
+        resourceType: 'publish_record',
+        resourceId: record.id,
+        payload: {
+          generationId: input.runId,
+          publishMode: capability.mode,
+          externalUrl: normalizedUrl,
+          xAccountId: input.xAccountId ?? null
+        }
+      }
+    });
+
+    return {
+      ok: true,
+      runId: input.runId,
+      publishMode: capability.mode,
+      externalUrl: normalizedUrl,
+      nextAction: capability.nextAction
+    };
+  }
+
   async getQueue(userId: string, limit = 20) {
     const runs = await this.prisma.db.generation.findMany({
       where: { userId, status: GenerationStatus.DONE },
       include: {
+        publishRecord: true,
         publishJobs: {
           include: {
             xAccount: {
@@ -699,7 +1014,7 @@ export class V3Service {
 
     const jobs = await this.publish.listJobs(userId, { limit: Math.min(Math.max(limit, 1), 50) });
     const pendingReview = runs
-      .filter((run) => run.publishJobs.length === 0)
+      .filter((run) => run.publishJobs.length === 0 && !run.publishRecord)
       .map((run) => {
         const pkg = parsePackageResult(run.result);
         const format =
@@ -739,7 +1054,19 @@ export class V3Service {
           xAccountHandle: job.xAccount?.handle ?? null,
           externalPostId: job.externalPostId,
           updatedAt: job.updatedAt.toISOString()
-        })),
+        }))
+        .concat(
+          runs
+            .filter((run) => run.type === GenerationType.LONG && run.publishRecord)
+            .map((run) => ({
+              id: run.publishRecord!.id,
+              runId: run.id,
+              status: 'SUCCEEDED',
+              xAccountHandle: null,
+              externalPostId: run.publishRecord!.externalTweetId,
+              updatedAt: run.publishRecord!.publishedAt.toISOString()
+            }))
+        ),
       failed: jobs
         .filter((job) => FAILED_JOB_STATUSES.includes(job.status as (typeof FAILED_JOB_STATUSES)[number]))
         .map((job) => ({

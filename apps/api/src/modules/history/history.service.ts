@@ -3,6 +3,7 @@ import { Prisma } from '@draftorbit/db';
 import { PrismaService } from '../../common/prisma.service';
 import { TwitterService } from '../../common/twitter.service';
 import { OpenRouterService } from '../../common/openrouter.service';
+import { enrichStyleAnalysis } from '../generate/content-strategy';
 
 const STYLE_MODEL = 'deepseek/deepseek-chat';
 
@@ -57,24 +58,41 @@ export class HistoryService {
       analysis = { raw, parseError: true };
     }
 
+    const enriched = enrichStyleAnalysis(
+      analysis,
+      top.map((tweet) => ({
+        text: typeof tweet.text === 'string' ? tweet.text : '',
+        public_metrics: tweet.public_metrics
+          ? {
+              like_count: tweet.public_metrics.like_count,
+              reply_count: tweet.public_metrics.reply_count,
+              retweet_count: tweet.public_metrics.retweet_count,
+              quote_count: tweet.public_metrics.quote_count,
+              bookmark_count: 'bookmark_count' in tweet.public_metrics ? tweet.public_metrics.bookmark_count : undefined
+            }
+          : null,
+        created_at: tweet.created_at ?? null
+      }))
+    );
+
     await this.prisma.db.tweetStyle.upsert({
       where: { userId },
       create: {
         userId,
         workspaceId: member?.workspaceId ?? null,
-        analysisResult: analysis as Prisma.InputJsonValue,
+        analysisResult: enriched as Prisma.InputJsonValue,
         sampleCount: top.length,
         lastAnalyzedAt: new Date()
       },
       update: {
         workspaceId: member?.workspaceId ?? null,
-        analysisResult: analysis as Prisma.InputJsonValue,
+        analysisResult: enriched as Prisma.InputJsonValue,
         sampleCount: top.length,
         lastAnalyzedAt: new Date()
       }
     });
 
-    return analysis;
+    return enriched;
   }
 
   async getStyle(userId: string) {

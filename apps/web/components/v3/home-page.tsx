@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Button } from '../ui/button';
 import { ErrorState } from '../ui/state-feedback';
 import { AppShell } from './shell';
-import { createLocalSession, startGoogleOAuth, startXOAuth } from '../../lib/queries';
+import { createLocalSession, startXOAuth } from '../../lib/queries';
 import { getToken, setToken } from '../../lib/api';
 import { toUiError, type UiError } from '../../lib/ui-error';
 
@@ -20,7 +20,7 @@ const examplePrompt = '参考我最近的表达风格，写一条关于 AI 产�
 const exampleOutput = '冷启动最难的不是没人看见，而是你自己还没想清楚：你到底替谁解决什么问题。';
 
 export default function HomePage() {
-  const [loading, setLoading] = useState<'x' | 'google' | 'local' | null>(null);
+  const [loading, setLoading] = useState<'x' | 'local' | null>(null);
   const [pageError, setPageError] = useState<UiError | null>(null);
   const [allowLocalLogin, setAllowLocalLogin] = useState(false);
   const [hasSession, setHasSession] = useState(false);
@@ -63,26 +63,6 @@ export default function HomePage() {
             >
               {loading === 'x' ? '正在跳转 X 登录…' : '用 X 登录开始'}
               <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              disabled={loading !== null}
-              onClick={() => {
-                void (async () => {
-                  setLoading('google');
-                  setPageError(null);
-                  try {
-                    const { url } = await startGoogleOAuth();
-                    window.location.href = url;
-                  } catch (error) {
-                    setPageError(toUiError(error, '拉起 Google 登录失败，请稍后重试。'));
-                    setLoading(null);
-                  }
-                })();
-              }}
-            >
-              {loading === 'google' ? '正在跳转 Google…' : 'Google 登录'}
             </Button>
             {allowLocalLogin ? (
               <Button

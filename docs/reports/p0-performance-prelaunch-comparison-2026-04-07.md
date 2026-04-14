@@ -16,7 +16,7 @@
 ### 2.1 OpenRouter 请求层收敛
 
 文件：
-- `/Users/yangshu/.openclaw/workspace/projects/021-draftorbit.io/apps/api/src/common/openrouter.service.ts`
+- `/Volumes/AI_DEV_2T/01-projects/active/openclaw-workspace/projects/002-draftorbit.io/apps/api/src/common/openrouter.service.ts`
 
 变更：
 - 增加分任务超时控制（`timeoutMs`）与候选模型尝试上限（`maxCandidates`）。
@@ -29,7 +29,7 @@
 ### 2.2 生成链路 Fast Path（减少模型往返）
 
 文件：
-- `/Users/yangshu/.openclaw/workspace/projects/021-draftorbit.io/apps/api/src/modules/generate/generate.service.ts`
+- `/Volumes/AI_DEV_2T/01-projects/active/openclaw-workspace/projects/002-draftorbit.io/apps/api/src/modules/generate/generate.service.ts`
 
 变更：
 - 新增 `GENERATE_FAST_PATH_ENABLED`（默认开启，`0` 可关闭）。
@@ -40,12 +40,12 @@
 ### 2.3 新增基准脚本
 
 文件：
-- `/Users/yangshu/.openclaw/workspace/projects/021-draftorbit.io/scripts/benchmark-generate.mjs`
+- `/Volumes/AI_DEV_2T/01-projects/active/openclaw-workspace/projects/002-draftorbit.io/scripts/benchmark-generate.mjs`
 
 能力：
 - 自动执行 `v2/generate/run -> stream -> detail`。
 - 输出 `P50/P90/PassRate` 到：
-  - `/Users/yangshu/.openclaw/workspace/projects/021-draftorbit.io/artifacts/perf-generate/<run-id>/summary.json`
+  - `/Volumes/AI_DEV_2T/01-projects/active/openclaw-workspace/projects/002-draftorbit.io/artifacts/perf-generate/<run-id>/summary.json`
 
 ---
 
@@ -75,12 +75,12 @@
 基线组（Fast Path 关闭）：
 - run id: `perf-local-baseline-20260407`
 - 结果文件：
-  - `/Users/yangshu/.openclaw/workspace/projects/021-draftorbit.io/artifacts/perf-generate/perf-local-baseline-20260407/summary.json`
+  - `/Volumes/AI_DEV_2T/01-projects/active/openclaw-workspace/projects/002-draftorbit.io/artifacts/perf-generate/perf-local-baseline-20260407/summary.json`
 
 优化组（Fast Path 开启）：
 - run id: `perf-local-optimized-20260407`
 - 结果文件：
-  - `/Users/yangshu/.openclaw/workspace/projects/021-draftorbit.io/artifacts/perf-generate/perf-local-optimized-20260407/summary.json`
+  - `/Volumes/AI_DEV_2T/01-projects/active/openclaw-workspace/projects/002-draftorbit.io/artifacts/perf-generate/perf-local-optimized-20260407/summary.json`
 
 ---
 

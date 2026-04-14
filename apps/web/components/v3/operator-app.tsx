@@ -2,10 +2,23 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { AlertTriangle, CheckCircle2, Copy, Loader2, PencilLine, RefreshCcw, Send, ShieldCheck, Sparkles } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, CheckCircle2, Copy, Download, Loader2, PencilLine, RefreshCcw, Send, ShieldCheck, Sparkles } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getToken } from '../../lib/api';
 import { fetchRunStream, type V3StreamEvent } from '../../lib/sse-stream';
+import {
+  buildArticlePreview,
+  buildPrimaryResultHighlights,
+  buildQualityFailureView,
+  buildRunAssetsZipUrl,
+  buildSourceFailureView,
+  buildThreadPreview,
+  buildVisualAnchorTags,
+  buildVisualAssetCards,
+  formatVisualAssetLabel,
+  getResultPreviewMode
+} from '../../lib/v3-result-preview';
+import { hydrateRunDetailUntilReady, shouldHydrateRunDetail } from '../../lib/v3-run-hydration';
 import {
   confirmPublish,
   connectLocalKnowledgeFiles,
@@ -19,6 +32,7 @@ import {
   importKnowledgeUrls,
   preparePublish,
   rebuildProfile,
+  retryRunVisualAssets,
   runChat,
   type V3BootstrapResponse,
   type V3Format,
@@ -45,7 +59,7 @@ const formatOptions: Array<{ value: V3Format; label: string; description: string
 const quickPrompts = [
   '帮我发一条关于 AI 产品冷启动的观点短推',
   '参考我最近的风格，写一条更容易引发讨论的 thread',
-  '把今天的产品更新整理成一条适合 X 的发布文案'
+  '把一次产品更新整理成一条适合 X 的发布文案'
 ];
 
 const stageOrder = [
@@ -57,7 +71,17 @@ const stageOrder = [
   { key: 'publish_prep', title: '发布前检查' }
 ] as const;
 
-function qualityLabel(score?: number | null) {
+const sourceReadyStageSummary: Record<string, string> = {
+  research: '已抓取并清洗来源',
+  strategy: '已基于来源整理结构',
+  draft: '已生成来源驱动草稿',
+  voice: '已完成文风收口',
+  media: '已按成稿规划图文资产',
+  publish_prep: '已完成发布前检查'
+};
+
+function qualityLabel(score?: number | null, failed = false) {
+  if (failed) return '已拦截，不会进入发布确认';
   if (typeof score !== 'number') return '待评分';
   if (score >= 85) return '可以直接进入确认';
   if (score >= 72) return '建议快速审一下';
@@ -85,7 +109,7 @@ export default function OperatorApp() {
 
   const [intent, setIntent] = useState('');
   const [format, setFormat] = useState<V3Format>('tweet');
-  const [withImage, setWithImage] = useState(false);
+  const [withImage, setWithImage] = useState(true);
   const [safeMode, setSafeMode] = useState(true);
   const [selectedXAccountId, setSelectedXAccountId] = useState('');
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -98,6 +122,8 @@ export default function OperatorApp() {
   const [manualMode, setManualMode] = useState(false);
   const [manualDraft, setManualDraft] = useState('');
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const hydrationPromiseRef = useRef<Promise<V3RunResponse | null> | null>(null);
+  const intentInputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const loadPage = useCallback(async () => {
     if (!getToken()) {
@@ -134,7 +160,6 @@ export default function OperatorApp() {
   useEffect(() => {
     const from = searchParams.get('from');
     if (from === 'auth-login') setEntryNotice('登录完成。现在直接写一句话就能开始生成。');
-    if (from === 'google-login') setEntryNotice('Google 登录完成。现在直接写一句话就能开始生成。');
   }, [searchParams]);
 
   const activeTaskAction = searchParams.get('nextAction');
@@ -184,6 +209,114 @@ export default function OperatorApp() {
     [runDetail?.result?.text]
   );
 
+  const previewMode = useMemo(
+    () => (runDetail ? getResultPreviewMode(runDetail.format) : null),
+    [runDetail]
+  );
+
+  const threadPreview = useMemo(
+    () => (runDetail?.format === 'thread' ? buildThreadPreview(cleanedResultText) : []),
+    [cleanedResultText, runDetail?.format]
+  );
+
+  const articlePreview = useMemo(
+    () => (runDetail?.format === 'article' ? buildArticlePreview(cleanedResultText) : null),
+    [cleanedResultText, runDetail?.format]
+  );
+
+  const qualityHighlights = useMemo(
+    () => buildPrimaryResultHighlights(runDetail?.result ?? null),
+    [runDetail?.result]
+  );
+  const visualAnchorTags = useMemo(
+    () =>
+      buildVisualAnchorTags({
+        primaryAsset: runDetail?.result?.visualPlan?.primaryAsset ?? null,
+        visualizablePoints: runDetail?.result?.visualPlan?.visualizablePoints ?? null,
+        keywords: runDetail?.result?.imageKeywords ?? []
+      }),
+    [runDetail?.result?.imageKeywords, runDetail?.result?.visualPlan]
+  );
+  const visualAssetCards = useMemo(
+    () => buildVisualAssetCards(runDetail?.result?.visualAssets ?? []),
+    [runDetail?.result?.visualAssets]
+  );
+  const readyVisualAssetCards = useMemo(
+    () => visualAssetCards.filter((asset) => asset.canPreview),
+    [visualAssetCards]
+  );
+  const failedVisualAssetCards = useMemo(
+    () => visualAssetCards.filter((asset) => asset.status === 'failed'),
+    [visualAssetCards]
+  );
+  const visualAssetsZipUrl = useMemo(
+    () => buildRunAssetsZipUrl(runDetail?.runId),
+    [runDetail?.runId]
+  );
+  const qualityGateFailed =
+    runDetail?.result?.qualityGate?.status === 'failed' || runDetail?.result?.qualityGate?.safeToDisplay === false;
+  const qualityGateHardFails = runDetail?.result?.qualityGate?.hardFails ?? [];
+  const visualHardFails = runDetail?.result?.qualityGate?.visualHardFails ?? [];
+  const qualityGateNotes = runDetail?.result?.qualityGate?.judgeNotes ?? [];
+  const sourceFailureView = useMemo(
+    () => buildSourceFailureView(runDetail?.result ?? null),
+    [runDetail?.result]
+  );
+  const qualityFailureView = useMemo(
+    () => buildQualityFailureView(runDetail?.result ?? null),
+    [runDetail?.result]
+  );
+  const stageProgressForDisplay = useMemo(
+    () =>
+      sourceFailureView
+        ? stageProgress.map((stage) => ({
+            ...stage,
+            summary: stage.tone === 'idle' ? '等待可靠来源' : '已拦截：需要可靠来源',
+            tone: stage.tone === 'idle' ? stage.tone : 'danger'
+          }))
+        : runDetail?.result?.qualityGate?.sourceRequired && runDetail.result.qualityGate.sourceStatus === 'ready'
+          ? stageProgress.map((stage) => ({
+              ...stage,
+              summary: stage.tone === 'idle' ? '等待中' : (sourceReadyStageSummary[stage.key] ?? '已基于来源处理')
+            }))
+        : stageProgress,
+    [runDetail?.result?.qualityGate?.sourceRequired, runDetail?.result?.qualityGate?.sourceStatus, sourceFailureView, stageProgress]
+  );
+  const sourceCandidateArtifacts = useMemo(
+    () =>
+      (runDetail?.result?.sourceArtifacts ?? [])
+        .filter((artifact) => artifact.url && (artifact.status === 'skipped' || artifact.error === 'source_ambiguous'))
+        .slice(0, 4),
+    [runDetail?.result?.sourceArtifacts]
+  );
+  const sourceEvidenceArtifacts = useMemo(
+    () => (runDetail?.result?.sourceArtifacts ?? []).filter((artifact) => artifact.url || artifact.title).slice(0, 6),
+    [runDetail?.result?.sourceArtifacts]
+  );
+
+  const focusIntentInput = useCallback(() => {
+    requestAnimationFrame(() => {
+      intentInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      intentInputRef.current?.focus();
+    });
+  }, []);
+
+  const handleSourceUrlRetry = useCallback(() => {
+    const trimmed = intent.trim();
+    setIntent(trimmed.includes('来源 URL：') ? trimmed : `${trimmed}\n\n来源 URL：`);
+    focusIntentInput();
+  }, [focusIntentInput, intent]);
+
+  const handleNonFreshRetry = useCallback(() => {
+    const nextIntent = intent
+      .replace(/最新的?|今天|刚刚|刚|新闻|版本|发布会|产品发布|发布了|更新|价格/gu, '')
+      .replace(/\s+/gu, ' ')
+      .replace(/关于\s+的/gu, '关于')
+      .trim();
+    setIntent(nextIntent || intent);
+    focusIntentInput();
+  }, [focusIntentInput, intent]);
+
   const exportArticleAction = useCallback(
     async (text: string) => {
       await navigator.clipboard.writeText(text);
@@ -195,6 +328,24 @@ export default function OperatorApp() {
     },
     [pushToast]
   );
+
+  const hydrateRunDetail = useCallback(async (runId: string) => {
+    if (hydrationPromiseRef.current) return hydrationPromiseRef.current;
+
+    hydrationPromiseRef.current = hydrateRunDetailUntilReady(fetchRun, runId)
+      .then((detail) => {
+        if (detail?.result) {
+          setRunDetail(detail);
+          setManualDraft(normalizeResultText(detail.result.text ?? ''));
+        }
+        return detail;
+      })
+      .finally(() => {
+        hydrationPromiseRef.current = null;
+      });
+
+    return hydrationPromiseRef.current;
+  }, []);
 
   const runPipeline = useCallback(async (customIntent?: string) => {
     const finalIntent = (customIntent ?? intent).trim();
@@ -209,6 +360,7 @@ export default function OperatorApp() {
     setRunStart(null);
     setStageEvents({});
     setManualMode(false);
+    hydrationPromiseRef.current = null;
 
     try {
       const started = await runChat({
@@ -223,6 +375,9 @@ export default function OperatorApp() {
 
       await fetchRunStream(started.runId, (event) => {
         setStageEvents((prev) => ({ ...prev, [event.stage]: event }));
+        if (shouldHydrateRunDetail(event)) {
+          void hydrateRunDetail(started.runId);
+        }
       });
 
       const detail = await fetchRun(started.runId);
@@ -232,9 +387,10 @@ export default function OperatorApp() {
     } catch (error) {
       setRunError(toUiError(error, '生成失败，请稍后重试。'));
     } finally {
+      hydrationPromiseRef.current = null;
       setRunLoading(false);
     }
-  }, [format, intent, loadPage, safeMode, selectedXAccountId, withImage]);
+  }, [format, hydrateRunDetail, intent, loadPage, safeMode, selectedXAccountId, withImage]);
 
   const handleQueueAction = useCallback(async () => {
     if (!runDetail?.runId) return;
@@ -290,6 +446,25 @@ export default function OperatorApp() {
     safeMode,
     selectedXAccountId
   ]);
+
+  const handleRetryImages = useCallback(async () => {
+    if (!runDetail) return;
+    setBusyAction('retry-assets');
+    setRunError(null);
+    try {
+      const refreshed = await retryRunVisualAssets(runDetail.runId);
+      setRunDetail(refreshed);
+      pushToast({
+        title: '图片已重新生成',
+        description: '只刷新图文资产，正文保持不变。',
+        variant: 'success'
+      });
+    } catch (error) {
+      setRunError(toUiError(error, '只重试图片失败，请稍后再试。'));
+    } finally {
+      setBusyAction(null);
+    }
+  }, [pushToast, runDetail?.runId]);
 
   const runTaskAction = useCallback(async (action: () => Promise<void>, busyKey: string, errorMessage: string) => {
     setBusyAction(busyKey);
@@ -432,8 +607,9 @@ export default function OperatorApp() {
         {boot?.suggestedAction && getTaskPanelMeta(boot.suggestedAction) ? (
           <div className="do-panel-soft flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">先补这一项</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">可选下一步</p>
               <p className="mt-1 text-sm text-slate-700">{getTaskPanelMeta(boot.suggestedAction)?.title}</p>
+              <p className="mt-1 text-xs text-slate-500">这会提升后续结果质量，但不会挡住你先生成。</p>
             </div>
             {buildAppTaskHref(boot.suggestedAction) ? (
               <Button asChild size="sm" variant="outline">
@@ -447,7 +623,7 @@ export default function OperatorApp() {
 
         <article className="do-panel p-6 sm:p-8">
           <div className="flex flex-wrap gap-2">
-            <span className="do-chip">{selectedAccount?.handle ? `当前账号 @${selectedAccount.handle}` : '未连接 X 账号'}</span>
+            <span className="do-chip">{selectedAccount?.handle ? `当前账号 @${selectedAccount.handle}` : '未连接 X 账号 · 仍可先生成'}</span>
             <span className="do-chip">{safeMode ? '默认先确认' : '直接发已开启'}</span>
             <span className="do-chip">待确认 {queue?.review.length ?? 0}</span>
           </div>
@@ -466,6 +642,7 @@ export default function OperatorApp() {
           </div>
 
           <textarea
+            ref={intentInputRef}
             value={intent}
             onChange={(event) => setIntent(event.target.value)}
             placeholder="例如：参考我最近的风格，写一条关于 AI 产品冷启动的观点短推。"
@@ -504,8 +681,8 @@ export default function OperatorApp() {
                   <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">配图</span>
                   <div className="mt-3 flex items-center justify-between gap-3">
                     <div>
-                      <p className="font-medium text-slate-900">生成配图建议</p>
-                      <p className="text-xs leading-5 text-slate-500">会额外输出关键词与配图 brief</p>
+                      <p className="font-medium text-slate-900">生成图文资产</p>
+                      <p className="text-xs leading-5 text-slate-500">后台生成封面、卡片与信息图，前台只展示成品</p>
                     </div>
                     <input type="checkbox" checked={withImage} onChange={(event) => setWithImage(event.target.checked)} className="h-4 w-4" />
                   </div>
@@ -558,7 +735,7 @@ export default function OperatorApp() {
 
           {(runLoading || Object.keys(stageEvents).length > 0) ? (
             <div className="mt-4 grid gap-2 sm:grid-cols-3">
-              {stageProgress.map((stage) => (
+              {stageProgressForDisplay.map((stage) => (
                 <div
                   key={stage.key}
                   className={cn(
@@ -581,7 +758,7 @@ export default function OperatorApp() {
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">结果区</p>
-              <h2 className="mt-2 text-2xl font-semibold text-slate-950">生成结果</h2>
+              <h2 className="mt-2 text-2xl font-semibold text-slate-950">{qualityGateFailed ? '未交付结果' : '生成结果'}</h2>
             </div>
             {runStart?.runId ? (
               <span className="rounded-full border border-slate-900/10 bg-slate-100 px-3 py-1 text-xs text-slate-600">
@@ -602,27 +779,140 @@ export default function OperatorApp() {
                 <div className="rounded-2xl border border-slate-900/10 bg-slate-50 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">质量分</p>
                   <p className="mt-2 text-3xl font-semibold text-slate-950">{runDetail.result.qualityScore ?? '—'}</p>
-                  <p className="mt-2 text-xs text-slate-500">{qualityLabel(runDetail.result.qualityScore)}</p>
+                  <p className={cn('mt-2 text-xs', qualityGateFailed ? 'font-medium text-red-600' : 'text-slate-500')}>
+                    {qualityLabel(runDetail.result.qualityScore, qualityGateFailed)}
+                  </p>
                 </div>
                 <div className="rounded-2xl border border-slate-900/10 bg-slate-50 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">这一版重点</p>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {cleanedWhySummary.length ? cleanedWhySummary.map((item) => (
+                    {qualityGateFailed ? (
+                      <>
+                        <span className="rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700">坏稿已拦截</span>
+                        <span className="rounded-full border border-slate-900/10 bg-white px-3 py-1.5 text-xs text-slate-600">
+                          {sourceFailureView ? '请补充可靠来源或改成非最新主题' : '请再来一版或缩小主题'}
+                        </span>
+                      </>
+                    ) : qualityHighlights.length ? qualityHighlights.map((item) => (
+                      <span key={item} className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs text-emerald-700">{item}</span>
+                    )) : null}
+                    {!qualityGateFailed && cleanedWhySummary.length ? cleanedWhySummary.map((item) => (
                       <span key={item} className="rounded-full border border-slate-900/10 bg-white px-3 py-1.5 text-xs text-slate-600">{item}</span>
-                    )) : <span className="text-sm text-slate-500">这次主要按你输入的这句话直接生成。</span>}
+                    )) : null}
+                    {!qualityGateFailed && !cleanedWhySummary.length && !qualityHighlights.length ? (
+                      <span className="text-sm text-slate-500">这次主要按你输入的这句话直接生成。</span>
+                    ) : null}
                   </div>
                 </div>
               </div>
 
               <div className="rounded-[24px] border border-slate-900/10 bg-slate-950 p-5 text-white shadow-inner shadow-slate-900/30">
-                {manualMode ? (
+                {qualityGateFailed ? (
+                  <div className="rounded-2xl border border-red-300/40 bg-red-500/10 p-5">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="mt-1 h-5 w-5 shrink-0 text-red-200" />
+                      <div>
+                        <p className="text-sm font-semibold text-red-100">
+                          {sourceFailureView?.title ?? qualityFailureView?.title ?? '这版还没达到可发布标准'}
+                        </p>
+                        <p className="mt-2 text-sm leading-7 text-red-100/80">
+                          {sourceFailureView?.description ??
+                            qualityFailureView?.description ??
+                            'DraftOrbit 已拦截坏稿，没有把它交给你发布。建议直接再来一版，或把主题写得更具体。'}
+                        </p>
+                      </div>
+                    </div>
+                    {sourceFailureView ? (
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Button type="button" size="sm" variant="secondary" onClick={handleSourceUrlRetry}>
+                          {sourceFailureView.primaryAction}
+                        </Button>
+                        <Button type="button" size="sm" variant="outline" className="border-red-200/30 bg-red-950/20 text-red-50 hover:bg-red-950/30" onClick={handleNonFreshRetry}>
+                          {sourceFailureView.secondaryAction}
+                        </Button>
+                      </div>
+                    ) : qualityFailureView ? (
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Button type="button" size="sm" variant="secondary" onClick={() => void runPipeline(intent)}>
+                          <RefreshCcw className="mr-2 h-4 w-4" />
+                          {qualityFailureView.primaryAction}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="border-red-200/30 bg-red-950/20 text-red-50 hover:bg-red-950/30"
+                          onClick={focusIntentInput}
+                        >
+                          {qualityFailureView.secondaryAction}
+                        </Button>
+                      </div>
+                    ) : null}
+                    {sourceFailureView && sourceCandidateArtifacts.length ? (
+                      <div className="mt-4 grid gap-2">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-red-100/70">候选来源</p>
+                        {sourceCandidateArtifacts.map((artifact) => (
+                          <a
+                            key={`${artifact.title ?? artifact.url}-${artifact.url}`}
+                            href={artifact.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="block rounded-2xl border border-red-200/30 bg-red-950/20 px-3 py-2 text-sm text-red-50 transition hover:bg-red-950/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-100/60"
+                          >
+                            <span className="block font-medium">{artifact.title ?? artifact.url}</span>
+                            <span className="mt-1 block break-all text-xs text-red-100/70">{artifact.url}</span>
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : manualMode ? (
                   <textarea
                     value={manualDraft}
                     onChange={(event) => setManualDraft(event.target.value)}
                     className="min-h-[220px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm leading-7 text-white placeholder:text-slate-400"
                   />
+                ) : previewMode === 'thread' ? (
+                  <div className="grid gap-3">
+                    {threadPreview.map((post) => (
+                      <div key={`${post.label}-${post.text.slice(0, 24)}`} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">{post.label}</span>
+                          <span className="text-[11px] text-slate-400">{post.role}</span>
+                        </div>
+                        <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-50">{post.text}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : previewMode === 'article' && articlePreview ? (
+                  <div className="space-y-4">
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">标题</p>
+                      <h3 className="mt-3 text-xl font-semibold leading-8 text-white">{articlePreview.title}</h3>
+                    </div>
+                    {articlePreview.lead ? (
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">导语</p>
+                        <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-50">{articlePreview.lead}</p>
+                      </div>
+                    ) : null}
+                    {articlePreview.sections.map((section) => (
+                      <div key={section.heading} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <p className="text-sm font-semibold text-white">{section.heading}</p>
+                        <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-50">{section.body}</p>
+                      </div>
+                    ))}
+                    {articlePreview.ending ? (
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">结尾</p>
+                        <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-50">{articlePreview.ending}</p>
+                      </div>
+                    ) : null}
+                  </div>
                 ) : (
-                  <pre className="whitespace-pre-wrap text-sm leading-7 text-slate-50">{cleanedResultText}</pre>
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <p className="whitespace-pre-wrap text-base leading-8 text-slate-50">{cleanedResultText}</p>
+                  </div>
                 )}
               </div>
 
@@ -654,35 +944,283 @@ export default function OperatorApp() {
                 </div>
               )}
 
-              <details className="rounded-2xl border border-slate-900/10 bg-slate-50 p-4">
-                <summary className="cursor-pointer list-none text-sm font-medium text-slate-900">查看依据与配图建议</summary>
-                <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <section className="rounded-[24px] border border-slate-900/10 bg-white p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">图文资产</p>
+                    <h3 className="mt-1 text-lg font-semibold text-slate-950">可发布卡片与封面</h3>
+                    <p className="mt-1 text-sm leading-6 text-slate-500">
+                      后台已完成卡片排版，普通用户只需要预览、复制和下载。
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={busyAction === 'retry-assets' || failedVisualAssetCards.length + visualHardFails.length === 0}
+                      onClick={() => void handleRetryImages()}
+                    >
+                      {busyAction === 'retry-assets' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCcw className="mr-2 h-4 w-4" />}
+                      只重试图片
+                    </Button>
+                    {!qualityGateFailed && readyVisualAssetCards.length && visualAssetsZipUrl ? (
+                      <Button asChild variant="outline" size="sm">
+                        <a href={visualAssetsZipUrl} download>
+                          <Download className="mr-2 h-4 w-4" />
+                          下载全部图文资产
+                        </a>
+                      </Button>
+                    ) : (
+                      <Button variant="outline" size="sm" disabled>
+                        <Download className="mr-2 h-4 w-4" />
+                        暂无可下载图片
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {readyVisualAssetCards.length ? (
+                  <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                    {readyVisualAssetCards.map((asset) => (
+                      <article key={asset.id ?? `${asset.kind}-${asset.cue}`} className="overflow-hidden rounded-2xl border border-slate-900/10 bg-slate-50">
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-900/10 bg-white px-3 py-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded-full border border-slate-900/10 bg-slate-50 px-2 py-1 text-[11px] text-slate-600">
+                              {asset.label}
+                            </span>
+                            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] text-emerald-700">
+                              已生成
+                            </span>
+                            {asset.renderer ? (
+                              <span className="rounded-full border border-slate-900/10 bg-slate-50 px-2 py-1 text-[11px] text-slate-500">
+                                {asset.renderer === 'template-svg' ? '模板排版' : '背景图'}
+                              </span>
+                            ) : null}
+                          </div>
+                          {asset.assetUrl ? (
+                            <a
+                              href={asset.assetUrl}
+                              download
+                              className="inline-flex items-center rounded-lg border border-slate-900/10 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 transition hover:border-slate-900/20 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500/30"
+                            >
+                              <Download className="mr-1 h-3.5 w-3.5" />
+                              下载图片
+                            </a>
+                          ) : null}
+                        </div>
+                        <div className="bg-slate-100">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={asset.assetUrl} alt={`${asset.label}：${asset.cue}`} className="h-auto w-full object-cover" />
+                        </div>
+                        <div className="space-y-1 bg-white px-3 py-3">
+                          <p className="text-sm font-medium leading-6 text-slate-900">{asset.cue}</p>
+                          {asset.reason ? <p className="text-xs leading-5 text-slate-500">{asset.reason}</p> : null}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-2xl border border-dashed border-slate-900/15 bg-slate-50 p-4 text-sm leading-6 text-slate-500">
+                    {qualityGateFailed
+                      ? '质量门未通过，图文资产不会展示，避免把坏稿当成可发布成品。'
+                      : withImage
+                        ? '图片还没有 ready。若生成失败，文字仍会保留，你可以再来一版。'
+                        : '本次没有请求配图，因此只展示轻量视觉规划。'}
+                  </div>
+                )}
+
+                {failedVisualAssetCards.length || visualHardFails.length ? (
+                  <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                      <div>
+                        <p className="font-medium">部分图片资产没有达到可发布标准。</p>
+                        <p className="mt-1 text-xs leading-5 text-amber-800">
+                          文本已保留；失败图片不会作为完成 evidence。需要时请点击“再来一版”重新生成图文。
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </section>
+
+              <details className="min-w-0 rounded-2xl border border-slate-900/10 bg-slate-50 p-4">
+                <summary className="cursor-pointer list-none text-sm font-medium text-slate-900">查看依据与配图建议</summary>
+                <div className="mt-4 grid min-w-0 gap-4 md:grid-cols-2">
+                  <div className="min-w-0">
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">这次参考了什么</p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {runDetail.result.evidenceSummary.length ? runDetail.result.evidenceSummary.map((item) => (
-                        <span key={item} className="rounded-full border border-slate-900/10 bg-white px-3 py-1 text-xs text-slate-600">{item}</span>
+                        <span key={item} className="max-w-full break-words rounded-full border border-slate-900/10 bg-white px-3 py-1 text-xs text-slate-600">{item}</span>
                       )) : <span className="text-xs text-slate-500">本次主要基于你的意图完成生成。</span>}
                     </div>
+                    {sourceEvidenceArtifacts.length ? (
+                      <div className="mt-3 grid gap-2">
+                        {sourceEvidenceArtifacts.map((artifact) => (
+                          <a
+                            key={`${artifact.title ?? artifact.url}-${artifact.url ?? artifact.markdownPath}`}
+                            href={artifact.evidenceUrl ?? artifact.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="min-w-0 rounded-2xl border border-slate-900/10 bg-white px-3 py-2 text-xs text-slate-600 transition hover:border-slate-900/20 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500/30"
+                          >
+                            <span className="block break-words font-medium text-slate-800">{artifact.title ?? artifact.url ?? artifact.kind}</span>
+                            <span className="mt-1 block break-all text-slate-400">
+                              {artifact.status === 'ready' ? '来源已抓取' : artifact.status === 'skipped' ? '候选来源，等待确认' : '来源抓取失败'}
+                              {artifact.url ? ` · ${artifact.url}` : ''}
+                            </span>
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">配图建议</p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {runDetail.result.imageKeywords.length ? runDetail.result.imageKeywords.map((keyword) => (
-                        <span key={keyword} className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs text-emerald-700">{keyword}</span>
-                      )) : <span className="text-xs text-slate-500">本次没有请求配图，或暂不需要配图建议。</span>}
-                    </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">主视觉方向</p>
+                    {runDetail.result.visualPlan ? (
+                      <div className="mt-3 space-y-3">
+                        <div className="min-w-0 overflow-hidden rounded-2xl border border-emerald-200 bg-emerald-50 p-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">
+                            {formatVisualAssetLabel(runDetail.result.visualPlan.primaryAsset)}
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {visualAnchorTags.map((keyword) => (
+                              <span key={keyword} className="max-w-full break-words rounded-full border border-emerald-200 bg-white px-3 py-1 text-xs text-emerald-700">{keyword}</span>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="grid gap-3">
+                          {runDetail.result.visualPlan.items.map((item) => (
+                            <div key={`${item.kind}-${item.cue}`} className="min-w-0 rounded-2xl border border-slate-900/10 bg-white p-3">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="max-w-full break-words rounded-full border border-slate-900/10 bg-slate-50 px-2 py-1 text-[11px] text-slate-600">{formatVisualAssetLabel(item.kind)}</span>
+                                <span className="max-w-full break-words rounded-full border border-slate-900/10 bg-slate-50 px-2 py-1 text-[11px] text-slate-600">{item.type}</span>
+                                <span className="max-w-full break-words rounded-full border border-slate-900/10 bg-slate-50 px-2 py-1 text-[11px] text-slate-600">{item.layout}</span>
+                                <span className="max-w-full break-words rounded-full border border-slate-900/10 bg-slate-50 px-2 py-1 text-[11px] text-slate-600">{item.style}</span>
+                                <span className="max-w-full break-words rounded-full border border-slate-900/10 bg-slate-50 px-2 py-1 text-[11px] text-slate-600">{item.palette}</span>
+                              </div>
+                              <p className="mt-2 break-words text-sm font-medium text-slate-900">{item.cue}</p>
+                              <p className="mt-1 break-words text-xs leading-5 text-slate-500">{item.reason}</p>
+                            </div>
+                          ))}
+                        </div>
+                        {visualAssetCards.length ? (
+                          <div className="grid gap-3">
+                            {visualAssetCards.map((asset) => (
+                              <div key={asset.id} className="min-w-0 rounded-2xl border border-slate-900/10 bg-white p-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div className="min-w-0 flex flex-wrap items-center gap-2">
+                                    <span className="max-w-full break-words rounded-full border border-slate-900/10 bg-slate-50 px-2 py-1 text-[11px] text-slate-600">
+                                      {asset.label}
+                                    </span>
+                                    <span
+                                      className={cn(
+                                        'rounded-full border px-2 py-1 text-[11px]',
+                                        asset.status === 'ready'
+                                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                          : asset.status === 'generating'
+                                            ? 'border-sky-200 bg-sky-50 text-sky-700'
+                                            : 'border-rose-200 bg-rose-50 text-rose-700'
+                                      )}
+                                    >
+                                      {asset.statusLabel}
+                                    </span>
+                                  </div>
+                                  {asset.promptPath ? (
+                                    <span className="block min-w-0 max-w-full break-all font-mono text-[11px] text-slate-400">
+                                      {asset.promptPath}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                {asset.canPreview ? (
+                                  <div className="mt-3 overflow-hidden rounded-xl border border-slate-900/10 bg-slate-100">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img src={asset.assetUrl} alt={`${asset.label}：${asset.cue}`} className="h-auto w-full object-cover" />
+                                  </div>
+                                ) : null}
+                                <p className="mt-2 break-words text-sm font-medium text-slate-900">{asset.cue}</p>
+                                {asset.reason ? <p className="mt-1 break-words text-xs leading-5 text-slate-500">{asset.reason}</p> : null}
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {qualityGateFailed ? (
+                          <span className="text-xs text-slate-500">质量门未通过，图文建议暂不展示，避免继续污染主题。</span>
+                        ) : visualAnchorTags.length ? visualAnchorTags.map((keyword) => (
+                          <span key={keyword} className="max-w-full break-words rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs text-emerald-700">{keyword}</span>
+                        )) : <span className="text-xs text-slate-500">本次没有请求配图，或暂不需要配图建议。</span>}
+                      </div>
+                    )}
                   </div>
                 </div>
+                {runDetail.result.derivativeReadiness ? (
+                  <div className="mt-4 border-t border-slate-900/10 pt-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">衍生准备度</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {Object.entries(runDetail.result.derivativeReadiness)
+                        .filter(([, value]) => Boolean(value))
+                        .map(([key, value]) => (
+                          <span
+                            key={key}
+                            className={cn(
+                              'rounded-full border px-3 py-1 text-xs',
+                              value?.ready ? 'border-sky-200 bg-sky-50 text-sky-700' : 'border-slate-900/10 bg-white text-slate-500'
+                            )}
+                          >
+                            {key} {Math.round(value?.score ?? 0)}
+                          </span>
+                        ))}
+                    </div>
+                  </div>
+                ) : null}
+                {qualityGateFailed && (qualityGateHardFails.length || visualHardFails.length || qualityGateNotes.length || runDetail.result.routing) ? (
+                  <div className="mt-4 border-t border-slate-900/10 pt-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">技术细节</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {qualityGateHardFails.map((flag) => (
+                        <span key={flag} className="rounded-full border border-slate-900/10 bg-white px-3 py-1 text-xs text-slate-600">
+                          {flag}
+                        </span>
+                      ))}
+                      {visualHardFails.map((flag) => (
+                        <span key={flag} className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs text-amber-700">
+                          {flag}
+                        </span>
+                      ))}
+                      {runDetail.result.routing?.routingTier ? (
+                        <span className="rounded-full border border-slate-900/10 bg-white px-3 py-1 text-xs text-slate-600">
+                          routingTier: {runDetail.result.routing.routingTier}
+                        </span>
+                      ) : null}
+                    </div>
+                    {qualityGateNotes.length ? (
+                      <ul className="mt-3 space-y-2 text-xs leading-5 text-slate-500">
+                        {qualityGateNotes.map((note) => (
+                          <li key={note}>• {note}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                ) : null}
+              </details>
+
+              <details className="rounded-2xl border border-slate-900/10 bg-white p-4">
+                <summary className="cursor-pointer list-none text-sm font-medium text-slate-900">查看原始文本 / 复制模式</summary>
+                <pre className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-700">
+                  {qualityGateFailed ? '质量门未通过：坏稿已被后端拦截，原始文本不会展示。' : cleanedResultText}
+                </pre>
               </details>
 
               <div className="flex flex-wrap gap-3">
-                <Button variant="outline" onClick={() => setManualMode((prev) => !prev)}>
+                <Button variant="outline" disabled={qualityGateFailed} onClick={() => setManualMode((prev) => !prev)}>
                   <PencilLine className="mr-2 h-4 w-4" />
                   {manualMode ? '回看原结果' : '手动编辑'}
                 </Button>
                 <Button
                   variant="outline"
+                  disabled={qualityGateFailed}
                   onClick={() => {
                     void navigator.clipboard.writeText(manualMode ? manualDraft : cleanedResultText);
                     pushToast({
@@ -693,20 +1231,40 @@ export default function OperatorApp() {
                   }}
                 >
                   <Copy className="mr-2 h-4 w-4" />
-                  {runDetail.format === 'article' ? '复制长文' : '复制文本'}
+                  {qualityGateFailed ? '质量未通过，不能复制' : runDetail.format === 'article' ? '复制长文' : '复制文本'}
                 </Button>
-                <Button disabled={busyAction === 'queue-result'} onClick={() => void handleQueueAction()}>
+                <Button
+                  disabled={qualityGateFailed || busyAction === 'queue-result' || (!selectedAccount && runDetail.format !== 'article')}
+                  onClick={() => void handleQueueAction()}
+                >
                   {busyAction === 'queue-result' ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : qualityGateFailed ? (
+                    <AlertTriangle className="mr-2 h-4 w-4" />
                   ) : runDetail.format === 'article' ? (
                     <Copy className="mr-2 h-4 w-4" />
+                  ) : !selectedAccount ? (
+                    <ShieldCheck className="mr-2 h-4 w-4" />
                   ) : safeMode ? (
                     <ShieldCheck className="mr-2 h-4 w-4" />
                   ) : (
                     <Send className="mr-2 h-4 w-4" />
                   )}
-                  {runDetail.format === 'article' ? '复制到 X 文章编辑器' : safeMode ? '加入待确认' : '进入发布队列'}
+                  {qualityGateFailed
+                    ? '质量未通过，不能发布'
+                    : runDetail.format === 'article'
+                      ? '复制到 X 文章编辑器'
+                      : !selectedAccount
+                      ? '连接 X 后才能发布'
+                      : safeMode
+                        ? '加入待确认'
+                        : '进入发布队列'}
                 </Button>
+                {!selectedAccount && runDetail.format !== 'article' ? (
+                  <Button asChild variant="outline">
+                    <Link href={buildAppTaskHref('connect_x_self') ?? '/app?nextAction=connect_x_self'}>先连接 X 账号</Link>
+                  </Button>
+                ) : null}
               </div>
             </div>
           )}

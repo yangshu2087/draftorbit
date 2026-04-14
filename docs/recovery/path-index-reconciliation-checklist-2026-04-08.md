@@ -1,5 +1,8 @@
 # DraftOrbit 路径与索引收口清单（2026-04-08）
 
+> **Current recovery note (2026-04-13/14):** this checklist was written for the earlier AI_SSD migration. The current requested target root is `/Volumes/AI_DEV_2T/01-projects/active/openclaw-workspace/projects/002-draftorbit.io`; implementation worktree is `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/recover-draftorbit-final`. Do not bulk-rewrite historical evidence paths.
+
+
 > 目标：把 SSD 迁移后的“真实路径、项目入口索引、RAG 镜像、历史证据目录”关系说明白，并给后续清理留下一份明确清单。
 
 ## 1. Canonical path 决议
