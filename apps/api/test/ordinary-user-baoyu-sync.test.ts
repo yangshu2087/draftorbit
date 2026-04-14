@@ -1,9 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  BAOYU_PRODUCT_SKILL_MATRIX,
   ORDINARY_USER_BAOYU_SYNC_CASES,
+  ORDINARY_USER_ROUTE_AUDIT_TARGETS,
   assertOrdinaryUserCaseEvidence,
   buildOrdinaryUserBaoyuSyncReport,
+  buildOrdinaryUserBaoyuOutputPaths,
+  buildOrdinaryUserEvidenceNotes,
   findPromptWrapperLeaks
 } from '../../../scripts/ordinary-user-baoyu-sync';
 
@@ -21,6 +25,54 @@ test('ordinary-user baoyu sync suite covers tweet thread and article with the re
   assert.ok(ORDINARY_USER_BAOYU_SYNC_CASES.some((item) => item.id === 'latest-hermes-source' && item.sourceExpectation === 'ready_or_blocked'));
   assert.ok(ORDINARY_USER_BAOYU_SYNC_CASES.some((item) => item.id === 'latest-hermes-agent-url-source' && item.sourceExpectation === 'ready'));
   assert.ok(ORDINARY_USER_BAOYU_SYNC_CASES.some((item) => item.id === 'article-generic-scaffold-gate' && item.acceptQualityBlocked));
+});
+
+test('baoyu ordinary-user report matrix covers product-relevant skills and blocks real X publishing', () => {
+  assert.deepEqual(
+    BAOYU_PRODUCT_SKILL_MATRIX.map((item) => item.skill),
+    [
+      'baoyu-url-to-markdown',
+      'baoyu-danger-x-to-markdown',
+      'baoyu-format-markdown',
+      'baoyu-imagine',
+      'baoyu-image-gen',
+      'baoyu-image-cards',
+      'baoyu-cover-image',
+      'baoyu-infographic',
+      'baoyu-article-illustrator',
+      'baoyu-compress-image',
+      'baoyu-markdown-to-html',
+      'baoyu-post-to-x'
+    ]
+  );
+  const xPublish = BAOYU_PRODUCT_SKILL_MATRIX.find((item) => item.skill === 'baoyu-post-to-x');
+  assert.equal(xPublish?.status, 'blocked_external_action');
+  assert.match(xPublish?.draftOrbitUsage ?? '', /prepare|manual|blocked|沙箱|阻断/iu);
+});
+
+test('ordinary-user baoyu output paths keep screenshots ignored and copy markdown reports into tracked report folder', () => {
+  const paths = buildOrdinaryUserBaoyuOutputPaths('/repo', '2026-04-14_10-30-00');
+  assert.equal(paths.evidenceDir, '/repo/output/playwright/ordinary-user-baoyu-sync-2026-04-14_10-30-00');
+  assert.equal(paths.evidenceReportPath, `${paths.evidenceDir}/BAOYU-ORDINARY-USER-SYNC.md`);
+  assert.equal(paths.trackedReportDir, '/repo/output/reports/uat-full');
+  assert.equal(paths.trackedReportPath, '/repo/output/reports/uat-full/BAOYU-ORDINARY-USER-SYNC-2026-04-14_10-30-00.md');
+});
+
+test('ordinary-user route audit covers the restored public app queue connect and pricing surfaces', () => {
+  assert.deepEqual(
+    ORDINARY_USER_ROUTE_AUDIT_TARGETS.map((item) => item.path),
+    ['/', '/app', '/connect?intent=connect_x_self', '/queue?intent=confirm_publish', '/pricing']
+  );
+  assert.ok(ORDINARY_USER_ROUTE_AUDIT_TARGETS.find((item) => item.id === 'connect')?.expectedCopy.includes('连接 X 账号'));
+  assert.ok(ORDINARY_USER_ROUTE_AUDIT_TARGETS.find((item) => item.id === 'queue')?.expectedCopy.includes('当前待确认内容'));
+  assert.ok(ORDINARY_USER_ROUTE_AUDIT_TARGETS.find((item) => item.id === 'pricing')?.notes.join(' ').includes('payment'));
+});
+
+test('ordinary-user evidence notes do not count missing model-key route-only runs as baoyu quality evidence', () => {
+  const notes = buildOrdinaryUserEvidenceNotes({ DRAFTORBIT_SEARCH_PROVIDER: 'none' }, 0);
+  assert.ok(notes.some((note) => note.includes('No real OPENAI_API_KEY/OPENROUTER_API_KEY')));
+  assert.ok(notes.some((note) => note.includes('No live generation cases were selected')));
+  assert.ok(notes.some((note) => note.includes('fail closed')));
 });
 
 test('findPromptWrapperLeaks catches prompt-wrapper words in text, visual plan and visual assets', () => {
@@ -71,7 +123,7 @@ test('assertOrdinaryUserCaseEvidence rejects heuristic, free and placeholder evi
           result: {
             text: '内容团队不要从空白页开始。',
             routing: { primaryModel: 'draftorbit/heuristic', routingTier: 'free_first', profile: 'test_high' },
-            runtime: { engine: 'baoyu-skills', commit: '31b2929d1cc0', skills: ['baoyu-imagine'] },
+            runtime: { engine: 'baoyu-skills', commit: 'dcd0f8143349', skills: ['baoyu-imagine'] },
             qualityGate: { status: 'passed', safeToDisplay: true, hardFails: [], judgeNotes: [] },
             visualPlan: { primaryAsset: 'cover', visualizablePoints: ['周一谁都在等灵感'], keywords: [], items: [] },
             visualAssets: [
@@ -106,7 +158,7 @@ test('assertOrdinaryUserCaseEvidence rejects visual quality hard fails from the 
           result: {
             text: '1/4\nAI 产品更新写成建议模板，用户不会继续看。\n\n2/4\n比如只说效率提升，读者不知道省的是哪一步。\n\n3/4\n改成一个具体动作：上传录音后 3 分钟拿到纪要。\n\n4/4\n如果只改第一条，你会先补哪个真实场景？',
             routing: { primaryModel: 'x-ai/grok-4.20', routingTier: 'quality_fallback', profile: 'test_high' },
-            runtime: { engine: 'baoyu-skills', commit: '31b2929d1cc0', skills: ['baoyu-imagine'] },
+            runtime: { engine: 'baoyu-skills', commit: 'dcd0f8143349', skills: ['baoyu-imagine'] },
             qualityGate: {
               status: 'passed',
               safeToDisplay: true,
@@ -196,7 +248,7 @@ test('assertOrdinaryUserCaseEvidence accepts generic quality failures only with 
       result: {
         text: '',
         routing: { primaryModel: 'anthropic/claude-sonnet-4.6', routingTier: 'quality_fallback', profile: 'test_high' },
-        runtime: { engine: 'baoyu-skills', commit: '31b2929d1cc0', skills: ['baoyu-imagine'] },
+        runtime: { engine: 'baoyu-skills', commit: 'dcd0f8143349', skills: ['baoyu-imagine'] },
         qualityGate: {
           status: 'failed',
           safeToDisplay: false,
@@ -243,7 +295,7 @@ test('assertOrdinaryUserCaseEvidence accepts source-ready URL artifacts for late
           '你更关心 Hermes Agent 的增长速度，还是它会不会改掉现有工具链？'
         ].join('\n\n'),
         routing: { primaryModel: 'anthropic/claude-sonnet-4.6', routingTier: 'quality_fallback', profile: 'test_high' },
-        runtime: { engine: 'baoyu-skills', commit: '31b2929d1cc0', skills: ['baoyu-url-to-markdown'] },
+        runtime: { engine: 'baoyu-skills', commit: 'dcd0f8143349', skills: ['baoyu-url-to-markdown'] },
         qualityGate: {
           status: 'passed',
           safeToDisplay: true,
@@ -307,7 +359,7 @@ test('assertOrdinaryUserCaseEvidence rejects stray quote copy fragments in threa
           result: {
             text: '1/4\n一次 AI 功能上线最怕的是功能清单。\n\n2/4\n比如只讲一个真实使用场景。\n\n3/4\n”\n\n现在第一屏直接给他预置了 6 个行业场景。\n\n4/4\n如果只能讲一个场景，你会先讲哪一个？',
             routing: { primaryModel: 'x-ai/grok-4.20', routingTier: 'quality_fallback', profile: 'test_high' },
-            runtime: { engine: 'baoyu-skills', commit: '31b2929d1cc0', skills: ['baoyu-imagine'] },
+            runtime: { engine: 'baoyu-skills', commit: 'dcd0f8143349', skills: ['baoyu-imagine'] },
             qualityGate: { status: 'passed', safeToDisplay: true, hardFails: [], judgeNotes: [] },
             visualPlan: {
               primaryAsset: 'cover',
@@ -359,7 +411,7 @@ test('assertOrdinaryUserCaseEvidence rejects markdown thread labels that would p
           result: {
             text: '1/4\n内容团队最容易卡住。\n\n2/4\n比如周一谁都在等灵感，周三还没发。\n\n3/4\n**3/4**\n我带过的三个 AI 内容团队，把判断写成周会前动作。\n\n4/4\n如果只能固定一步，你会先固定哪一步？',
             routing: { primaryModel: 'x-ai/grok-4.20', routingTier: 'quality_fallback', profile: 'test_high' },
-            runtime: { engine: 'baoyu-skills', commit: '31b2929d1cc0', skills: ['baoyu-imagine'] },
+            runtime: { engine: 'baoyu-skills', commit: 'dcd0f8143349', skills: ['baoyu-imagine'] },
             qualityGate: { status: 'passed', safeToDisplay: true, hardFails: [], judgeNotes: [] },
             visualPlan: { primaryAsset: 'cover', visualizablePoints: ['周一谁都在等灵感，周三还没发'], keywords: [], items: [] },
             visualAssets: [
@@ -395,7 +447,7 @@ test('assertOrdinaryUserCaseEvidence rejects card-number labels in visual cues',
           result: {
             text: '1/4\nAI 产品更新写成建议模板，用户不会继续看。\n\n2/4\n比如只说效率提升，读者不知道省的是哪一步。\n\n3/4\n改成一个具体动作：上传录音后 3 分钟拿到纪要。\n\n4/4\n如果只改第一条，你会先补哪个真实场景？',
             routing: { primaryModel: 'x-ai/grok-4.20', routingTier: 'quality_fallback', profile: 'test_high' },
-            runtime: { engine: 'baoyu-skills', commit: '31b2929d1cc0', skills: ['baoyu-imagine'] },
+            runtime: { engine: 'baoyu-skills', commit: 'dcd0f8143349', skills: ['baoyu-imagine'] },
             qualityGate: { status: 'passed', safeToDisplay: true, hardFails: [], judgeNotes: [] },
             visualPlan: {
               primaryAsset: 'cover',
@@ -445,7 +497,7 @@ test('assertOrdinaryUserCaseEvidence accepts real baoyu runtime evidence with vi
       result: {
         text: '1/4\nAI 产品更新写成建议模板，用户不会继续看。\n\n2/4\n比如只说效率提升，读者不知道省的是哪一步。\n\n3/4\n改成一个具体动作：上传录音后 3 分钟拿到纪要。\n\n4/4\n如果只改第一条，你会先补哪个真实场景？',
         routing: { primaryModel: 'x-ai/grok-4.20', routingTier: 'quality_fallback', profile: 'test_high' },
-        runtime: { engine: 'baoyu-skills', commit: '31b2929d1cc0', skills: ['baoyu-imagine'] },
+        runtime: { engine: 'baoyu-skills', commit: 'dcd0f8143349', skills: ['baoyu-imagine'] },
         qualityGate: { status: 'passed', safeToDisplay: true, hardFails: [], judgeNotes: [] },
         visualPlan: {
           primaryAsset: 'cover',
@@ -516,7 +568,7 @@ test('buildOrdinaryUserBaoyuSyncReport creates a side-by-side report with eviden
     stamp: '2026-04-11_12-00-00',
     apiUrl: 'http://127.0.0.1:4310',
     webUrl: 'http://127.0.0.1:3200',
-    baoyuCommit: '31b2929d1cc0',
+    baoyuCommit: 'dcd0f8143349',
     evidenceRoot: '/tmp/ordinary-user-baoyu-sync',
     cases: [
       {
@@ -539,7 +591,7 @@ test('buildOrdinaryUserBaoyuSyncReport creates a side-by-side report with eviden
   });
 
   assert.match(report, /DraftOrbit × baoyu ordinary-user sync comparison/u);
-  assert.match(report, /31b2929d1cc0/u);
+  assert.match(report, /dcd0f8143349/u);
   assert.match(report, /baoyu writer uses rubric reference/u);
   assert.match(report, /\/tmp\/shot\.png/u);
 });

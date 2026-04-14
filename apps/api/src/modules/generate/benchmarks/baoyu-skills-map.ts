@@ -11,6 +11,7 @@ export type DistilledSkillUsage =
   | 'rewrite_instruction'
   | 'anti_pattern'
   | 'visual_planning'
+  | 'runtime_provider'
   | 'derivative_rule'
   | 'reference_only';
 
@@ -117,16 +118,16 @@ export const BAOYU_SKILLS_MAP: BaoyuSkillMapEntry[] = [
   {
     skill: 'baoyu-image-gen',
     category: 'image-runtime',
-    draftOrbitSurface: 'future provider seam',
-    distilledInto: ['reference_only'],
-    summary: '本轮不直连，只保留为未来 runtime provider 位点参考。'
+    draftOrbitSurface: 'visual provider seam parity',
+    distilledInto: ['visual_planning', 'reference_only'],
+    summary: '本轮通过 baoyu-imagine 同类 provider seam 对齐，不单独暴露 image-gen 模式。'
   },
   {
     skill: 'baoyu-imagine',
     category: 'image-runtime',
-    draftOrbitSurface: 'future provider seam',
-    distilledInto: ['reference_only'],
-    summary: '本轮不直连，只保留为未来图像 provider 位点参考。'
+    draftOrbitSurface: 'visual artifact runtime',
+    distilledInto: ['runtime_provider', 'visual_planning'],
+    summary: '已作为图文资产 runtime 接入：生成 prompt files、调用 baoyu image runtime，并由 DraftOrbit 模板层渲染可审计 SVG。'
   },
   {
     skill: 'baoyu-compress-image',

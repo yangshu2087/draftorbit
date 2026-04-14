@@ -6,6 +6,16 @@ import { fileURLToPath } from 'node:url';
 
 type ContentFormat = 'tweet' | 'thread' | 'article';
 
+export type BaoyuProductSkillMatrixItem = {
+  skill: string;
+  category: string;
+  status: 'runtime_integrated' | 'rubric_or_prompt_reference' | 'safe_gap' | 'blocked_external_action';
+  draftOrbitUsage: string;
+  testEvidence: string;
+  gapOrReason: string;
+  repairResult: string;
+};
+
 export type OrdinaryUserBaoyuSyncCase = {
   id: string;
   format: ContentFormat;
@@ -33,6 +43,25 @@ export type EvidenceSummary = {
   sourcePass?: boolean;
   sourceStatus?: string;
   promptLeaks: string[];
+  notes: string[];
+};
+
+export type RouteAuditSummary = {
+  id: string;
+  path: string;
+  finalUrl: string;
+  pass: boolean;
+  bodyPath: string;
+  screenshotPaths: string[];
+  checkedCopy: string[];
+  consoleErrors: Array<{ type: string; text: string }>;
+  notes: string[];
+};
+
+export type OrdinaryUserRouteAuditTarget = {
+  id: string;
+  path: string;
+  expectedCopy: string[];
   notes: string[];
 };
 
@@ -129,6 +158,161 @@ const RESPONSIVE_VIEWPORTS = [
   { label: '1440', width: 1440, height: 1200 }
 ] as const;
 
+export const BAOYU_PRODUCT_SKILL_MATRIX: BaoyuProductSkillMatrixItem[] = [
+  {
+    skill: 'baoyu-url-to-markdown',
+    category: 'source capture',
+    status: 'runtime_integrated',
+    draftOrbitUsage:
+      'Clear user-provided URLs are captured as markdown sourceArtifacts before latest/source-required article generation.',
+    testEvidence:
+      '`latest-hermes-agent-url-source` requires a ready `sourceArtifacts[].markdownPath` and rejects source-free latest-fact output.',
+    gapOrReason: 'No remaining product gap for explicit URL capture in the ordinary-user UAT scope.',
+    repairResult: 'Pinned runtime to audited upstream main and keeps source-ready assertions in the UAT script.'
+  },
+  {
+    skill: 'baoyu-danger-x-to-markdown',
+    category: 'source capture',
+    status: 'runtime_integrated',
+    draftOrbitUsage:
+      'X/Twitter source URLs are routed through the baoyu source-capture runtime when the user supplies social-source evidence.',
+    testEvidence:
+      'Source cases assert fail-closed behavior unless a captured markdown artifact is present; dangerous login/posting actions are not invoked.',
+    gapOrReason: 'Only capture/export is in scope; no reverse-engineered login flow is allowed in DraftOrbit.',
+    repairResult: 'Documented as safe source capture only, with latest/source ambiguity blocked for ordinary users.'
+  },
+  {
+    skill: 'baoyu-format-markdown',
+    category: 'markdown formatting',
+    status: 'rubric_or_prompt_reference',
+    draftOrbitUsage:
+      'Article readability and markdown hygiene are enforced through DraftOrbit result gates and ordinary-user copy assertions.',
+    testEvidence:
+      'Article cases reject generic scaffold output, title repetition, method-framework title tone and prompt-wrapper leaks.',
+    gapOrReason: 'Not exposed as a separate user action; used as formatting/rubric parity rather than a standalone CLI button.',
+    repairResult: 'Report marks this as rubric parity, not falsely as a direct DraftOrbit runtime call.'
+  },
+  {
+    skill: 'baoyu-imagine',
+    category: 'visual runtime',
+    status: 'runtime_integrated',
+    draftOrbitUsage:
+      'Visual plans produce prompt files and app-rendered SVG artifacts with baoyu runtime provenance while avoiding placeholder/mock images.',
+    testEvidence:
+      'Tweet/thread/article cases require ready visualAssets, promptPath, template-svg renderer, app-rendered textLayer and no prompt leaks.',
+    gapOrReason: 'External image-provider keys may be absent locally; UAT treats mock/placeholder artifacts as failures for quality evidence.',
+    repairResult: 'Pinned runtime and ordinary-user UAT keep the provider/mock distinction explicit.'
+  },
+  {
+    skill: 'baoyu-image-gen',
+    category: 'visual runtime',
+    status: 'rubric_or_prompt_reference',
+    draftOrbitUsage:
+      'Covered through the same visual provider seam as baoyu-imagine; DraftOrbit does not expose a separate image-gen mode in this UI.',
+    testEvidence: 'Visual artifact assertions cover ready/failed states, downloadability and retry copy instead of raw provider details.',
+    gapOrReason: 'No standalone user-facing image-gen promise exists in the restored product surface.',
+    repairResult: 'Tracked as visual runtime parity, not forced into the ordinary-user UI as a new feature.'
+  },
+  {
+    skill: 'baoyu-image-cards',
+    category: 'visual export',
+    status: 'rubric_or_prompt_reference',
+    draftOrbitUsage:
+      'Thread generation must produce a ready `cards` asset and responsive gallery evidence for ordinary users.',
+    testEvidence: '`thread-product-update` rejects runs missing a ready cards asset or leaking card number labels into visual cues.',
+    gapOrReason: 'The upstream skill is prompt/reference-oriented in this pin, so DraftOrbit validates card deliverables rather than calling a CLI.',
+    repairResult: 'Kept a hard UAT assertion for thread cards.'
+  },
+  {
+    skill: 'baoyu-cover-image',
+    category: 'visual export',
+    status: 'rubric_or_prompt_reference',
+    draftOrbitUsage: 'Tweet and article outputs require cover-style visual artifacts with visible ordinary-user gallery state.',
+    testEvidence: 'Visual UAT requires ready cover assets for article cases and visible “主视觉方向/图文资产” UI copy.',
+    gapOrReason: 'No separate cover-image CLI is invoked from DraftOrbit in this recovery pass.',
+    repairResult: 'Report identifies the gap as intentional product-surface consolidation.'
+  },
+  {
+    skill: 'baoyu-infographic',
+    category: 'visual export',
+    status: 'rubric_or_prompt_reference',
+    draftOrbitUsage: 'Article outputs require a summary visual asset: infographic or illustration.',
+    testEvidence: 'Article cases reject runs without a ready cover plus infographic/illustration asset.',
+    gapOrReason: 'No separate infographic CLI is invoked from the current ordinary-user UI.',
+    repairResult: 'Kept artifact-level assertion instead of adding an unplanned feature.'
+  },
+  {
+    skill: 'baoyu-article-illustrator',
+    category: 'visual export',
+    status: 'rubric_or_prompt_reference',
+    draftOrbitUsage: 'Article result previews require a section visual path through illustration or infographic assets.',
+    testEvidence: 'Article UAT accepts ready illustration/infographic evidence and rejects missing summary/section visuals.',
+    gapOrReason: 'Upstream exposes batch helper scripts, but DraftOrbit keeps article illustration behind its restored visual pipeline.',
+    repairResult: 'Documented as parity-through-artifact instead of direct CLI execution.'
+  },
+  {
+    skill: 'baoyu-compress-image',
+    category: 'delivery/export',
+    status: 'safe_gap',
+    draftOrbitUsage: 'Current DraftOrbit can download generated assets but does not promise a separate compression workflow.',
+    testEvidence: 'UAT checks “下载全部图文资产” state and leaves large image/provider artifacts local-only.',
+    gapOrReason: 'Compression is a future delivery hardening gap, not a restored active UI feature.',
+    repairResult: 'Kept out of runtime; report flags it for a future safe delivery pass.'
+  },
+  {
+    skill: 'baoyu-markdown-to-html',
+    category: 'delivery/export',
+    status: 'safe_gap',
+    draftOrbitUsage: 'Article output is previewed/export-prepared in DraftOrbit but no HTML export button is promised in this UI.',
+    testEvidence: 'Article cases verify readable article structure and publish/queue readiness without invoking external HTML export.',
+    gapOrReason: 'HTML export remains an adjacent recoverable enhancement.',
+    repairResult: 'Documented as a non-blocking product gap.'
+  },
+  {
+    skill: 'baoyu-post-to-x',
+    category: 'publish',
+    status: 'blocked_external_action',
+    draftOrbitUsage:
+      'DraftOrbit only prepares/queues/manual-confirms publish state; real X posting is blocked unless a safe explicit integration exists.',
+    testEvidence: 'Tweet/thread UAT requires “连接 X 后才能发布” visibility and never executes a real post.',
+    gapOrReason: 'Real external posting and reverse-engineered login flows are intentionally out of scope for this local audit.',
+    repairResult: 'Kept as sandbox/manual publish-prep only and documented in the report matrix.'
+  }
+];
+
+export const ORDINARY_USER_ROUTE_AUDIT_TARGETS: OrdinaryUserRouteAuditTarget[] = [
+  {
+    id: 'home',
+    path: '/',
+    expectedCopy: ['你说一句话，DraftOrbit 帮你产出可发的 X 内容', '进入生成器'],
+    notes: ['ordinary landing page entry path']
+  },
+  {
+    id: 'app',
+    path: '/app',
+    expectedCopy: ['开始生成', '高级选项', '未连接 X 账号 · 仍可先生成'],
+    notes: ['local quick experience generator shell']
+  },
+  {
+    id: 'connect',
+    path: '/connect?intent=connect_x_self',
+    expectedCopy: ['连接 X 账号后再发布会更顺', '连接 X 账号'],
+    notes: ['connect route redirects into the app task panel instead of exposing a dead page']
+  },
+  {
+    id: 'queue',
+    path: '/queue?intent=confirm_publish',
+    expectedCopy: ['确认这条内容是否发出', '当前待确认内容'],
+    notes: ['queue route redirects into the app task panel instead of a separate backstage UI']
+  },
+  {
+    id: 'pricing',
+    path: '/pricing',
+    expectedCopy: ['升级与结账', '月付'],
+    notes: ['billing entry does not trigger real payment until the user clicks checkout']
+  }
+];
+
 export const ORDINARY_USER_BAOYU_SYNC_CASES: OrdinaryUserBaoyuSyncCase[] = [
   {
     id: 'tweet-cold-start',
@@ -216,6 +400,36 @@ function createStamp(date = new Date()): string {
 
 function repoRootFromScript(): string {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+}
+
+export function buildOrdinaryUserBaoyuOutputPaths(repoRoot: string, stamp: string, evidenceDirOverride?: string) {
+  const evidenceDir = evidenceDirOverride
+    ? path.resolve(evidenceDirOverride)
+    : path.join(repoRoot, 'output', 'playwright', `ordinary-user-baoyu-sync-${stamp}`);
+  const trackedReportDir = path.join(repoRoot, 'output', 'reports', 'uat-full');
+  return {
+    evidenceDir,
+    evidenceReportPath: path.join(evidenceDir, 'BAOYU-ORDINARY-USER-SYNC.md'),
+    summaryPath: path.join(evidenceDir, 'summary.json'),
+    trackedReportDir,
+    trackedReportPath: path.join(trackedReportDir, `BAOYU-ORDINARY-USER-SYNC-${stamp}.md`)
+  };
+}
+
+export function buildOrdinaryUserEvidenceNotes(env: NodeJS.ProcessEnv = process.env, selectedCaseCount = ORDINARY_USER_BAOYU_SYNC_CASES.length): string[] {
+  const notes: string[] = [];
+  if (!env.OPENAI_API_KEY && !env.OPENROUTER_API_KEY) {
+    notes.push(
+      'No real OPENAI_API_KEY/OPENROUTER_API_KEY was available for this run; mock/free/local generations must not be counted as baoyu quality pass evidence.'
+    );
+  }
+  if (!env.TAVILY_API_KEY && (!env.DRAFTORBIT_SEARCH_PROVIDER || env.DRAFTORBIT_SEARCH_PROVIDER === 'none')) {
+    notes.push('No live search provider was configured; ambiguous latest-fact prompts are expected to fail closed unless the user supplies a URL.');
+  }
+  if (selectedCaseCount === 0) {
+    notes.push('No live generation cases were selected in this run; the report only proves route/browser coverage and the static baoyu matrix.');
+  }
+  return notes;
 }
 
 function toComparableText(value: unknown): string {
@@ -352,8 +566,8 @@ export function assertOrdinaryUserCaseEvidence(input: CaseEvidenceInput): Eviden
       prompt: input.caseDef.prompt,
       pass: true,
       runId: String(input.finalPayload.runId ?? ''),
-      model: String(result?.routing?.primaryModel ?? 'source-blocked'),
-      routingTier: String(result?.routing?.routingTier ?? 'source-blocked'),
+      model: 'source-blocked',
+      routingTier: 'source-blocked',
       runtimeEngine: String(result?.runtime?.engine ?? 'source-blocked'),
       screenshotPath: input.screenshotPath,
       responsiveScreenshotPaths: input.responsiveScreenshotPaths ?? [],
@@ -519,8 +733,11 @@ export function buildOrdinaryUserBaoyuSyncReport(input: {
   baoyuCommit: string;
   evidenceRoot: string;
   cases: EvidenceSummary[];
+  routes?: RouteAuditSummary[];
+  evidenceNotes?: string[];
 }): string {
   const passCount = input.cases.filter((item) => item.pass).length;
+  const routePassCount = (input.routes ?? []).filter((item) => item.pass).length;
   return [
     `# DraftOrbit × baoyu ordinary-user sync comparison (${input.stamp})`,
     '',
@@ -537,6 +754,46 @@ export function buildOrdinaryUserBaoyuSyncReport(input: {
     '- baoyu runtime comparison uses real runnable artifacts where available: source capture, markdown normalization, visual prompt files and baoyu-imagine image artifacts.',
     '- baoyu does not expose a direct tweet/thread/article writer CLI in this pinned runtime; writer quality is judged against the baoyu fixed/adversarial rubric without faking direct baoyu text output.',
     '- `draftorbit/heuristic`, `openrouter/free`, `ollama/*`, placeholder images and mock images invalidate test_high evidence.',
+    '',
+    '## Evidence notes',
+    '',
+    ...(input.evidenceNotes?.length ? input.evidenceNotes.map((note) => `- ${note}`) : ['- no additional evidence caveats']),
+    '',
+    '## Ordinary-user route audit',
+    '',
+    `- Routes: \`${routePassCount}/${input.routes?.length ?? 0}\``,
+    `- Breakpoints per route: ${RESPONSIVE_VIEWPORTS.map((viewport) => `\`${viewport.label}\``).join(', ')}`,
+    '',
+    ...(input.routes?.length
+      ? input.routes.flatMap((route) => [
+          `### ${route.id} · \`${route.path}\``,
+          '',
+          `- pass: \`${route.pass}\``,
+          `- finalUrl: \`${route.finalUrl}\``,
+          `- checkedCopy: ${route.checkedCopy.map((copy) => `\`${copy}\``).join(', ')}`,
+          `- body: \`${route.bodyPath}\``,
+          `- screenshots: ${route.screenshotPaths.map((itemPath) => `\`${itemPath}\``).join(', ')}`,
+          ...(route.consoleErrors.length
+            ? [`- consoleErrors: ${route.consoleErrors.map((entry) => `\`${entry.type}:${entry.text}\``).join(', ')}`]
+            : ['- consoleErrors: none']),
+          ...route.notes.map((note) => `- ${note}`),
+          ''
+        ])
+      : ['- not run in this report', '']),
+    '## Product-relevant baoyu matrix',
+    '',
+    '| baoyu skill | status | DraftOrbit usage | test evidence | gap / remaining reason | repair result |',
+    '| --- | --- | --- | --- | --- | --- |',
+    ...BAOYU_PRODUCT_SKILL_MATRIX.map((item) =>
+      [
+        `\`${item.skill}\``,
+        `\`${item.status}\``,
+        item.draftOrbitUsage,
+        item.testEvidence,
+        item.gapOrReason,
+        item.repairResult
+      ].join(' | ')
+    ).map((row) => `| ${row} |`),
     '',
     ...input.cases.flatMap((item) => [
       `## ${item.id} · ${item.format}`,
@@ -581,6 +838,76 @@ async function captureResponsiveScreenshots(page: Page, caseDir: string) {
   }
   await page.setViewportSize({ width: 1440, height: 1200 });
   return screenshotPaths;
+}
+
+function pageConsoleErrors(entries: Array<{ type: string; text: string }>) {
+  return entries.filter((entry) => entry.type === 'error' || entry.type === 'pageerror');
+}
+
+async function auditOrdinaryUserRoutes(input: {
+  webUrl: string;
+  outDir: string;
+  page: Page;
+  consoleEntries: Array<{ type: string; text: string }>;
+}): Promise<RouteAuditSummary[]> {
+  const routeRoot = path.join(input.outDir, 'routes');
+  await fs.mkdir(routeRoot, { recursive: true });
+  const summaries: RouteAuditSummary[] = [];
+
+  for (const target of ORDINARY_USER_ROUTE_AUDIT_TARGETS) {
+    const routeDir = path.join(routeRoot, target.id);
+    await fs.mkdir(routeDir, { recursive: true });
+    const consoleStart = input.consoleEntries.length;
+    const checkedCopy: string[] = [];
+    const notes = [...target.notes];
+    const screenshotPaths: string[] = [];
+    const bodyPath = path.join(routeDir, 'body.txt');
+    const errors: string[] = [];
+
+    await input.page.setViewportSize({ width: 1440, height: 1200 });
+    await input.page.goto(`${input.webUrl}${target.path}`, { waitUntil: 'networkidle', timeout: 60_000 });
+    for (const copy of target.expectedCopy) {
+      const locator = input.page.getByText(copy, { exact: false }).first();
+      try {
+        await locator.waitFor({ timeout: 60_000 });
+        checkedCopy.push(copy);
+      } catch {
+        errors.push(`expected copy not visible:${copy}`);
+      }
+    }
+
+    const bodyText = await input.page.locator('body').innerText({ timeout: 30_000 });
+    await fs.writeFile(bodyPath, bodyText, 'utf8');
+    for (const viewport of RESPONSIVE_VIEWPORTS) {
+      await input.page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await input.page.waitForTimeout(250);
+      const screenshotPath = path.join(routeDir, `${viewport.label}.png`);
+      await input.page.screenshot({ path: screenshotPath, fullPage: true });
+      screenshotPaths.push(screenshotPath);
+    }
+    await input.page.setViewportSize({ width: 1440, height: 1200 });
+
+    const consoleErrors = pageConsoleErrors(input.consoleEntries.slice(consoleStart));
+    if (consoleErrors.length > 0) errors.push(`console/page errors:${JSON.stringify(consoleErrors)}`);
+
+    const summary: RouteAuditSummary = {
+      id: target.id,
+      path: target.path,
+      finalUrl: input.page.url(),
+      pass: errors.length === 0,
+      bodyPath,
+      screenshotPaths,
+      checkedCopy,
+      consoleErrors,
+      notes: errors.length ? [...notes, ...errors] : notes
+    };
+    summaries.push(summary);
+    if (errors.length > 0) {
+      throw new Error(`route audit failed for ${target.id}\n${errors.join('\n')}`);
+    }
+  }
+
+  return summaries;
 }
 
 async function requestJson(url: string, options: RequestInit = {}) {
@@ -654,7 +981,7 @@ function getBaoyuCommit(repoRoot: string): string {
       encoding: 'utf8'
     }).trim();
   } catch {
-    return '31b2929d1cc0';
+    return 'dcd0f8143349';
   }
 }
 
@@ -674,6 +1001,7 @@ async function runCase(input: {
   const finalJsonPath = path.join(caseDir, 'final.json');
   const startJsonPath = path.join(caseDir, 'start.json');
   const consolePath = path.join(caseDir, 'console.json');
+  const consoleStart = input.consoleEntries.length;
 
   await input.page.goto(`${input.webUrl}/`, { waitUntil: 'networkidle', timeout: 60_000 });
   const appLink = input.page.getByRole('link', { name: /进入生成器/u }).first();
@@ -726,9 +1054,10 @@ async function runCase(input: {
   }
 
   const bodyText = await input.page.locator('body').innerText({ timeout: 30_000 });
-  const consoleErrors = input.consoleEntries.filter((entry) => entry.type === 'error' || entry.type === 'pageerror');
+  const caseConsoleEntries = input.consoleEntries.slice(consoleStart);
+  const consoleErrors = pageConsoleErrors(caseConsoleEntries);
   await fs.writeFile(bodyPath, bodyText, 'utf8');
-  await fs.writeFile(consolePath, JSON.stringify(input.consoleEntries, null, 2), 'utf8');
+  await fs.writeFile(consolePath, JSON.stringify(caseConsoleEntries, null, 2), 'utf8');
   await input.page.screenshot({ path: screenshotPath, fullPage: true });
   const responsiveScreenshotPaths = sourceBlocked || qualityBlocked ? [] : await captureResponsiveScreenshots(input.page, caseDir);
 
@@ -748,9 +1077,10 @@ async function main() {
   const stamp = createStamp();
   const apiUrl = process.env.API_URL?.trim() || 'http://127.0.0.1:4310';
   const webUrl = process.env.WEB_URL?.trim() || 'http://127.0.0.1:3200';
-  const outDir = process.env.OUT_DIR
-    ? path.resolve(process.env.OUT_DIR)
-    : path.join(repoRoot, 'output', 'playwright', `ordinary-user-baoyu-sync-${stamp}`);
+  const caseDefs = selectedOrdinaryUserCases();
+  const evidenceNotes = buildOrdinaryUserEvidenceNotes(process.env, caseDefs.length);
+  const outputPaths = buildOrdinaryUserBaoyuOutputPaths(repoRoot, stamp, process.env.OUT_DIR);
+  const outDir = outputPaths.evidenceDir;
   await fs.mkdir(outDir, { recursive: true });
 
   const apiContext = await playwrightRequest.newContext({ baseURL: apiUrl, extraHTTPHeaders: { 'content-type': 'application/json' } });
@@ -770,8 +1100,10 @@ async function main() {
   page.on('pageerror', (error) => consoleEntries.push({ type: 'pageerror', text: error.message }));
 
   const summaries: EvidenceSummary[] = [];
+  let routeSummaries: RouteAuditSummary[] = [];
   try {
-    for (const caseDef of selectedOrdinaryUserCases()) {
+    routeSummaries = await auditOrdinaryUserRoutes({ webUrl, outDir, page, consoleEntries });
+    for (const caseDef of caseDefs) {
       console.log(`[ordinary-user-baoyu-sync] start ${caseDef.id}`);
       summaries.push(await runCase({ apiUrl, webUrl, token: String(token), outDir, page, consoleEntries, caseDef }));
       console.log(`[ordinary-user-baoyu-sync] pass ${caseDef.id}`);
@@ -787,14 +1119,36 @@ async function main() {
     webUrl,
     baoyuCommit,
     evidenceRoot: outDir,
-    cases: summaries
+    cases: summaries,
+    routes: routeSummaries,
+    evidenceNotes
   });
-  const reportPath = path.join(outDir, 'BAOYU-ORDINARY-USER-SYNC.md');
-  const summaryPath = path.join(outDir, 'summary.json');
-  await fs.writeFile(reportPath, report, 'utf8');
-  await fs.writeFile(summaryPath, JSON.stringify({ reportPath, outDir, cases: summaries }, null, 2), 'utf8');
+  await fs.mkdir(outputPaths.trackedReportDir, { recursive: true });
+  await fs.writeFile(outputPaths.evidenceReportPath, report, 'utf8');
+  await fs.writeFile(outputPaths.trackedReportPath, report, 'utf8');
+  await fs.writeFile(
+    outputPaths.summaryPath,
+    JSON.stringify(
+      { reportPath: outputPaths.evidenceReportPath, trackedReportPath: outputPaths.trackedReportPath, outDir, routes: routeSummaries, cases: summaries },
+      null,
+      2
+    ),
+    'utf8'
+  );
 
-  console.log(JSON.stringify({ outDir, reportPath, passCount: summaries.filter((item) => item.pass).length, total: summaries.length }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        outDir,
+        reportPath: outputPaths.evidenceReportPath,
+        trackedReportPath: outputPaths.trackedReportPath,
+        passCount: summaries.filter((item) => item.pass).length,
+        total: summaries.length
+      },
+      null,
+      2
+    )
+  );
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

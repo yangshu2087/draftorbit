@@ -9,7 +9,7 @@ import type { VisualPlan } from './visual-planning.service';
 import type { VisualAssetKind } from './benchmarks/baoyu-visual-rules';
 import { renderDeterministicVisualAsset as renderTemplateVisualAsset } from './visual-card-render.service';
 
-export const BAOYU_SKILLS_COMMIT = '31b2929d1cc00b57dfd20571416ad2284145525f';
+export const BAOYU_SKILLS_COMMIT = 'dcd0f81433490d85f72a0eae557a710ab34bc9b1';
 
 export type BaoyuSkillName =
   | 'baoyu-url-to-markdown'

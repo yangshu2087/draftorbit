@@ -86,6 +86,14 @@ test('BaoyuRuntimeService builds pinned skill commands with npx bun fallback', (
   assert.equal(command.commit, BAOYU_SKILLS_COMMIT);
 });
 
+
+test('BaoyuRuntimeService is pinned to the audited upstream baoyu-skills main revision', () => {
+  assert.equal(BAOYU_SKILLS_COMMIT, 'dcd0f81433490d85f72a0eae557a710ab34bc9b1');
+
+  const ensureScript = fs.readFileSync(path.join(repoRoot, 'scripts', 'ensure-baoyu-skills-runtime.mjs'), 'utf8');
+  assert.match(ensureScript, new RegExp(`const commit = '${BAOYU_SKILLS_COMMIT}'`));
+});
+
 test('BaoyuRuntimeService resolves relative BAOYU_SKILLS_DIR from repo root', () => {
   const previous = process.env.BAOYU_SKILLS_DIR;
   process.env.BAOYU_SKILLS_DIR = 'vendor/baoyu-skills';

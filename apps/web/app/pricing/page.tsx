@@ -97,6 +97,7 @@ export default function PricingPage() {
   const [checkoutLoading, setCheckoutLoading] = useState<BillingPlanKey | null>(null);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState<UiError | null>(null);
+  const [user, setUser] = useState<ReturnType<typeof getUserFromToken>>(null);
 
   const loadPlans = useCallback(async () => {
     setLoading(true);
@@ -116,6 +117,10 @@ export default function PricingPage() {
   useEffect(() => {
     void loadPlans();
   }, [loadPlans]);
+
+  useEffect(() => {
+    setUser(getUserFromToken());
+  }, []);
 
   const orderedPlans = useMemo(() => {
     const score = { STARTER: 1, PRO: 2, PREMIUM: 3 } as const;
@@ -146,8 +151,6 @@ export default function PricingPage() {
     }
     setCheckoutLoading(null);
   }, []);
-
-  const user = getUserFromToken();
 
   return (
     <AppShell
