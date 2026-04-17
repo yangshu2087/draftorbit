@@ -4,6 +4,26 @@ Use this file to transfer execution state between Codex, Cursor, and other agent
 Update it before pausing work, switching tools, or asking another agent to continue.
 
 
+## Current Playwright reporter-time stabilization pass (2026-04-17)
+
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability`
+- Branch: `codex/web-ci-perf-8s-stability`
+- Base: `origin/main` at `90fb21816e7b3df9ce628fbcea390c699729f88f`.
+- Goal: stabilize web Playwright reporter time around the 8s lane with lower run-to-run variance while preserving the required-check contract.
+- Scenario optimization:
+  - `apps/web/e2e/ordinary-user-ci.spec.ts` now keeps the app open per generation-group test and reuses the same page/session across scenarios instead of reopening `/app` every scenario.
+  - Generation scenarios are split into two grouped tests (`tweet/thread` and `article/diagram`) to reduce per-step churn and improve CI worker scheduling.
+  - Retry-only visual recovery + latest-source fail-closed assertions now run in one continuous app session test instead of two separate reopen flows.
+  - Connect/queue/pricing safe-gate checks are folded into the home→app entry test to remove an extra test lifecycle while keeping route coverage.
+  - Mobile CTA test keeps hover/focus/overflow assertions but removes always-on screenshot capture in CI runs to cut avoidable I/O latency.
+  - Added per-scenario timing logs (`[ci-perf] generation scenario ...`) for direct hotspot inspection in Actions logs.
+- CI observability upgrade:
+  - `.github/workflows/ci.yml` now writes a persistent `CI step duration table` into `$GITHUB_STEP_SUMMARY`.
+  - Web Playwright workers are tuned to `3` in CI to improve parallel scheduling while staying below the prior contention seen at higher worker counts.
+  - The table includes wall time + note for `Restore Playwright Chromium cache`, `Install Playwright Chromium`, `Web test (required)`, `Web build`, and cache save behavior.
+  - Added explicit restore/save timing rows (including skipped-on-cache-hit visibility) so long-tail cache behavior is observable across runs.
+
+
 ## Current main CI budget flake recovery (2026-04-17)
 
 - Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/fix-main-web-budget-flake`

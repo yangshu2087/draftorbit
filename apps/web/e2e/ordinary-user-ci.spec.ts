@@ -457,9 +457,23 @@ async function openApp(page: Page) {
   await expect(page.getByText('未连接 X 账号 · 仍可先生成')).toBeVisible();
 }
 
-async function startGeneration(page: Page, input: { prompt: string; format?: 'tweet' | 'thread' | 'article'; visualMode?: string }) {
-  await openApp(page);
+type GenerationScenario = {
+  name: string;
+  prompt: string;
+  format?: 'tweet' | 'thread' | 'article';
+  visualMode?: string;
+  expected: RegExp[];
+};
+
+async function ensureAdvancedOptionsOpen(page: Page) {
+  const visualModeSelect = page.locator('select[name="visualMode"]');
+  if (await visualModeSelect.isVisible()) return;
   await page.getByText('高级选项').click();
+  await expect(visualModeSelect).toBeVisible();
+}
+
+async function startGenerationInOpenApp(page: Page, input: { prompt: string; format?: 'tweet' | 'thread' | 'article'; visualMode?: string }) {
+  await ensureAdvancedOptionsOpen(page);
   if (input.format && input.format !== 'tweet') {
     const label = input.format === 'thread' ? '串推' : '长文';
     await page.getByRole('button', { name: new RegExp(label, 'u') }).click();
@@ -472,11 +486,34 @@ async function startGeneration(page: Page, input: { prompt: string; format?: 'tw
   await expect(page.getByText('结果区')).toBeVisible();
 }
 
+async function runGenerationScenario(page: Page, scenario: GenerationScenario) {
+  const scenarioStart = Date.now();
+  await startGenerationInOpenApp(page, scenario);
+  for (const expected of scenario.expected) {
+    await expect(page.getByText(expected).first()).toBeVisible();
+  }
+
+  if (scenario.name.includes('thread')) {
+    await expect(page.getByRole('img', { name: /卡片组/u }).first()).toBeVisible();
+  }
+
+  if (scenario.name.includes('article')) {
+    await page.getByText('查看依据与配图建议').click();
+    await expect(page.getByText('来源已抓取').first()).toBeVisible();
+  }
+
+  const bundleLink = page.getByRole('link', { name: /下载全部图文资产|下载 bundle/u }).first();
+  await expect(bundleLink).toHaveAttribute('href', /token=/u);
+  await expect(page.getByRole('button', { name: /只重试图片\/图文资产/u })).toBeDisabled();
+  const durationSeconds = ((Date.now() - scenarioStart) / 1000).toFixed(2);
+  console.log(`[ci-perf] generation scenario "${scenario.name}" completed in ${durationSeconds}s`);
+}
+
 test.beforeEach(async ({ page }) => {
   await mockDraftOrbitApi(page);
 });
 
-test('ordinary user can enter the app from home local CTA with visible focus and responsive layout', async ({ page }) => {
+test('ordinary user can enter the app from home local CTA and verify safe connect/queue/pricing gates', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 900 });
   await page.goto('/');
 
@@ -485,7 +522,6 @@ test('ordinary user can enter the app from home local CTA with visible focus and
   await localCta.hover();
   await localCta.focus();
   await expect(localCta).toBeFocused();
-  await page.screenshot({ path: test.info().outputPath('home-local-cta-mobile.png'), fullPage: true });
 
   const hasHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   expect(hasHorizontalOverflow).toBe(false);
@@ -494,88 +530,6 @@ test('ordinary user can enter the app from home local CTA with visible focus and
   await expect(page).toHaveURL(/\/app$/u);
   await expect(page.getByRole('button', { name: /开始生成/u })).toBeVisible();
   await expect(page.getByText('未连接 X 账号 · 仍可先生成')).toBeVisible();
-});
-
-const generationScenarios = [
-  {
-    name: 'tweet cover assets and safe publish gate',
-    prompt: '别再靠灵感写推文，给我一条更像真人的冷启动判断句。',
-    expected: [/生成结果/u, /封面图/u, /Codex 本机 SVG/u, /下载全部图文资产/u, /连接 X 后才能发布/u]
-  },
-  {
-    name: 'thread card series',
-    prompt: '把一个 AI 产品新功能写成 4 条 thread，不要像建议模板。',
-    format: 'thread' as const,
-    expected: [/1\/4/u, /4\/4/u, /下载 bundle/u]
-  },
-  {
-    name: 'article with cover infographic illustration and exports',
-    prompt: '根据这篇来源写一篇关于最新 Hermes Agent 的 X 长文：https://example.com/source',
-    format: 'article' as const,
-    expected: [/标题/u, /导语/u, /信息图/u, /章节插图/u, /导出 HTML/u, /复制到 X 文章编辑器/u]
-  },
-  {
-    name: 'diagram visual mode',
-    prompt: '用一条短推解释 DraftOrbit 从输入一句话到手动确认发布的 5 步流程，并配一个流程图：输入→来源→正文→图文→确认。',
-    visualMode: 'diagram',
-    expected: [/流程图/u, /输入→来源→正文→图文→确认/u, /下载 SVG/u]
-  }
-];
-
-test('app generation covers tweet thread article and diagram visual outputs', async ({ page }) => {
-  for (const scenario of generationScenarios) {
-    await test.step(scenario.name, async () => {
-      await startGeneration(page, scenario);
-      for (const expected of scenario.expected) {
-        await expect(page.getByText(expected).first()).toBeVisible();
-      }
-
-      if (scenario.name.includes('thread')) {
-        await expect(page.getByRole('img', { name: /卡片组/u }).first()).toBeVisible();
-      }
-
-      if (scenario.name.includes('article')) {
-        await page.getByText('查看依据与配图建议').click();
-        await expect(page.getByText('来源已抓取').first()).toBeVisible();
-      }
-
-      const bundleLink = page.getByRole('link', { name: /下载全部图文资产|下载 bundle/u }).first();
-      await expect(bundleLink).toHaveAttribute('href', /token=/u);
-      await expect(page.getByRole('button', { name: /只重试图片\/图文资产/u })).toBeDisabled();
-    });
-  }
-});
-
-test('app exposes Markdown copy success and retry-only visual asset recovery', async ({ page }) => {
-  await startGeneration(page, { prompt: '重试图文：生成一条带失败图片的短推，用来验证只重试图文资产。' });
-
-  await expect(page.getByText('部分图片资产没有达到可发布标准')).toBeVisible();
-  const retryButton = page.getByRole('button', { name: /只重试图片\/图文资产/u });
-  await expect(retryButton).toBeEnabled();
-  await retryButton.click();
-  await expect(page.getByText('图片已重新生成')).toBeVisible();
-  await expect(page.getByText('重试后封面文字不再溢出').first()).toBeVisible();
-
-  await page.getByRole('button', { name: '复制 Markdown' }).click();
-  await expect(page.getByText('Markdown 已复制')).toBeVisible();
-});
-
-test('latest ambiguous source request fails closed with recoverable copy and no ready visual assets', async ({ page }) => {
-  await startGeneration(page, { prompt: '生成关于最新的 Hermes 的文章', format: 'article' });
-
-  await expect(page.getByText('需要可靠来源，不能编造最新事实', { exact: true }).first()).toBeVisible();
-  await expect(page.getByRole('button', { name: '粘贴来源 URL 再生成' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '改成非最新主题再生成' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '质量未通过，不能发布' })).toBeDisabled();
-  await expect(page.getByText('质量门未通过，图文资产不会展示')).toBeVisible();
-  await expect(page.getByText('可以直接进入确认')).toHaveCount(0);
-
-  await page.getByRole('button', { name: '粘贴来源 URL 再生成' }).click();
-  await expect(page.locator('textarea').first()).toHaveValue(/来源 URL：/u);
-});
-
-test('connect queue and pricing routes expose safe manual gates without external posting or payment', async ({ page }) => {
-  await seedSession(page);
 
   await page.goto('/connect?intent=connect_x_self');
   await expect(page).toHaveURL(/\/app\?nextAction=connect_x_self/u);
@@ -593,4 +547,78 @@ test('connect queue and pricing routes expose safe manual gates without external
   await expect(page.getByRole('button', { name: '月付' })).toBeVisible();
   await expect(page.getByRole('button', { name: /开始 3 天试用/u }).first()).toBeVisible();
   await expect(page).not.toHaveURL(/checkout\.example\.test/u);
+});
+
+const generationScenariosFast: GenerationScenario[] = [
+  {
+    name: 'tweet cover assets and safe publish gate',
+    prompt: '别再靠灵感写推文，给我一条更像真人的冷启动判断句。',
+    expected: [/生成结果/u, /封面图/u, /Codex 本机 SVG/u, /下载全部图文资产/u, /连接 X 后才能发布/u]
+  },
+  {
+    name: 'thread card series',
+    prompt: '把一个 AI 产品新功能写成 4 条 thread，不要像建议模板。',
+    format: 'thread' as const,
+    expected: [/1\/4/u, /4\/4/u, /下载 bundle/u]
+  }
+];
+
+const generationScenariosRich: GenerationScenario[] = [
+  {
+    name: 'article with cover infographic illustration and exports',
+    prompt: '根据这篇来源写一篇关于最新 Hermes Agent 的 X 长文：https://example.com/source',
+    format: 'article' as const,
+    expected: [/标题/u, /导语/u, /信息图/u, /章节插图/u, /导出 HTML/u, /复制到 X 文章编辑器/u]
+  },
+  {
+    name: 'diagram visual mode',
+    prompt: '用一条短推解释 DraftOrbit 从输入一句话到手动确认发布的 5 步流程，并配一个流程图：输入→来源→正文→图文→确认。',
+    format: 'tweet' as const,
+    visualMode: 'diagram',
+    expected: [/流程图/u, /输入→来源→正文→图文→确认/u, /下载 SVG/u]
+  }
+];
+
+test('app generation covers tweet and thread visual outputs with minimal page churn', async ({ page }) => {
+  await openApp(page);
+  for (const scenario of generationScenariosFast) {
+    await test.step(scenario.name, async () => {
+      await runGenerationScenario(page, scenario);
+    });
+  }
+});
+
+test('app generation covers article and diagram visual outputs with minimal page churn', async ({ page }) => {
+  await openApp(page);
+  for (const scenario of generationScenariosRich) {
+    await test.step(scenario.name, async () => {
+      await runGenerationScenario(page, scenario);
+    });
+  }
+});
+
+test('app handles retry-only visual recovery and latest-source fail-closed path in one user session', async ({ page }) => {
+  await openApp(page);
+  await startGenerationInOpenApp(page, { prompt: '重试图文：生成一条带失败图片的短推，用来验证只重试图文资产。' });
+
+  await expect(page.getByText('部分图片资产没有达到可发布标准')).toBeVisible();
+  const retryButton = page.getByRole('button', { name: /只重试图片\/图文资产/u });
+  await expect(retryButton).toBeEnabled();
+  await retryButton.click();
+  await expect(page.getByText('图片已重新生成')).toBeVisible();
+  await expect(page.getByText('重试后封面文字不再溢出').first()).toBeVisible();
+
+  await page.getByRole('button', { name: '复制 Markdown' }).click();
+  await expect(page.getByText('Markdown 已复制')).toBeVisible();
+  await startGenerationInOpenApp(page, { prompt: '生成关于最新的 Hermes 的文章', format: 'article' });
+
+  await expect(page.getByText('需要可靠来源，不能编造最新事实', { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: '粘贴来源 URL 再生成' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '改成非最新主题再生成' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '质量未通过，不能发布' })).toBeDisabled();
+  await expect(page.getByText('质量门未通过，图文资产不会展示')).toBeVisible();
+  await expect(page.getByText('可以直接进入确认')).toHaveCount(0);
+
+  await page.getByRole('button', { name: '粘贴来源 URL 再生成' }).click();
+  await expect(page.locator('textarea').first()).toHaveValue(/来源 URL：/u);
 });

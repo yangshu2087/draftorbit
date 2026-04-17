@@ -24,6 +24,7 @@ jobs:
     timeout-minutes: 15
     env:
       PLAYWRIGHT_BROWSERS_PATH: /home/runner/.cache/ms-playwright
+      WEB_CI_STEP_TIMINGS_FILE: /tmp/web-ci-step-timings.tsv
 
     steps:
       - name: Checkout
@@ -42,6 +43,13 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
+      - name: Initialize CI step timing collector
+        run: |
+          : > "$WEB_CI_STEP_TIMINGS_FILE"
+
+      - name: Mark Playwright cache restore start
+        run: echo "PLAYWRIGHT_CACHE_RESTORE_START=$(date +%s)" >> "$GITHUB_ENV"
+
       - name: Restore Playwright Chromium cache
         id: playwright-cache
         uses: actions/cache/restore@v5
@@ -50,6 +58,15 @@ jobs:
           key: playwright-chromium-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: |
             playwright-chromium-${{ runner.os }}-
+
+      - name: Record Playwright cache restore duration
+        if: always()
+        env:
+          PLAYWRIGHT_CACHE_HIT: ${{ steps.playwright-cache.outputs.cache-hit }}
+        run: |
+          end_seconds=$(date +%s)
+          wall_seconds=$((end_seconds - PLAYWRIGHT_CACHE_RESTORE_START))
+          printf "Restore Playwright Chromium cache\t%s\tcache-hit=%s\n" "$wall_seconds" "${PLAYWRIGHT_CACHE_HIT:-false}" >> "$WEB_CI_STEP_TIMINGS_FILE"
 
       - name: Record CI runtime and cache inputs
         env:
@@ -67,13 +84,37 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: |
+          start_seconds=$(date +%s)
+          set +e
+          pnpm install --frozen-lockfile
+          status=$?
+          end_seconds=$(date +%s)
+          wall_seconds=$((end_seconds - start_seconds))
+          printf "Install dependencies\t%s\texit=%s\n" "$wall_seconds" "$status" >> "$WEB_CI_STEP_TIMINGS_FILE"
+          exit "$status"
 
       - name: Install Playwright Chromium
-        run: pnpm --filter @draftorbit/web exec playwright install --with-deps chromium
+        run: |
+          start_seconds=$(date +%s)
+          set +e
+          pnpm --filter @draftorbit/web exec playwright install --with-deps chromium
+          status=$?
+          end_seconds=$(date +%s)
+          wall_seconds=$((end_seconds - start_seconds))
+          printf "Install Playwright Chromium\t%s\texit=%s\n" "$wall_seconds" "$status" >> "$WEB_CI_STEP_TIMINGS_FILE"
+          exit "$status"
 
       - name: Web typecheck
-        run: pnpm --filter @draftorbit/web typecheck
+        run: |
+          start_seconds=$(date +%s)
+          set +e
+          pnpm --filter @draftorbit/web typecheck
+          status=$?
+          end_seconds=$(date +%s)
+          wall_seconds=$((end_seconds - start_seconds))
+          printf "Web typecheck\t%s\texit=%s\n" "$wall_seconds" "$status" >> "$WEB_CI_STEP_TIMINGS_FILE"
+          exit "$status"
 
       - name: Web test (required)
         env:
@@ -82,7 +123,7 @@ jobs:
           NEXT_PUBLIC_API_URL: /__api
           NEXT_PUBLIC_ENABLE_LOCAL_LOGIN: 'true'
           WEB_PLAYWRIGHT_PORT: 3300
-          WEB_PLAYWRIGHT_WORKERS: '2'
+          WEB_PLAYWRIGHT_WORKERS: '3'
           WEB_PLAYWRIGHT_REPORTER_TARGET_SECONDS: '10'
           WEB_PLAYWRIGHT_REPORTER_HARD_BUDGET_SECONDS: '12'
           WEB_PLAYWRIGHT_ENFORCE_BUDGET: '1'
@@ -101,6 +142,7 @@ jobs:
             echo "| CI web test step wall time | ${wall_seconds}s |"
             echo "| exit code | ${status} |"
           } >> "$GITHUB_STEP_SUMMARY"
+          printf "Web test (required)\t%s\texit=%s\n" "$wall_seconds" "$status" >> "$WEB_CI_STEP_TIMINGS_FILE"
           exit "$status"
 
       - name: Web build
@@ -108,7 +150,19 @@ jobs:
           NEXT_TELEMETRY_DISABLED: '1'
           NEXT_PUBLIC_API_URL: /__api
           NEXT_PUBLIC_ENABLE_LOCAL_LOGIN: 'true'
-        run: pnpm --filter @draftorbit/web build
+        run: |
+          start_seconds=$(date +%s)
+          set +e
+          pnpm --filter @draftorbit/web build
+          status=$?
+          end_seconds=$(date +%s)
+          wall_seconds=$((end_seconds - start_seconds))
+          printf "Web build\t%s\texit=%s\n" "$wall_seconds" "$status" >> "$WEB_CI_STEP_TIMINGS_FILE"
+          exit "$status"
+
+      - name: Mark Playwright cache save start
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: echo "PLAYWRIGHT_CACHE_SAVE_START=$(date +%s)" >> "$GITHUB_ENV"
 
       - name: Save Playwright Chromium cache
         if: steps.playwright-cache.outputs.cache-hit != 'true'
@@ -116,6 +170,37 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Record Playwright cache save duration
+        if: always()
+        env:
+          PLAYWRIGHT_CACHE_HIT: ${{ steps.playwright-cache.outputs.cache-hit }}
+        run: |
+          if [ "${PLAYWRIGHT_CACHE_HIT:-false}" = "true" ]; then
+            printf "Save Playwright Chromium cache\t0\tcache-hit=true (skipped)\n" >> "$WEB_CI_STEP_TIMINGS_FILE"
+            exit 0
+          fi
+          end_seconds=$(date +%s)
+          wall_seconds=$((end_seconds - PLAYWRIGHT_CACHE_SAVE_START))
+          printf "Save Playwright Chromium cache\t%s\texit=0\n" "$wall_seconds" >> "$WEB_CI_STEP_TIMINGS_FILE"
+
+      - name: Publish CI step duration table
+        if: always()
+        run: |
+          {
+            echo "### CI step duration table"
+            echo
+            echo "| step | wall time (s) | note |"
+            echo "| --- | ---: | --- |"
+            if [ ! -s "$WEB_CI_STEP_TIMINGS_FILE" ]; then
+              echo "| none | 0 | timing file missing |"
+            else
+              while IFS=$'\t' read -r step wall_seconds note; do
+                [ -z "$step" ] && continue
+                echo "| ${step} | ${wall_seconds} | ${note} |"
+              done < "$WEB_CI_STEP_TIMINGS_FILE"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Playwright failure artifacts
         if: failure()
