@@ -29,17 +29,22 @@ Update it before pausing work, switching tools, or asking another agent to conti
     - parses Playwright reporter time, enforces the 10s budget when enabled, and writes warmup/reporter/wall-time rows to `$GITHUB_STEP_SUMMARY`.
   - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/ci-web-performance-observability/apps/web/playwright.config.ts`
     - supports `WEB_PLAYWRIGHT_SKIP_WEBSERVER=1` so the CI harness can own server lifecycle and warmup.
+    - runs the browser suite in CI with `2` workers and `fullyParallel` enabled by default; local non-CI runs remain single-worker unless overridden.
   - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/ci-web-performance-observability/apps/web/e2e/ordinary-user-ci.spec.ts`
     - grants clipboard permissions to the active `WEB_PLAYWRIGHT_BASE_URL` / `WEB_PLAYWRIGHT_PORT` origin, avoiding hard-coded local ports during CI-style local verification.
+- GitHub Actions iteration:
+  - First performance PR run proved the budget gate worked but failed with Playwright reporter time `12.4s > 10s`.
+  - Follow-up fix enabled CI parallelism for this isolated ordinary-user suite while keeping deterministic local defaults.
 - Local browser/performance verification:
   - Command:
     `NEXT_PUBLIC_API_URL=/__api NEXT_PUBLIC_ENABLE_LOCAL_LOGIN=true CI=true WEB_PLAYWRIGHT_PORT=3313 WEB_PLAYWRIGHT_REPORTER_BUDGET_SECONDS=10 WEB_PLAYWRIGHT_ENFORCE_BUDGET=1 GITHUB_STEP_SUMMARY=/tmp/draftorbit-web-summary.md npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web test`
   - Result: `23/23` node tests passed; `8/8` Chromium Playwright tests passed.
   - Playwright reporter time: `5.5s`.
   - Harness wall time after warmup: `6.76s`.
+  - After CI parallelism fix, repeated command on `WEB_PLAYWRIGHT_PORT=3314` passed with Playwright reporter time `4.0s` and harness wall time `5.54s`.
   - Summary file confirmed:
-    - Next/web warmup + Playwright wall time `5.91s`
-    - Playwright reporter time `5.50s`
+    - Next/web warmup + Playwright wall time `4.58s`
+    - Playwright reporter time `4.00s`
     - Reporter budget `10.00s`
     - Budget status `pass`
     - warm `/`, `/app`, `/pricing` all HTTP `200`.
