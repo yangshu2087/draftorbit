@@ -4,6 +4,16 @@ Use this file to transfer execution state between Codex, Cursor, and other agent
 Update it before pausing work, switching tools, or asking another agent to continue.
 
 
+## Current main CI budget flake recovery (2026-04-17)
+
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/fix-main-web-budget-flake`
+- Branch: `codex/fix-main-web-budget-flake`
+- Base: `origin/main` at `0b238e3e244c29a100b823fcbca955c9a4142571`, the PR #5 merge commit.
+- Context: PR #5 passed twice with Playwright reporter times `9.4s` and `9.5s`, but the post-merge `main` run `24559547245` failed because the same browser suite passed at `10.3s` and tripped the exact `10s` hard budget.
+- Fix direction: keep `10s` as the reported target, but separate it from the required-check hard budget. CI now records `Reporter target`, `Reporter hard budget`, `Target status`, and `Required-check budget status`.
+- Required check policy: test failures still fail immediately; only runner performance jitter between the 10s target and 12s hard budget is reported as `watch` instead of blocking `main`.
+
+
 ## Current Actions Node 24 CI compatibility pass (2026-04-17)
 
 - Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/actions-node24-ci-observability`
