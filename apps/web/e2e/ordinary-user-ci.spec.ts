@@ -513,7 +513,7 @@ test.beforeEach(async ({ page }) => {
   await mockDraftOrbitApi(page);
 });
 
-test('ordinary user can enter the app from home local CTA with visible focus and responsive layout', async ({ page }) => {
+test('ordinary user can enter the app from home local CTA and verify safe connect/queue/pricing gates', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 900 });
   await page.goto('/');
 
@@ -530,6 +530,23 @@ test('ordinary user can enter the app from home local CTA with visible focus and
   await expect(page).toHaveURL(/\/app$/u);
   await expect(page.getByRole('button', { name: /开始生成/u })).toBeVisible();
   await expect(page.getByText('未连接 X 账号 · 仍可先生成')).toBeVisible();
+
+  await page.goto('/connect?intent=connect_x_self');
+  await expect(page).toHaveURL(/\/app\?nextAction=connect_x_self/u);
+  await expect(page.getByRole('heading', { name: '连接 X 账号后再发布会更顺' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^连接 X 账号$/u })).toBeVisible();
+
+  await page.goto('/queue?intent=confirm_publish');
+  await expect(page).toHaveURL(/\/app\?nextAction=confirm_publish/u);
+  await expect(page.getByText('确认这条内容是否发出')).toBeVisible();
+  await expect(page.getByText('当前待确认内容')).toBeVisible();
+  await expect(page.getByText('这条内容等待你确认后再发出')).toBeVisible();
+
+  await page.goto('/pricing');
+  await expect(page.getByText('升级与结账')).toBeVisible();
+  await expect(page.getByRole('button', { name: '月付' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /开始 3 天试用/u }).first()).toBeVisible();
+  await expect(page).not.toHaveURL(/checkout\.example\.test/u);
 });
 
 const generationScenariosFast: GenerationScenario[] = [
@@ -604,25 +621,4 @@ test('app handles retry-only visual recovery and latest-source fail-closed path 
 
   await page.getByRole('button', { name: '粘贴来源 URL 再生成' }).click();
   await expect(page.locator('textarea').first()).toHaveValue(/来源 URL：/u);
-});
-
-test('connect queue and pricing routes expose safe manual gates without external posting or payment', async ({ page }) => {
-  await seedSession(page);
-
-  await page.goto('/connect?intent=connect_x_self');
-  await expect(page).toHaveURL(/\/app\?nextAction=connect_x_self/u);
-  await expect(page.getByRole('heading', { name: '连接 X 账号后再发布会更顺' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /^连接 X 账号$/u })).toBeVisible();
-
-  await page.goto('/queue?intent=confirm_publish');
-  await expect(page).toHaveURL(/\/app\?nextAction=confirm_publish/u);
-  await expect(page.getByText('确认这条内容是否发出')).toBeVisible();
-  await expect(page.getByText('当前待确认内容')).toBeVisible();
-  await expect(page.getByText('这条内容等待你确认后再发出')).toBeVisible();
-
-  await page.goto('/pricing');
-  await expect(page.getByText('升级与结账')).toBeVisible();
-  await expect(page.getByRole('button', { name: '月付' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /开始 3 天试用/u }).first()).toBeVisible();
-  await expect(page).not.toHaveURL(/checkout\.example\.test/u);
 });

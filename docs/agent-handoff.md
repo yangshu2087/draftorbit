@@ -14,6 +14,7 @@ Update it before pausing work, switching tools, or asking another agent to conti
   - `apps/web/e2e/ordinary-user-ci.spec.ts` now keeps the app open per generation-group test and reuses the same page/session across scenarios instead of reopening `/app` every scenario.
   - Generation scenarios are split into two grouped tests (`tweet/thread` and `article/diagram`) to reduce per-step churn and improve CI worker scheduling.
   - Retry-only visual recovery + latest-source fail-closed assertions now run in one continuous app session test instead of two separate reopen flows.
+  - Connect/queue/pricing safe-gate checks are folded into the home→app entry test to remove an extra test lifecycle while keeping route coverage.
   - Mobile CTA test keeps hover/focus/overflow assertions but removes always-on screenshot capture in CI runs to cut avoidable I/O latency.
   - Added per-scenario timing logs (`[ci-perf] generation scenario ...`) for direct hotspot inspection in Actions logs.
 - CI observability upgrade:
