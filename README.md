@@ -98,7 +98,10 @@ RUN_ID=20260403-001 npx pnpm@10.23.0 smoke:p0
 - `AUTH_MODE`（`required` / `self_host_no_login`）
 - `X_CLIENT_ID` / `X_CLIENT_SECRET` / `X_CALLBACK_URL`
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_CALLBACK_URL`
+- `OPENAI_API_KEY`（可选：官方 OpenAI 文本 live smoke）
 - `OPENROUTER_API_KEY`（平台托管调用通道）
+- `TAVILY_API_KEY`（可选：最新事实检索 live smoke）
+- `LIVE_OPENAI_MODEL` / `LIVE_OPENROUTER_MODEL` / `LIVE_TAVILY_QUERY`（只影响 `pnpm provider:live`，不影响默认本地验收）
 - `OPENROUTER_ROUTING_PROFILE`（`local` / `test_high` / `prod_balanced`）
 - `OPENROUTER_FREE_MODELS` / `OPENROUTER_FLOOR_MODELS` / `OPENROUTER_HIGH_MODELS`
 - `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET`
@@ -124,6 +127,16 @@ RUN_ID=20260403-001 npx pnpm@10.23.0 smoke:p0
 - `OPENROUTER_HIGH_MODELS=anthropic/claude-sonnet-4.6,openai/gpt-5.4,google/gemini-3.1-pro-preview`
 
 这样测试阶段的 real-model regression 才能稳定证明“真的走了高质量层”，而不是名义分层、实际全走 `openrouter/free`。
+
+### 可选 live provider 验收
+
+默认本地验收不依赖真实 provider key。若本机配置了 `OPENAI_API_KEY`、`OPENROUTER_API_KEY` 或 `TAVILY_API_KEY`，可单独运行：
+
+```bash
+npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 provider:live
+```
+
+该脚本会把缺失 key 记录为 `skipped_missing_key`，不会把 mock/free/Ollama/Codex-local fallback 算作 provider live quality evidence；已配置 key 若不可用则 `fail_closed` 并生成脱敏报告到 `output/reports/provider-live/`。
 
 ---
 

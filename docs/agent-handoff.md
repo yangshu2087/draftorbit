@@ -3,17 +3,31 @@
 Use this file to transfer execution state between Codex, Cursor, and other agents.
 Update it before pausing work, switching tools, or asking another agent to continue.
 
+
+## Current live provider evidence pass
+
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/live-provider-evidence`
+- Branch: `codex/live-provider-evidence`
+- Base: `codex/full-flow-user-iteration` (`e8c9dda test: extend ordinary user full-flow uat actions`)
+- Goal: add an optional real-provider acceptance lane for `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, and `TAVILY_API_KEY` without making those keys required for default local UAT.
+- New command: `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 provider:live`
+- Current local env status at implementation time: `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, and `TAVILY_API_KEY` were missing, so the provider-live report records `skipped_missing_key` for all three providers. This is expected and does not invalidate the default Codex/Ollama/baoyu path.
+- Current tracked provider-live report: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/live-provider-evidence/output/reports/provider-live/PROVIDER-LIVE-EVIDENCE-2026-04-17_07-46-31.md`
+- Local-only provider evidence root: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/live-provider-evidence/artifacts/provider-live-evidence/2026-04-17_07-46-31/`
+- Policy: configured provider keys must produce `live_pass` from the matching provider or `fail_closed`; mock/free/Ollama/Codex-local fallback is never counted as provider live quality evidence.
+
 ## Current goal
 
-- Current pass: ordinary-user full-flow UAT plus direct iteration on top of `codex/codex-oauth-baoyu-visual-upgrade`.
-- User-facing target: a normal user can enter from `/`, use `/app` to generate tweet/thread/article/diagram content with visual assets and exports, recover from source failures, and verify safe publish/billing entry states without real external posting or payment.
-- Direct iteration scope: fix blockers or misleading behavior discovered by UAT; this pass tightened UAT action assertions for signed downloads, export bundles, copy Markdown, retry visual assets, and pricing checkout visibility.
+- Current pass: optional real-provider acceptance on top of `codex/full-flow-user-iteration`.
+- User-facing target: keep the default local Codex/Ollama/baoyu flow passing without provider keys, while giving operators a separate command that proves OpenAI/OpenRouter/Tavily live evidence when keys are present.
+- Direct iteration scope: add a small provider-live script, regression tests, docs, and a tracked skip/pass/fail report; do not change production provider routing or make live keys required for default UAT.
 
 ## Source artifacts
 
 - Requested original project root: `/Volumes/AI_DEV_2T/01-projects/active/openclaw-workspace/projects/002-draftorbit.io`
-- Current implementation worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/full-flow-user-iteration`
-- Current branch: `codex/full-flow-user-iteration`
+- Current implementation worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/live-provider-evidence`
+- Current branch: `codex/live-provider-evidence`
+- Previous full-flow worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/full-flow-user-iteration`
 - Base branch/commit: `codex/codex-oauth-baoyu-visual-upgrade` at `3e805a2 feat: add codex local visual parity pipeline`
 - Previous visual parity worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/codex-oauth-baoyu-visual-upgrade`
 - baoyu runtime source: `vendor/baoyu-skills`, pinned by `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/full-flow-user-iteration/scripts/ensure-baoyu-skills-runtime.mjs` to `9977ff520c49ea0888d8d43d582973c6e8c1d55a`
@@ -87,6 +101,7 @@ Fresh verification run from `/Users/yangshu/.config/superpowers/worktrees/002-dr
 
 - This pass used local services: API `4311`, Web `3300`, Postgres `5433`, Redis `6379`.
 - No real `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, or Tavily key was required for the default pass.
+- Optional provider live evidence is now isolated in `scripts/provider-live-evidence.ts`; missing keys are `skipped_missing_key`, configured-but-failing keys are `fail_closed`, and reports go to `output/reports/provider-live/`.
 - Codex local evidence was explicitly enabled with `CODEX_LOCAL_ALLOW_QUALITY_EVIDENCE=1`; missing live search remains intentionally fail-closed unless the user supplies a URL.
 - Large screenshots, provider outputs, and runtime artifacts remain ignored/local-only under `output/playwright/` and `artifacts/`.
 - `vendor/baoyu-skills` is local-only; use `node scripts/ensure-baoyu-skills-runtime.mjs` to refresh it reproducibly.
@@ -100,6 +115,10 @@ Fresh verification run from `/Users/yangshu/.config/superpowers/worktrees/002-dr
 - None known after the current UAT pass.
 
 ## Changed files of interest
+
+- `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/live-provider-evidence/scripts/provider-live-evidence.ts`
+- `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/live-provider-evidence/apps/api/test/provider-live-evidence.test.ts`
+- `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/live-provider-evidence/output/reports/provider-live/PROVIDER-LIVE-EVIDENCE-2026-04-17_07-46-31.md`
 
 - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/full-flow-user-iteration/scripts/ordinary-user-baoyu-sync.ts`
 - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/full-flow-user-iteration/apps/api/test/ordinary-user-baoyu-sync.test.ts`
