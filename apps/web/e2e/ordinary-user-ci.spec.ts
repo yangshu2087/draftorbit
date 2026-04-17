@@ -522,27 +522,29 @@ const generationScenarios = [
   }
 ];
 
-for (const scenario of generationScenarios) {
-  test(`app generation shows ${scenario.name}`, async ({ page }) => {
-    await startGeneration(page, scenario);
-    for (const expected of scenario.expected) {
-      await expect(page.getByText(expected).first()).toBeVisible();
-    }
+test('app generation covers tweet thread article and diagram visual outputs', async ({ page }) => {
+  for (const scenario of generationScenarios) {
+    await test.step(scenario.name, async () => {
+      await startGeneration(page, scenario);
+      for (const expected of scenario.expected) {
+        await expect(page.getByText(expected).first()).toBeVisible();
+      }
 
-    if (scenario.name.includes('thread')) {
-      await expect(page.getByRole('img', { name: /卡片组/u }).first()).toBeVisible();
-    }
+      if (scenario.name.includes('thread')) {
+        await expect(page.getByRole('img', { name: /卡片组/u }).first()).toBeVisible();
+      }
 
-    if (scenario.name.includes('article')) {
-      await page.getByText('查看依据与配图建议').click();
-      await expect(page.getByText('来源已抓取').first()).toBeVisible();
-    }
+      if (scenario.name.includes('article')) {
+        await page.getByText('查看依据与配图建议').click();
+        await expect(page.getByText('来源已抓取').first()).toBeVisible();
+      }
 
-    const bundleLink = page.getByRole('link', { name: /下载全部图文资产|下载 bundle/u }).first();
-    await expect(bundleLink).toHaveAttribute('href', /token=/u);
-    await expect(page.getByRole('button', { name: /只重试图片\/图文资产/u })).toBeDisabled();
-  });
-}
+      const bundleLink = page.getByRole('link', { name: /下载全部图文资产|下载 bundle/u }).first();
+      await expect(bundleLink).toHaveAttribute('href', /token=/u);
+      await expect(page.getByRole('button', { name: /只重试图片\/图文资产/u })).toBeDisabled();
+    });
+  }
+});
 
 test('app exposes Markdown copy success and retry-only visual asset recovery', async ({ page }) => {
   await startGeneration(page, { prompt: '重试图文：生成一条带失败图片的短推，用来验证只重试图文资产。' });
