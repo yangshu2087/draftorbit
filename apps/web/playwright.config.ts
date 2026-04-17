@@ -5,7 +5,7 @@ const webRoot = process.cwd();
 const port = Number(process.env.WEB_PLAYWRIGHT_PORT ?? 3300);
 const baseURL = process.env.WEB_PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${port}`;
 const skipWebServer = process.env.WEB_PLAYWRIGHT_SKIP_WEBSERVER === '1';
-const workerCount = Number(process.env.WEB_PLAYWRIGHT_WORKERS ?? (process.env.CI ? 2 : 1));
+const workerCount = Number(process.env.WEB_PLAYWRIGHT_WORKERS ?? (process.env.CI ? 4 : 1));
 const runFullyParallel = process.env.WEB_PLAYWRIGHT_FULLY_PARALLEL === '1' || (process.env.CI === 'true' && process.env.WEB_PLAYWRIGHT_FULLY_PARALLEL !== '0');
 
 export default defineConfig({

@@ -29,12 +29,12 @@ Update it before pausing work, switching tools, or asking another agent to conti
     - parses Playwright reporter time, enforces the 10s budget when enabled, and writes warmup/reporter/wall-time rows to `$GITHUB_STEP_SUMMARY`.
   - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/ci-web-performance-observability/apps/web/playwright.config.ts`
     - supports `WEB_PLAYWRIGHT_SKIP_WEBSERVER=1` so the CI harness can own server lifecycle and warmup.
-    - runs the browser suite in CI with `2` workers and `fullyParallel` enabled by default; local non-CI runs remain single-worker unless overridden.
+    - runs the browser suite in CI with `4` workers and `fullyParallel` enabled by default; local non-CI runs remain single-worker unless overridden.
   - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/ci-web-performance-observability/apps/web/e2e/ordinary-user-ci.spec.ts`
     - grants clipboard permissions to the active `WEB_PLAYWRIGHT_BASE_URL` / `WEB_PLAYWRIGHT_PORT` origin, avoiding hard-coded local ports during CI-style local verification.
 - GitHub Actions iteration:
   - First performance PR run proved the budget gate worked but failed with Playwright reporter time `12.4s > 10s`.
-  - Follow-up fix enabled CI parallelism for this isolated ordinary-user suite while keeping deterministic local defaults.
+  - Follow-up fix enabled CI parallelism for this isolated ordinary-user suite while keeping deterministic local defaults. The final workflow pins `WEB_PLAYWRIGHT_WORKERS=4` to avoid runner variance around the 10s budget.
   - Second performance PR run improved to `10.2s` but still failed the strict `10s` budget.
   - Follow-up fix added explicit `/connect` and `/queue` warmup because those routes were responsible for the remaining cold compile cost in the final safe-gate browser scenario.
 - Local browser/performance verification:
@@ -45,9 +45,10 @@ Update it before pausing work, switching tools, or asking another agent to conti
   - Harness wall time after warmup: `6.76s`.
   - After CI parallelism fix, repeated command on `WEB_PLAYWRIGHT_PORT=3314` passed with Playwright reporter time `4.0s` and harness wall time `5.54s`.
   - After route-warmup fix, repeated command on `WEB_PLAYWRIGHT_PORT=3315` passed with Playwright reporter time `3.9s` and harness wall time `5.82s`.
+  - After pinning `WEB_PLAYWRIGHT_WORKERS=4`, repeated command on `WEB_PLAYWRIGHT_PORT=3316` passed with Playwright reporter time `3.2s` and harness wall time `6.13s`.
   - Summary file confirmed:
-    - Next/web warmup + Playwright wall time `4.38s`
-    - Playwright reporter time `3.90s`
+    - Next/web warmup + Playwright wall time `3.79s`
+    - Playwright reporter time `3.20s`
     - Reporter budget `10.00s`
     - Budget status `pass`
     - warm `/`, `/app`, `/pricing` all HTTP `200`.

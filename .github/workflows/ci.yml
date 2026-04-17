@@ -63,6 +63,7 @@ jobs:
           NEXT_PUBLIC_API_URL: /__api
           NEXT_PUBLIC_ENABLE_LOCAL_LOGIN: 'true'
           WEB_PLAYWRIGHT_PORT: 3300
+          WEB_PLAYWRIGHT_WORKERS: '4'
           WEB_PLAYWRIGHT_REPORTER_BUDGET_SECONDS: '10'
           WEB_PLAYWRIGHT_ENFORCE_BUDGET: '1'
         run: |
