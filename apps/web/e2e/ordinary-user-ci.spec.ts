@@ -457,9 +457,23 @@ async function openApp(page: Page) {
   await expect(page.getByText('未连接 X 账号 · 仍可先生成')).toBeVisible();
 }
 
-async function startGeneration(page: Page, input: { prompt: string; format?: 'tweet' | 'thread' | 'article'; visualMode?: string }) {
-  await openApp(page);
+type GenerationScenario = {
+  name: string;
+  prompt: string;
+  format?: 'tweet' | 'thread' | 'article';
+  visualMode?: string;
+  expected: RegExp[];
+};
+
+async function ensureAdvancedOptionsOpen(page: Page) {
+  const visualModeSelect = page.locator('select[name="visualMode"]');
+  if (await visualModeSelect.isVisible()) return;
   await page.getByText('高级选项').click();
+  await expect(visualModeSelect).toBeVisible();
+}
+
+async function startGenerationInOpenApp(page: Page, input: { prompt: string; format?: 'tweet' | 'thread' | 'article'; visualMode?: string }) {
+  await ensureAdvancedOptionsOpen(page);
   if (input.format && input.format !== 'tweet') {
     const label = input.format === 'thread' ? '串推' : '长文';
     await page.getByRole('button', { name: new RegExp(label, 'u') }).click();
@@ -470,6 +484,34 @@ async function startGeneration(page: Page, input: { prompt: string; format?: 'tw
   await page.locator('textarea').first().fill(input.prompt);
   await page.getByRole('button', { name: /^开始生成$/u }).click();
   await expect(page.getByText('结果区')).toBeVisible();
+}
+
+async function startGeneration(page: Page, input: { prompt: string; format?: 'tweet' | 'thread' | 'article'; visualMode?: string }) {
+  await openApp(page);
+  await startGenerationInOpenApp(page, input);
+}
+
+async function runGenerationScenario(page: Page, scenario: GenerationScenario) {
+  const scenarioStart = Date.now();
+  await startGenerationInOpenApp(page, scenario);
+  for (const expected of scenario.expected) {
+    await expect(page.getByText(expected).first()).toBeVisible();
+  }
+
+  if (scenario.name.includes('thread')) {
+    await expect(page.getByRole('img', { name: /卡片组/u }).first()).toBeVisible();
+  }
+
+  if (scenario.name.includes('article')) {
+    await page.getByText('查看依据与配图建议').click();
+    await expect(page.getByText('来源已抓取').first()).toBeVisible();
+  }
+
+  const bundleLink = page.getByRole('link', { name: /下载全部图文资产|下载 bundle/u }).first();
+  await expect(bundleLink).toHaveAttribute('href', /token=/u);
+  await expect(page.getByRole('button', { name: /只重试图片\/图文资产/u })).toBeDisabled();
+  const durationSeconds = ((Date.now() - scenarioStart) / 1000).toFixed(2);
+  console.log(`[ci-perf] generation scenario "${scenario.name}" completed in ${durationSeconds}s`);
 }
 
 test.beforeEach(async ({ page }) => {
@@ -496,7 +538,7 @@ test('ordinary user can enter the app from home local CTA with visible focus and
   await expect(page.getByText('未连接 X 账号 · 仍可先生成')).toBeVisible();
 });
 
-const generationScenarios = [
+const generationScenariosFast: GenerationScenario[] = [
   {
     name: 'tweet cover assets and safe publish gate',
     prompt: '别再靠灵感写推文，给我一条更像真人的冷启动判断句。',
@@ -507,7 +549,10 @@ const generationScenarios = [
     prompt: '把一个 AI 产品新功能写成 4 条 thread，不要像建议模板。',
     format: 'thread' as const,
     expected: [/1\/4/u, /4\/4/u, /下载 bundle/u]
-  },
+  }
+];
+
+const generationScenariosRich: GenerationScenario[] = [
   {
     name: 'article with cover infographic illustration and exports',
     prompt: '根据这篇来源写一篇关于最新 Hermes Agent 的 X 长文：https://example.com/source',
@@ -517,31 +562,26 @@ const generationScenarios = [
   {
     name: 'diagram visual mode',
     prompt: '用一条短推解释 DraftOrbit 从输入一句话到手动确认发布的 5 步流程，并配一个流程图：输入→来源→正文→图文→确认。',
+    format: 'tweet' as const,
     visualMode: 'diagram',
     expected: [/流程图/u, /输入→来源→正文→图文→确认/u, /下载 SVG/u]
   }
 ];
 
-test('app generation covers tweet thread article and diagram visual outputs', async ({ page }) => {
-  for (const scenario of generationScenarios) {
+test('app generation covers tweet and thread visual outputs with minimal page churn', async ({ page }) => {
+  await openApp(page);
+  for (const scenario of generationScenariosFast) {
     await test.step(scenario.name, async () => {
-      await startGeneration(page, scenario);
-      for (const expected of scenario.expected) {
-        await expect(page.getByText(expected).first()).toBeVisible();
-      }
+      await runGenerationScenario(page, scenario);
+    });
+  }
+});
 
-      if (scenario.name.includes('thread')) {
-        await expect(page.getByRole('img', { name: /卡片组/u }).first()).toBeVisible();
-      }
-
-      if (scenario.name.includes('article')) {
-        await page.getByText('查看依据与配图建议').click();
-        await expect(page.getByText('来源已抓取').first()).toBeVisible();
-      }
-
-      const bundleLink = page.getByRole('link', { name: /下载全部图文资产|下载 bundle/u }).first();
-      await expect(bundleLink).toHaveAttribute('href', /token=/u);
-      await expect(page.getByRole('button', { name: /只重试图片\/图文资产/u })).toBeDisabled();
+test('app generation covers article and diagram visual outputs with minimal page churn', async ({ page }) => {
+  await openApp(page);
+  for (const scenario of generationScenariosRich) {
+    await test.step(scenario.name, async () => {
+      await runGenerationScenario(page, scenario);
     });
   }
 });
