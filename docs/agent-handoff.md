@@ -12,10 +12,12 @@ Update it before pausing work, switching tools, or asking another agent to conti
 - Goal: stabilize web Playwright reporter time around the 8s lane with lower run-to-run variance while preserving the required-check contract.
 - Scenario optimization:
   - `apps/web/e2e/ordinary-user-ci.spec.ts` now keeps the app open per generation-group test and reuses the same page/session across scenarios instead of reopening `/app` every scenario.
-  - Generation scenarios are split into two grouped tests (`tweet/thread` and `article/diagram`) to reduce per-step churn and improve 2-worker scheduling.
+  - Generation scenarios are split into two grouped tests (`tweet/thread` and `article/diagram`) to reduce per-step churn and improve CI worker scheduling.
+  - Mobile CTA test keeps hover/focus/overflow assertions but removes always-on screenshot capture in CI runs to cut avoidable I/O latency.
   - Added per-scenario timing logs (`[ci-perf] generation scenario ...`) for direct hotspot inspection in Actions logs.
 - CI observability upgrade:
   - `.github/workflows/ci.yml` now writes a persistent `CI step duration table` into `$GITHUB_STEP_SUMMARY`.
+  - Web Playwright workers are tuned to `3` in CI to improve parallel scheduling while staying below the prior contention seen at higher worker counts.
   - The table includes wall time + note for `Restore Playwright Chromium cache`, `Install Playwright Chromium`, `Web test (required)`, `Web build`, and cache save behavior.
   - Added explicit restore/save timing rows (including skipped-on-cache-hit visibility) so long-tail cache behavior is observable across runs.
 

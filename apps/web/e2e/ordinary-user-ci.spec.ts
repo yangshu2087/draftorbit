@@ -527,7 +527,6 @@ test('ordinary user can enter the app from home local CTA with visible focus and
   await localCta.hover();
   await localCta.focus();
   await expect(localCta).toBeFocused();
-  await page.screenshot({ path: test.info().outputPath('home-local-cta-mobile.png'), fullPage: true });
 
   const hasHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   expect(hasHorizontalOverflow).toBe(false);
