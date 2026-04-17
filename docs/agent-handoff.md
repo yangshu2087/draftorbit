@@ -24,7 +24,7 @@ Update it before pausing work, switching tools, or asking another agent to conti
   - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/ci-web-performance-observability/apps/web/scripts/run-playwright-ci.mjs`
     - starts Next dev server explicitly in CI.
     - waits for server readiness.
-    - warms `/`, `/app`, and `/pricing` before timing the Playwright suite.
+    - warms `/`, `/app`, `/pricing`, `/connect?intent=connect_x_self`, and `/queue?intent=confirm_publish` before timing the Playwright suite.
     - runs `playwright test --config playwright.config.ts` with `WEB_PLAYWRIGHT_SKIP_WEBSERVER=1`.
     - parses Playwright reporter time, enforces the 10s budget when enabled, and writes warmup/reporter/wall-time rows to `$GITHUB_STEP_SUMMARY`.
   - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/ci-web-performance-observability/apps/web/playwright.config.ts`
@@ -35,6 +35,8 @@ Update it before pausing work, switching tools, or asking another agent to conti
 - GitHub Actions iteration:
   - First performance PR run proved the budget gate worked but failed with Playwright reporter time `12.4s > 10s`.
   - Follow-up fix enabled CI parallelism for this isolated ordinary-user suite while keeping deterministic local defaults.
+  - Second performance PR run improved to `10.2s` but still failed the strict `10s` budget.
+  - Follow-up fix added explicit `/connect` and `/queue` warmup because those routes were responsible for the remaining cold compile cost in the final safe-gate browser scenario.
 - Local browser/performance verification:
   - Command:
     `NEXT_PUBLIC_API_URL=/__api NEXT_PUBLIC_ENABLE_LOCAL_LOGIN=true CI=true WEB_PLAYWRIGHT_PORT=3313 WEB_PLAYWRIGHT_REPORTER_BUDGET_SECONDS=10 WEB_PLAYWRIGHT_ENFORCE_BUDGET=1 GITHUB_STEP_SUMMARY=/tmp/draftorbit-web-summary.md npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web test`
@@ -42,12 +44,14 @@ Update it before pausing work, switching tools, or asking another agent to conti
   - Playwright reporter time: `5.5s`.
   - Harness wall time after warmup: `6.76s`.
   - After CI parallelism fix, repeated command on `WEB_PLAYWRIGHT_PORT=3314` passed with Playwright reporter time `4.0s` and harness wall time `5.54s`.
+  - After route-warmup fix, repeated command on `WEB_PLAYWRIGHT_PORT=3315` passed with Playwright reporter time `3.9s` and harness wall time `5.82s`.
   - Summary file confirmed:
-    - Next/web warmup + Playwright wall time `4.58s`
-    - Playwright reporter time `4.00s`
+    - Next/web warmup + Playwright wall time `4.38s`
+    - Playwright reporter time `3.90s`
     - Reporter budget `10.00s`
     - Budget status `pass`
     - warm `/`, `/app`, `/pricing` all HTTP `200`.
+    - warm `/connect?intent=connect_x_self` and `/queue?intent=confirm_publish` both HTTP `307` as expected redirect gates.
 - Additional local verification:
   - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web typecheck` — passed.
   - `NEXT_PUBLIC_API_URL=http://127.0.0.1:4311 npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web build` — passed.

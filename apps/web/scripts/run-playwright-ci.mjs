@@ -7,7 +7,7 @@ const port = Number(process.env.WEB_PLAYWRIGHT_PORT ?? 3300);
 const baseURL = process.env.WEB_PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${port}`;
 const budgetSeconds = Number(process.env.WEB_PLAYWRIGHT_REPORTER_BUDGET_SECONDS ?? 10);
 const enforceBudget = process.env.WEB_PLAYWRIGHT_ENFORCE_BUDGET === '1';
-const warmupPaths = (process.env.WEB_PLAYWRIGHT_WARMUP_PATHS ?? '/,/app,/pricing')
+const warmupPaths = (process.env.WEB_PLAYWRIGHT_WARMUP_PATHS ?? '/,/app,/pricing,/connect?intent=connect_x_self,/queue?intent=confirm_publish')
   .split(',')
   .map((item) => item.trim())
   .filter(Boolean);
