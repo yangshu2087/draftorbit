@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 const webRoot = process.cwd();
 const port = Number(process.env.WEB_PLAYWRIGHT_PORT ?? 3300);
 const baseURL = process.env.WEB_PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${port}`;
+const skipWebServer = process.env.WEB_PLAYWRIGHT_SKIP_WEBSERVER === '1';
 
 export default defineConfig({
   testDir: './e2e',
@@ -22,15 +23,19 @@ export default defineConfig({
     locale: 'zh-CN',
     timezoneId: 'America/Los_Angeles'
   },
-  webServer: {
-    command: `NEXT_TELEMETRY_DISABLED=1 NEXT_PUBLIC_API_URL=/__api NEXT_PUBLIC_ENABLE_LOCAL_LOGIN=true pnpm exec next dev --hostname 127.0.0.1 --port ${port}`,
-    cwd: webRoot,
-    url: baseURL,
-    reuseExistingServer: !process.env.CI,
-    timeout: 90_000,
-    stdout: 'pipe',
-    stderr: 'pipe'
-  },
+  ...(skipWebServer
+    ? {}
+    : {
+        webServer: {
+          command: `NEXT_TELEMETRY_DISABLED=1 NEXT_PUBLIC_API_URL=/__api NEXT_PUBLIC_ENABLE_LOCAL_LOGIN=true pnpm exec next dev --hostname 127.0.0.1 --port ${port}`,
+          cwd: webRoot,
+          url: baseURL,
+          reuseExistingServer: !process.env.CI,
+          timeout: 90_000,
+          stdout: 'pipe' as const,
+          stderr: 'pipe' as const
+        }
+      }),
   projects: [
     {
       name: 'chromium',

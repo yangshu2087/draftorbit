@@ -4,6 +4,50 @@ Use this file to transfer execution state between Codex, Cursor, and other agent
 Update it before pausing work, switching tools, or asking another agent to continue.
 
 
+## Current CI web performance observability pass (2026-04-17)
+
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/ci-web-performance-observability`
+- Branch: `codex/ci-web-performance-observability`
+- Base: `origin/main` at merge commit `1897b0a` from PR `https://github.com/yangshu2087/draftorbit/pull/3`.
+- Goal: keep the required `Web required checks` lane intact while making the Playwright suite faster and observable in GitHub Actions.
+- PR #3 integration status:
+  - PR #3 was merged into `main` at `2026-04-17T08:56:57Z`.
+  - Merge commit: `1897b0acc6df2105a5b4594874233038bbde9d6e`.
+  - `main` branch protection still requires `Web required checks` with `strict: true`.
+- CI changes in this pass:
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/ci-web-performance-observability/.github/workflows/ci.yml`
+    - keeps the required command `pnpm --filter @draftorbit/web test`.
+    - uses setup-node pnpm cache with `cache-dependency-path: pnpm-lock.yaml`.
+    - caches Playwright Chromium under `/home/runner/.cache/ms-playwright`.
+    - writes CI web test step wall time to `$GITHUB_STEP_SUMMARY`.
+    - enforces `WEB_PLAYWRIGHT_REPORTER_BUDGET_SECONDS=10` for the required web test lane.
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/ci-web-performance-observability/apps/web/scripts/run-playwright-ci.mjs`
+    - starts Next dev server explicitly in CI.
+    - waits for server readiness.
+    - warms `/`, `/app`, and `/pricing` before timing the Playwright suite.
+    - runs `playwright test --config playwright.config.ts` with `WEB_PLAYWRIGHT_SKIP_WEBSERVER=1`.
+    - parses Playwright reporter time, enforces the 10s budget when enabled, and writes warmup/reporter/wall-time rows to `$GITHUB_STEP_SUMMARY`.
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/ci-web-performance-observability/apps/web/playwright.config.ts`
+    - supports `WEB_PLAYWRIGHT_SKIP_WEBSERVER=1` so the CI harness can own server lifecycle and warmup.
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/ci-web-performance-observability/apps/web/e2e/ordinary-user-ci.spec.ts`
+    - grants clipboard permissions to the active `WEB_PLAYWRIGHT_BASE_URL` / `WEB_PLAYWRIGHT_PORT` origin, avoiding hard-coded local ports during CI-style local verification.
+- Local browser/performance verification:
+  - Command:
+    `NEXT_PUBLIC_API_URL=/__api NEXT_PUBLIC_ENABLE_LOCAL_LOGIN=true CI=true WEB_PLAYWRIGHT_PORT=3313 WEB_PLAYWRIGHT_REPORTER_BUDGET_SECONDS=10 WEB_PLAYWRIGHT_ENFORCE_BUDGET=1 GITHUB_STEP_SUMMARY=/tmp/draftorbit-web-summary.md npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web test`
+  - Result: `23/23` node tests passed; `8/8` Chromium Playwright tests passed.
+  - Playwright reporter time: `5.5s`.
+  - Harness wall time after warmup: `6.76s`.
+  - Summary file confirmed:
+    - Next/web warmup + Playwright wall time `5.91s`
+    - Playwright reporter time `5.50s`
+    - Reporter budget `10.00s`
+    - Budget status `pass`
+    - warm `/`, `/app`, `/pricing` all HTTP `200`.
+- Additional local verification:
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web typecheck` — passed.
+  - `NEXT_PUBLIC_API_URL=http://127.0.0.1:4311 npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web build` — passed.
+
+
 ## Current PR CI web required-check wiring pass (2026-04-17)
 
 - Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/live-provider-evidence`

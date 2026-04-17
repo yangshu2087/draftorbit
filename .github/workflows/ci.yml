@@ -19,6 +19,8 @@ jobs:
     name: Web required checks
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: /home/runner/.cache/ms-playwright
 
     steps:
       - name: Checkout
@@ -30,11 +32,20 @@ jobs:
           version: 10.23.0
           run_install: false
 
-      - name: Setup Node.js
+      - name: Setup Node.js with pnpm store cache
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Cache Playwright Chromium
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            playwright-chromium-${{ runner.os }}-
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -52,7 +63,24 @@ jobs:
           NEXT_PUBLIC_API_URL: /__api
           NEXT_PUBLIC_ENABLE_LOCAL_LOGIN: 'true'
           WEB_PLAYWRIGHT_PORT: 3300
-        run: pnpm --filter @draftorbit/web test
+          WEB_PLAYWRIGHT_REPORTER_BUDGET_SECONDS: '10'
+          WEB_PLAYWRIGHT_ENFORCE_BUDGET: '1'
+        run: |
+          start_seconds=$(date +%s)
+          set +e
+          pnpm --filter @draftorbit/web test
+          status=$?
+          end_seconds=$(date +%s)
+          wall_seconds=$((end_seconds - start_seconds))
+          {
+            echo "### Web test step timing"
+            echo
+            echo "| metric | value |"
+            echo "| --- | ---: |"
+            echo "| CI web test step wall time | ${wall_seconds}s |"
+            echo "| exit code | ${status} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
 
       - name: Web build
         env:

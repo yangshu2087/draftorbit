@@ -1,6 +1,8 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 
 const API_PREFIX = '/__api';
+const appPort = Number(process.env.WEB_PLAYWRIGHT_PORT ?? 3300);
+const APP_ORIGIN = new URL(process.env.WEB_PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${appPort}`).origin;
 
 function base64Url(input: string) {
   return Buffer.from(input).toString('base64url');
@@ -319,7 +321,7 @@ function classifyRun(format: 'tweet' | 'thread' | 'article', intent: string, vis
 async function mockDraftOrbitApi(page: Page) {
   const runs = new Map<string, RunState>();
   let runCounter = 0;
-  for (const origin of ['http://127.0.0.1:3300', 'http://127.0.0.1:3310']) {
+  for (const origin of new Set(['http://127.0.0.1:3300', 'http://127.0.0.1:3310', APP_ORIGIN])) {
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin });
   }
   await page.route('**/*', async (route) => {
