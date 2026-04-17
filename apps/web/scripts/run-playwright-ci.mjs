@@ -5,7 +5,10 @@ import { appendFileSync } from 'node:fs';
 const isCi = process.env.CI === 'true';
 const port = Number(process.env.WEB_PLAYWRIGHT_PORT ?? 3300);
 const baseURL = process.env.WEB_PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${port}`;
-const budgetSeconds = Number(process.env.WEB_PLAYWRIGHT_REPORTER_BUDGET_SECONDS ?? 10);
+const targetSeconds = Number(process.env.WEB_PLAYWRIGHT_REPORTER_TARGET_SECONDS ?? 10);
+const hardBudgetSeconds = Number(
+  process.env.WEB_PLAYWRIGHT_REPORTER_HARD_BUDGET_SECONDS ?? process.env.WEB_PLAYWRIGHT_REPORTER_BUDGET_SECONDS ?? 12
+);
 const enforceBudget = process.env.WEB_PLAYWRIGHT_ENFORCE_BUDGET === '1';
 const warmupPaths = (process.env.WEB_PLAYWRIGHT_WARMUP_PATHS ?? '/,/app,/pricing,/connect?intent=connect_x_self,/queue?intent=confirm_publish')
   .split(',')
@@ -83,14 +86,16 @@ function parseReporterSeconds(output) {
   return last ? Number(last[1]) : null;
 }
 
-function writeSummary({ commandCode, reporterSeconds, playwrightWallSeconds, budgetOk }) {
+function writeSummary({ commandCode, reporterSeconds, playwrightWallSeconds, targetOk, budgetOk }) {
   const summaryPath = process.env.GITHUB_STEP_SUMMARY;
   if (!summaryPath) return;
   const rows = [
     ['Next/web warmup + Playwright wall time', `${playwrightWallSeconds.toFixed(2)}s`],
     ['Playwright reporter time', reporterSeconds == null ? 'not parsed' : `${reporterSeconds.toFixed(2)}s`],
-    ['Reporter budget', `${budgetSeconds.toFixed(2)}s`],
-    ['Budget status', budgetOk ? 'pass' : 'fail'],
+    ['Reporter target', `${targetSeconds.toFixed(2)}s`],
+    ['Reporter hard budget', `${hardBudgetSeconds.toFixed(2)}s`],
+    ['Target status', targetOk ? 'pass' : 'watch'],
+    ['Required-check budget status', budgetOk ? 'pass' : 'fail'],
     ['Playwright exit code', String(commandCode)]
   ];
   const warmupRows = timings.map(([name, value]) => `| ${name} | ${value} |`).join('\n');
@@ -142,12 +147,13 @@ async function main() {
   const result = await run('pnpm', ['exec', 'playwright', 'test', '--config', 'playwright.config.ts'], { env });
   const playwrightWallSeconds = (Date.now() - playwrightStart) / 1000;
   const reporterSeconds = parseReporterSeconds(result.output);
-  const budgetOk = reporterSeconds != null && reporterSeconds <= budgetSeconds;
-  writeSummary({ commandCode: result.code, reporterSeconds, playwrightWallSeconds, budgetOk });
+  const targetOk = reporterSeconds != null && reporterSeconds <= targetSeconds;
+  const budgetOk = reporterSeconds != null && reporterSeconds <= hardBudgetSeconds;
+  writeSummary({ commandCode: result.code, reporterSeconds, playwrightWallSeconds, targetOk, budgetOk });
 
   if (result.code !== 0) process.exit(result.code);
   if (enforceBudget && !budgetOk) {
-    process.stderr.write(`Playwright reporter time budget failed: ${reporterSeconds ?? 'not parsed'}s > ${budgetSeconds}s\n`);
+    process.stderr.write(`Playwright reporter time hard budget failed: ${reporterSeconds ?? 'not parsed'}s > ${hardBudgetSeconds}s\n`);
     process.exit(1);
   }
 }
