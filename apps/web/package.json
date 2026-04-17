@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "tsc -p tsconfig.json --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test test/**/*.test.ts && playwright test --config playwright.config.ts",
+    "test": "tsx --test test/**/*.test.ts && node scripts/run-playwright-ci.mjs",
     "ui:check": "pnpm lint && pnpm test",
     "ui:handoff": "bash ../../scripts/handoff-refresh.sh --verify \"git status --short -- apps/web\"",
     "ui:review": "bash ./scripts/ui-review.sh",
