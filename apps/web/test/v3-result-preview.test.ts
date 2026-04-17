@@ -17,6 +17,7 @@ import {
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const webRoot = join(testDir, '..');
+const expectedApiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
 test('buildThreadPreview turns a publish-ready thread into card-like posts with roles', () => {
   const posts = buildThreadPreview(
@@ -113,7 +114,7 @@ test('buildVisualAssetCards keeps ready/generated assets separate from failed im
   assert.equal(cards.length, 2);
   assert.equal(cards[0]?.label, '封面图');
   assert.equal(cards[0]?.canPreview, true);
-  assert.match(cards[0]?.assetUrl ?? '', /^http:\/\/localhost:4000\/v3\/chat\/runs\/run_123\/assets\/cover$/u);
+  assert.equal(cards[0]?.assetUrl, `${expectedApiBaseUrl}/v3/chat/runs/run_123/assets/cover`);
   assert.equal(cards[1]?.label, '卡片组');
   assert.equal(cards[1]?.canPreview, false);
   assert.match(cards[1]?.statusLabel ?? '', /生成失败/u);
@@ -146,7 +147,7 @@ test('buildVisualAssetCards does not preview placeholder or prompt-leaked ready 
 test('buildRunAssetsZipUrl points to the read-only visual asset bundle route', () => {
   assert.equal(
     buildRunAssetsZipUrl('run_123'),
-    'http://localhost:4000/v3/chat/runs/run_123/assets.zip'
+    `${expectedApiBaseUrl}/v3/chat/runs/run_123/assets.zip`
   );
   assert.equal(buildRunAssetsZipUrl(null), undefined);
 });
