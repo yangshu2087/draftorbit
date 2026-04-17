@@ -1,0 +1,96 @@
+{
+  "label": "GET-/v3/chat/runs/1ab441b3-2ccd-44ac-9f93-b3f2cfd8e75a",
+  "status": 200,
+  "ok": true,
+  "requestId": "cc3e1fec-b37b-4217-867e-b83211c7c728",
+  "payload": {
+    "runId": "1ab441b3-2ccd-44ac-9f93-b3f2cfd8e75a",
+    "status": "DONE",
+    "format": "tweet",
+    "result": {
+      "text": "【UAT 本地回退样本】写一条关于 AI 产品冷启动的中文观点短推，保持专业清晰，带一点互动感。",
+      "variants": [
+        {
+          "text": "【UAT 本地回退样本】写一条关于 AI 产品冷启动的中文观点短推，保持专业清晰，带一点互动感。（专业版）",
+          "tone": "professional"
+        },
+        {
+          "text": "【UAT 本地回退样本】写一条关于 AI 产品冷启动的中文观点短推，保持专业清晰，带一点互动感。（轻松版）",
+          "tone": "casual"
+        }
+      ],
+      "imageKeywords": [
+        "ai",
+        "operator",
+        "x"
+      ],
+      "qualityScore": 82,
+      "quality": {
+        "total": 82,
+        "aiTrace": 79,
+        "clarity": 84,
+        "platformFit": 81
+      },
+      "riskFlags": [],
+      "requestCostUsd": null,
+      "whySummary": [
+        "本地回退：已生成草稿",
+        "本地回退：已构建话题语境",
+        "本地回退：已生成结构"
+      ],
+      "evidenceSummary": [
+        "已接入外部链接知识",
+        "已接入 Obsidian / 本地知识库",
+        "已学习目标账号 / 推文链接"
+      ],
+      "stepLatencyMs": {
+        "draft": 180,
+        "image": 60,
+        "hotspot": 120,
+        "outline": 90,
+        "package": 80,
+        "humanize": 140
+      }
+    },
+    "publish": [],
+    "stages": [
+      {
+        "stage": "research",
+        "label": "正在研究话题",
+        "status": "DONE",
+        "summary": "{\"step\":\"HOTSPOT\",\"fallback\":true}"
+      },
+      {
+        "stage": "strategy",
+        "label": "正在规划结构",
+        "status": "DONE",
+        "summary": "{\"step\":\"OUTLINE\",\"fallback\":true}"
+      },
+      {
+        "stage": "draft",
+        "label": "正在生成草稿",
+        "status": "DONE",
+        "summary": "{\"step\":\"DRAFT\",\"fallback\":true}"
+      },
+      {
+        "stage": "voice",
+        "label": "正在匹配你的文风",
+        "status": "DONE",
+        "summary": "{\"step\":\"HUMANIZE\",\"fallback\":true}"
+      },
+      {
+        "stage": "media",
+        "label": "正在整理配图建议",
+        "status": "DONE",
+        "summary": "{\"step\":\"IMAGE\",\"fallback\":true}"
+      },
+      {
+        "stage": "publish_prep",
+        "label": "正在准备可发布结果",
+        "status": "DONE",
+        "summary": "{\"step\":\"PACKAGE\",\"fallback\":true}"
+      }
+    ],
+    "requestId": "cc3e1fec-b37b-4217-867e-b83211c7c728"
+  }
+}

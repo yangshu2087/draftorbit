@@ -1,4 +1,13 @@
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+const DEFAULT_API_TIMEOUT_MS = Number(process.env.NEXT_PUBLIC_API_TIMEOUT_MS ?? 12000);
+
+const PUBLIC_API_PREFIXES = new Set([
+  '/billing/plans',
+  '/v3/billing/plans',
+  '/auth/x/authorize',
+  '/auth/google/authorize',
+  '/auth/local/session'
+]);
 
 export type AppErrorPayload = {
   code: string;
@@ -69,6 +78,26 @@ export function getUserFromToken(): { userId: string; handle: string; plan: stri
   }
 }
 
+function normalizeTimeoutMs(input?: number): number {
+  if (typeof input !== 'number' || !Number.isFinite(input)) return DEFAULT_API_TIMEOUT_MS;
+  return Math.min(Math.max(Math.round(input), 1000), 60000);
+}
+
+function normalizePath(path: string): string {
+  const withoutQuery = path.split('?')[0] ?? path;
+  return withoutQuery.startsWith('/') ? withoutQuery : `/${withoutQuery}`;
+}
+
+function isPublicApiPath(path: string): boolean {
+  return PUBLIC_API_PREFIXES.has(normalizePath(path));
+}
+
+function isAbortLikeError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const maybe = error as { name?: string; message?: string };
+  return maybe.name === 'AbortError' || maybe.message?.toLowerCase().includes('aborted') === true;
+}
+
 function toAppError(status: number, body: unknown, fallbackMessage: string): AppError {
   if (body && typeof body === 'object') {
     const obj = body as Record<string, unknown>;
@@ -104,8 +133,20 @@ function toAppError(status: number, body: unknown, fallbackMessage: string): App
   });
 }
 
-export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+type ApiFetchInit = RequestInit & {
+  timeoutMs?: number;
+};
+
+export async function apiFetch<T>(path: string, init?: ApiFetchInit): Promise<T> {
   const token = getToken();
+  if (!token && !isPublicApiPath(path)) {
+    throw new AppError({
+      message: '未登录，请先回首页完成登录后再继续。',
+      code: 'UNAUTHORIZED',
+      statusCode: 401
+    });
+  }
+
   const headers = new Headers(init?.headers ?? {});
   const isFormData = typeof FormData !== 'undefined' && init?.body instanceof FormData;
   if (!headers.has('Content-Type') && !isFormData) {
@@ -113,20 +154,38 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   }
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
+  const controller = new AbortController();
+  const timeoutMs = normalizeTimeoutMs(init?.timeoutMs);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
   let response: Response;
   try {
+    const { timeoutMs: _ignoredTimeout, ...fetchInit } = init ?? {};
     response = await fetch(`${API_BASE_URL}${path}`, {
-      ...init,
+      ...fetchInit,
       headers,
-      cache: 'no-store'
+      cache: 'no-store',
+      signal: controller.signal
     });
   } catch (error) {
+    clearTimeout(timer);
+    if (isAbortLikeError(error)) {
+      throw new AppError({
+        message: `请求超时（>${timeoutMs}ms），请稍后重试`,
+        code: 'REQUEST_TIMEOUT',
+        statusCode: 408,
+        raw: error
+      });
+    }
+
     throw new AppError({
-      message: '网络连接失败，请检查 API 服务是否启动',
+      message: '网络连接失败，请检查服务是否启动',
       code: 'NETWORK_ERROR',
       statusCode: 0,
       raw: error
     });
+  } finally {
+    clearTimeout(timer);
   }
 
   const contentType = response.headers.get('content-type') ?? '';
@@ -134,7 +193,12 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   const body = isJson ? await response.json().catch(() => null) : await response.text().catch(() => '');
 
   if (!response.ok) {
-    throw toAppError(response.status, body, `请求失败（${response.status}）`);
+    const requestId = response.headers.get('x-request-id') ?? undefined;
+    const appError = toAppError(response.status, body, `请求失败（${response.status}）`);
+    if (!appError.requestId && requestId) {
+      appError.requestId = requestId;
+    }
+    throw appError;
   }
 
   if (!isJson) {

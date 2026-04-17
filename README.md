@@ -1,30 +1,17 @@
-# DraftOrbit（draftorbit.io）
+# DraftOrbit（draftorbit.ai）
 
-面向 X（Twitter）的 **AI 内容运营工作台**，中文优先，支持 Web 平台与自托管部署。  
-当前版本按“阶段 A 直接可用 + 阶段 B/C 同步收敛”的目标实现了可运行骨架与主链路。
+面向 X（Twitter）的 **Chat-first AI 内容运营助手**，中文优先，支持 Web 平台 + Tauri 本地客户端壳 + 自托管部署。  
+当前版本已引入 V2 一次性替换骨架：主入口 `/chat` 与 `/v2/*` API。
 
 ---
 
-## 1) 当前交付范围（上线级收敛）
+## 1) 当前交付范围（V2 Chat-first）
 
-### 阶段 A（24h 可用闭环）
-- 本地登录会话（`/auth/local/session`，仅 `AUTH_MODE=self_host_no_login` 可用）
-- Topic Center（`/topics`）
-- Draft Studio（`/drafts`）
-- 审批通过后入发布队列（`/drafts/:id/approve` + `/publish/draft`）
-- Publish Queue + Worker 执行 + 状态回写
-- 基础审计日志（`/audit/logs`）
-- Docker Compose 一键启动：`web/api/worker/postgres/redis`
-
-### 阶段 B/C（同步补齐的可运行基础版）
-- Google 登录骨架（`/auth/google/authorize` + `/auth/google/callback`）
-- X 账号绑定骨架（`/x-accounts`）
-- Learning Sources / Voice Profiles / Playbooks
-- Naturalization Layer（自然化规则 + 平台托管生成通道）
-- Image & Media Center（上传占位 + 生成占位）
-- Reply Assistant（mentions sync stub + 候选审批发送）
-- Workflow Center（模板 + 运行记录）
-- Usage/Billing、Audit Logs 页面与 API
+- 主入口：`/chat`（一句话意图 + 选项化简报 + 步骤推理 + 结果包 + 人工确认发布）
+- 主 API：`/v2/*`（生成、知识接入、X 账号绑定、发布/回复路由、运营概览、计费）
+- 兼容能力：保留核心后端模块（publish/reply/billing/usage）作为 V2 编排底座
+- 部署形态：Web + API + Worker + PostgreSQL + Redis + Tauri 客户端壳
+- 旧版工作台路由（`/dashboard`、`/drafts`、`/usage` 等）已统一重定向到 `/chat`
 
 ---
 
@@ -67,7 +54,7 @@ docker compose up -d --build
 ```
 
 访问：
-- Web: [http://localhost:3000](http://localhost:3000)
+- Web: [http://localhost:3000/chat](http://localhost:3000/chat)
 - API: [http://localhost:4000](http://localhost:4000)
 
 ---
@@ -75,11 +62,17 @@ docker compose up -d --build
 ## 4) Smoke 验证
 
 ```bash
-# 阶段 A 主链路 smoke（topic -> draft -> approve -> publish queue）
+# Legacy smoke（V1 历史脚本，已不再作为主验收）
 npx pnpm@10.23.0 smoke:p0
 
-# 阶段 B/C 模块点亮 smoke
+# Legacy smoke（V1 历史脚本，已不再作为主验收）
 npx pnpm@10.23.0 smoke:v1
+
+# V2 全流程 UAT（生产测试租户，真实链路）
+UAT_TOKEN=<测试租户token> \
+API_URL=https://api.draftorbit.ai \
+APP_URL=https://draftorbit.ai \
+npx pnpm@10.23.0 uat:full
 ```
 
 ### 4.1 为什么 `smoke:p0` 必须使用唯一内容
@@ -105,7 +98,12 @@ RUN_ID=20260403-001 npx pnpm@10.23.0 smoke:p0
 - `AUTH_MODE`（`required` / `self_host_no_login`）
 - `X_CLIENT_ID` / `X_CLIENT_SECRET` / `X_CALLBACK_URL`
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_CALLBACK_URL`
+- `OPENAI_API_KEY`（可选：官方 OpenAI 文本 live smoke）
 - `OPENROUTER_API_KEY`（平台托管调用通道）
+- `TAVILY_API_KEY`（可选：最新事实检索 live smoke）
+- `LIVE_OPENAI_MODEL` / `LIVE_OPENROUTER_MODEL` / `LIVE_TAVILY_QUERY`（只影响 `pnpm provider:live`，不影响默认本地验收）
+- `OPENROUTER_ROUTING_PROFILE`（`local` / `test_high` / `prod_balanced`）
+- `OPENROUTER_FREE_MODELS` / `OPENROUTER_FLOOR_MODELS` / `OPENROUTER_HIGH_MODELS`
 - `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET`
 - `STRIPE_STARTER_MONTHLY_PRICE_ID` / `STRIPE_STARTER_YEARLY_PRICE_ID`
 - `STRIPE_PRO_MONTHLY_PRICE_ID` / `STRIPE_PRO_YEARLY_PRICE_ID`
@@ -113,6 +111,32 @@ RUN_ID=20260403-001 npx pnpm@10.23.0 smoke:p0
 - `BILLING_TRIAL_DAYS`（默认 3）
 - `BILLING_PAYPAL_FALLBACK_ENABLED`（生产默认 `false`）
 - `PAYPAL_API_BASE` / `PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET` / `PAYPAL_WEBHOOK_ID`
+
+---
+
+### OpenRouter 路由档位建议
+
+- `local`：本地开发 / 低成本 smoke，允许 `free -> floor -> high`
+- `test_high`：测试 / QA / UAT / 回归，所有文本步骤默认 `high -> floor`
+- `prod_balanced`：线上默认，`hook / draft / humanize / package` 走高质量优先，`research / outline / media` 走平衡层优先
+
+建议模型池：
+
+- `OPENROUTER_FREE_MODELS=openrouter/free`
+- `OPENROUTER_FLOOR_MODELS=google/gemini-3-flash-preview,openai/gpt-5.4-mini,deepseek/deepseek-v3.2`
+- `OPENROUTER_HIGH_MODELS=anthropic/claude-sonnet-4.6,openai/gpt-5.4,google/gemini-3.1-pro-preview`
+
+这样测试阶段的 real-model regression 才能稳定证明“真的走了高质量层”，而不是名义分层、实际全走 `openrouter/free`。
+
+### 可选 live provider 验收
+
+默认本地验收不依赖真实 provider key。若本机配置了 `OPENAI_API_KEY`、`OPENROUTER_API_KEY` 或 `TAVILY_API_KEY`，可单独运行：
+
+```bash
+npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 provider:live
+```
+
+该脚本会把缺失 key 记录为 `skipped_missing_key`，不会把 mock/free/Ollama/Codex-local fallback 算作 provider live quality evidence；已配置 key 若不可用则 `fail_closed` 并生成脱敏报告到 `output/reports/provider-live/`。
 
 ---
 
@@ -156,6 +180,12 @@ RUN_ID=20260403-001 npx pnpm@10.23.0 smoke:p0
 
 ```bash
 npx pnpm@10.23.0 preflight:prod
+
+# 如需联动全量 UAT
+RUN_UAT_FULL=1 \
+UAT_FULL_REQUIRED=1 \
+UAT_TOKEN=<测试租户token> \
+npx pnpm@10.23.0 preflight:prod
 ```
 
 ---
@@ -183,6 +213,11 @@ npx pnpm@10.23.0 preflight:prod
 cd apps/web && vercel deploy --prod --yes
 curl -fsS https://api.draftorbit.ai/health
 curl -fsSI https://draftorbit.ai
+
+# 发布后再执行一轮全量 UAT（可选）
+POST_RELEASE_UAT_FULL=1 \
+UAT_TOKEN=<测试租户token> \
+npx pnpm@10.23.0 release:prod
 ```
 
 ---
@@ -198,6 +233,43 @@ curl -fsSI https://draftorbit.ai
 - `usage` / `audit`
 
 ---
+
+
+
+## 8.1 V2 API（新增）
+
+- `POST /v2/chat/sessions`
+- `POST /v2/chat/messages`
+- `POST /v2/generate/run`
+- `GET /v2/generate/:id`
+- `GET /v2/generate/:id/stream`（SSE）
+- `POST /v2/knowledge/connectors/obsidian`
+- `POST /v2/knowledge/connectors/local-files`
+- `POST /v2/knowledge/urls/import`
+- `POST /v2/x-accounts/oauth/start`
+- `GET /v2/x-accounts`
+- `POST /v2/x-accounts/bind-manual`
+- `PATCH /v2/x-accounts/:id/default`
+- `PATCH /v2/x-accounts/:id/status`
+- `DELETE /v2/x-accounts/:id`
+- `GET /v2/x-accounts/oauth/callback`
+- `POST /v2/style/profile/rebuild`
+- `POST /v2/publish/queue`
+- `GET /v2/publish/jobs`
+- `POST /v2/publish/jobs/:id/retry`
+- `GET /v2/reply/jobs`
+- `POST /v2/reply/sync-mentions`
+- `POST /v2/reply/:replyJobId/candidates`
+- `POST /v2/reply/:replyJobId/candidates/:candidateId/approve`
+- `POST /v2/reply/:replyJobId/send`
+- `GET /v2/ops/dashboard`
+- `GET /v2/usage/overview`
+- `GET /v2/billing/plans`
+- `GET /v2/billing/subscription`
+- `GET /v2/billing/usage`
+- `POST /v2/billing/checkout`
+- `POST /v2/billing/subscription/cancel`
+- `POST /v2/billing/refund`
 
 ## 9) 注意事项
 

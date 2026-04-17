@@ -7,7 +7,7 @@ import { API_BASE_URL, setToken } from '../../../lib/api';
 function Spinner() {
   return (
     <div
-      className="h-10 w-10 animate-spin rounded-full border-2 border-gray-200 border-t-blue-600"
+      className="h-10 w-10 animate-spin rounded-full border-2 border-slate-200 border-t-slate-900"
       role="status"
       aria-label="加载中"
     />
@@ -52,13 +52,13 @@ function CallbackInner() {
         if (!data?.token) throw new Error('未收到令牌，请重试。');
         if (!cancelled) {
           setToken(data.token);
-          router.replace('/');
+          router.replace('/app?from=auth-login');
         }
       } catch (e) {
         if (cancelled) return;
         setPhase('error');
         setMessage(e instanceof Error ? e.message : '登录失败');
-        setTimeout(() => router.replace('/'), 3000);
+        setTimeout(() => router.replace('/app?from=auth-login'), 3000);
       }
     })();
 
@@ -70,8 +70,8 @@ function CallbackInner() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-white px-4">
       {phase === 'loading' ? <Spinner /> : null}
-      <p className={`text-center text-sm ${phase === 'error' ? 'text-red-600' : 'text-gray-600'}`}>{message}</p>
-      {phase === 'error' ? <p className="text-center text-xs text-gray-400">3 秒后返回首页…</p> : null}
+      <p className={`text-center text-sm ${phase === 'error' ? 'text-red-600' : 'text-slate-600'}`}>{message}</p>
+      {phase === 'error' ? <p className="text-center text-xs text-slate-400">3 秒后返回首页…</p> : null}
     </div>
   );
 }
@@ -82,7 +82,7 @@ export default function AuthCallbackPage() {
       fallback={
         <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-white">
           <Spinner />
-          <p className="text-sm text-gray-600">正在完成登录…</p>
+          <p className="text-sm text-slate-600">正在完成登录…</p>
         </div>
       }
     >

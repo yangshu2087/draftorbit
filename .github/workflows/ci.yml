@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - 'codex/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Web required checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.23.0
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm --filter @draftorbit/web exec playwright install --with-deps chromium
+
+      - name: Web typecheck
+        run: pnpm --filter @draftorbit/web typecheck
+
+      - name: Web test (required)
+        env:
+          CI: true
+          NEXT_TELEMETRY_DISABLED: '1'
+          NEXT_PUBLIC_API_URL: /__api
+          NEXT_PUBLIC_ENABLE_LOCAL_LOGIN: 'true'
+          WEB_PLAYWRIGHT_PORT: 3300
+        run: pnpm --filter @draftorbit/web test
+
+      - name: Web build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+          NEXT_PUBLIC_API_URL: /__api
+          NEXT_PUBLIC_ENABLE_LOCAL_LOGIN: 'true'
+        run: pnpm --filter @draftorbit/web build
+
+      - name: Upload Playwright failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-playwright-artifacts
+          if-no-files-found: ignore
+          retention-days: 7
+          path: |
+            output/playwright/web-ci

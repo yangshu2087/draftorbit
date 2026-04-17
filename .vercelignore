@@ -1,0 +1,25 @@
+.git
+.vercel
+.turbo
+**/.turbo
+.next
+**/.next
+node_modules
+**/node_modules
+.pnpm-store
+.env
+.env.*
+!.env.example
+coverage
+dist
+artifacts
+memory
+*.log
+.DS_Store
+
+# Monorepo: production deploy only needs Web app + shared packages.
+apps/api
+apps/worker
+
+# Local docs / drafts not needed for build
+*.rtf

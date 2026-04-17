@@ -1,13 +1,21 @@
 import { getToken, sseUrl } from './api';
 
-export async function fetchGenerationStream(
-  generationId: string,
-  onEvent: (data: { step: string; status: string; content?: string }) => void
+export type V3StreamEvent = {
+  stage: string;
+  label: string;
+  status: 'running' | 'done' | 'failed';
+  summary?: string;
+  requestId?: string;
+};
+
+export async function fetchRunStream(
+  runId: string,
+  onEvent: (data: V3StreamEvent) => void
 ): Promise<void> {
   const token = getToken();
   if (!token) throw new Error('未登录');
 
-  const res = await fetch(sseUrl(`/generate/${generationId}/stream`), {
+  const res = await fetch(sseUrl(`/v3/chat/runs/${runId}/stream`), {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -43,7 +51,7 @@ export async function fetchGenerationStream(
         const raw = trimmed.slice(5).trim();
         if (!raw) continue;
         try {
-          const parsed = JSON.parse(raw) as { step: string; status: string; content?: string };
+          const parsed = JSON.parse(raw) as V3StreamEvent;
           onEvent(parsed);
         } catch {
           // ignore malformed chunks

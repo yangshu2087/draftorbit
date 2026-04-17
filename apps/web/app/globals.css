@@ -2,13 +2,83 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  :root {
+    color-scheme: light;
+    --do-border: rgba(15, 23, 42, 0.12);
+    --do-border-strong: rgba(15, 23, 42, 0.18);
+    --do-soft-bg: rgba(248, 250, 252, 0.9);
+  }
+}
+
 body {
-  @apply bg-white text-gray-900 antialiased;
+  @apply bg-slate-50 text-slate-900 antialiased;
+  font-family:
+    'Inter',
+    'PingFang SC',
+    'Hiragino Sans GB',
+    'Noto Sans CJK SC',
+    'Microsoft YaHei',
+    'Helvetica Neue',
+    system-ui,
+    sans-serif;
 }
 
 input, textarea, select {
-  @apply border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white
-    placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition;
+  @apply rounded-xl border border-slate-900/10 bg-white px-3 py-2.5 text-sm leading-5 text-slate-900
+    placeholder:text-slate-400 transition focus:border-slate-900/30 focus:outline-none focus:ring-2 focus:ring-slate-500/20;
+}
+
+textarea {
+  @apply min-h-[104px];
+}
+
+h1,
+h2,
+h3 {
+  @apply tracking-tight text-slate-900;
+}
+
+@layer components {
+  .do-panel {
+    @apply rounded-2xl border border-slate-900/10 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.06)];
+  }
+
+  .do-panel-soft {
+    @apply rounded-2xl border border-slate-900/10 bg-slate-50/70 shadow-[0_8px_22px_rgba(15,23,42,0.04)];
+  }
+
+  .do-card {
+    @apply rounded-xl border border-slate-900/10 bg-white p-4;
+  }
+
+  .do-card-compact {
+    @apply rounded-xl border border-slate-900/10 bg-white p-3;
+  }
+
+  .do-section-title {
+    @apply text-sm font-semibold text-slate-900;
+  }
+
+  .do-section-desc {
+    @apply text-xs leading-5 text-slate-500;
+  }
+
+  .do-kpi-label {
+    @apply text-[11px] font-medium uppercase tracking-[0.08em] text-slate-500;
+  }
+
+  .do-kpi-value {
+    @apply mt-1 text-xl font-semibold text-slate-900;
+  }
+
+  .do-chip {
+    @apply inline-flex items-center rounded-full border border-slate-900/10 bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700;
+  }
+
+  .do-muted-divider {
+    @apply border-slate-900/8;
+  }
 }
 
 ::-webkit-scrollbar {
@@ -18,5 +88,5 @@ input, textarea, select {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  @apply bg-gray-200 rounded-full;
+  @apply rounded-full bg-slate-200;
 }

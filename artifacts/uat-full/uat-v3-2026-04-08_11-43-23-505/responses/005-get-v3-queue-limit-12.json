@@ -1,0 +1,44 @@
+{
+  "label": "GET-/v3/queue?limit=12",
+  "status": 200,
+  "ok": true,
+  "requestId": "bd7f69df-9d9a-4672-a9bc-1a7026521646",
+  "payload": {
+    "review": [
+      {
+        "runId": "416364e5-0503-4f9f-88b8-932d930625cc",
+        "format": "tweet",
+        "text": "别再靠灵感写 ai，把流程跑顺才是增长关键 很多账号发不起来，不是因为你不会写，而是流程太散。把动作固定成“选题—起稿—审批—发布—复盘”，连续执行两周，互动质量通常会明显改善。(x20qdo) #很多账号发不起来",
+        "qualityScore": 79.12,
+        "riskFlags": [],
+        "createdAt": "2026-04-08T10:19:20.500Z",
+        "nextAction": "confirm_publish"
+      },
+      {
+        "runId": "ac2a97fe-b5f4-4017-b871-28657270204f",
+        "format": "tweet",
+        "text": "别再靠灵感写 ai，把流程跑顺才是增长关键 很多账号发不起来，不是因为你不会写，而是流程太散。把动作固定成“选题—起稿—审批—发布—复盘”，连续执行两周，互动质量通常会明显改善。(v4iqcx) #很多账号发不起来",
+        "qualityScore": 79.12,
+        "riskFlags": [],
+        "createdAt": "2026-04-08T10:14:59.959Z",
+        "nextAction": "confirm_publish"
+      }
+    ],
+    "queued": [
+      {
+        "id": "5998d805-88c3-4ceb-bb60-29b38e0f3b63",
+        "runId": "bbd0c9bd-1798-45fc-b60a-dd537f109e01",
+        "status": "QUEUED",
+        "xAccountId": null,
+        "xAccountHandle": null,
+        "createdAt": "2026-04-08T11:42:28.310Z",
+        "updatedAt": "2026-04-08T11:42:28.310Z",
+        "lastError": null,
+        "nextAction": "wait_publish"
+      }
+    ],
+    "published": [],
+    "failed": [],
+    "requestId": "bd7f69df-9d9a-4672-a9bc-1a7026521646"
+  }
+}

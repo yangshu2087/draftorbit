@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { AppExceptionFilter } from './common/app-exception.filter';
 import { assertApiEnv, assertAuthModeSafety, assertBillingEnvSafety } from './common/env';
+import { ensureRequestId } from './common/request-id';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
@@ -22,6 +23,11 @@ async function bootstrap() {
   );
 
   app.useGlobalFilters(new AppExceptionFilter());
+
+  app.use((req: any, res: any, next: () => void) => {
+    ensureRequestId(req, res);
+    next();
+  });
 
   app.enableCors({
     origin: [appUrl],

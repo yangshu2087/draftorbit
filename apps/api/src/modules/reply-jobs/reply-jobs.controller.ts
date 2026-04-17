@@ -21,6 +21,7 @@ import {
   MinLength
 } from 'class-validator';
 import { AuthGuard } from '../../common/auth.guard';
+import { withRequestId } from '../../common/response-with-request-id';
 import { ReplyJobsService } from './reply-jobs.service';
 
 class SyncMentionsDto {
@@ -80,7 +81,8 @@ export class ReplyJobsController {
 
   @Post('sync-mentions')
   async syncMentions(@Req() req: RequestWithUser, @Body() body: SyncMentionsDto) {
-    return this.service.syncMentions((req.user as AuthUser).userId, body);
+    const result = await this.service.syncMentions((req.user as AuthUser).userId, body);
+    return withRequestId(req, result);
   }
 
   @Post(':id/candidates')
@@ -89,7 +91,8 @@ export class ReplyJobsController {
     @Param('id') id: string,
     @Body() body: AddCandidateDto
   ) {
-    return this.service.addCandidate((req.user as AuthUser).userId, id, body);
+    const result = await this.service.addCandidate((req.user as AuthUser).userId, id, body);
+    return withRequestId(req, result);
   }
 
   @Post(':id/candidates/:candidateId/approve')
@@ -98,7 +101,8 @@ export class ReplyJobsController {
     @Param('id') id: string,
     @Param('candidateId') candidateId: string
   ) {
-    return this.service.approveCandidate((req.user as AuthUser).userId, id, candidateId);
+    const result = await this.service.approveCandidate((req.user as AuthUser).userId, id, candidateId);
+    return withRequestId(req, result);
   }
 
   @Post(':id/send')
@@ -107,6 +111,7 @@ export class ReplyJobsController {
     @Param('id') id: string,
     @Body() body: SendReplyDto
   ) {
-    return this.service.sendApproved((req.user as AuthUser).userId, id, body.candidateId);
+    const result = await this.service.sendApproved((req.user as AuthUser).userId, id, body.candidateId);
+    return withRequestId(req, result);
   }
 }

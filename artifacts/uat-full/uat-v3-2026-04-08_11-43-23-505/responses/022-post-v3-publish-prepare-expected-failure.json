@@ -1,0 +1,18 @@
+{
+  "label": "POST-/v3/publish/prepare-expected-failure",
+  "status": 404,
+  "ok": false,
+  "requestId": "24c673eb-5dcd-4c3c-b757-f4ac54e2f438",
+  "payload": {
+    "code": "RUN_NOT_FOUND",
+    "message": "生成任务不存在",
+    "details": {
+      "nextAction": "run_first_generation",
+      "blockingReason": "RUN_NOT_FOUND"
+    },
+    "requestId": "24c673eb-5dcd-4c3c-b757-f4ac54e2f438",
+    "statusCode": 404,
+    "timestamp": "2026-04-08T11:43:23.789Z",
+    "path": "/v3/publish/prepare"
+  }
+}

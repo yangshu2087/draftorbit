@@ -21,7 +21,11 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 
 RUN pnpm db:generate
-RUN pnpm build
+RUN pnpm --filter @draftorbit/shared build \
+ && pnpm --filter @draftorbit/db build \
+ && pnpm --filter @draftorbit/api build \
+ && pnpm --filter @draftorbit/worker build \
+ && pnpm --filter @draftorbit/web build
 
 FROM node:20-alpine AS runtime
 

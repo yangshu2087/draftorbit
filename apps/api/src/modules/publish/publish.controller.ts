@@ -19,6 +19,7 @@ import { AuthGuard } from '../../common/auth.guard';
 import { PublishService } from './publish.service';
 import { DraftPublishBodyDto, GenerationIdBodyDto } from './publish.dto';
 import { PrismaService } from '../../common/prisma.service';
+import { withRequestId } from '../../common/response-with-request-id';
 
 @Controller('publish')
 @UseGuards(AuthGuard)
@@ -31,19 +32,27 @@ export class PublishController {
   @Post('tweet')
   async publishTweet(@Req() req: RequestWithUser, @Body() body: GenerationIdBodyDto) {
     const user = req.user as AuthUser;
-    return this.publish.publishTweet(user.userId, body.generationId);
+    const result = await this.publish.publishTweet(user.userId, body.generationId, body.xAccountId);
+    return withRequestId(req, result);
   }
 
   @Post('thread')
   async publishThread(@Req() req: RequestWithUser, @Body() body: GenerationIdBodyDto) {
     const user = req.user as AuthUser;
-    return this.publish.publishThread(user.userId, body.generationId);
+    const result = await this.publish.publishThread(user.userId, body.generationId, body.xAccountId);
+    return withRequestId(req, result);
   }
 
   @Post('draft')
   async publishDraft(@Req() req: RequestWithUser, @Body() body: DraftPublishBodyDto) {
     const user = req.user as AuthUser;
-    return this.publish.publishDraft(user.userId, body.draftId, body.scheduledFor);
+    const result = await this.publish.publishDraft(
+      user.userId,
+      body.draftId,
+      body.scheduledFor,
+      body.xAccountId
+    );
+    return withRequestId(req, result);
   }
 
   @Get('jobs')
@@ -72,7 +81,8 @@ export class PublishController {
   @Post('jobs/:publishJobId/retry')
   async retry(@Req() req: RequestWithUser, @Param('publishJobId') publishJobId: string) {
     const user = req.user as AuthUser;
-    return this.publish.retryJob(user.userId, publishJobId);
+    const result = await this.publish.retryJob(user.userId, publishJobId);
+    return withRequestId(req, result);
   }
 
   @Get(':generationId')

@@ -22,9 +22,16 @@
     "dev:web": "pnpm --filter @draftorbit/web dev",
     "dev:worker": "pnpm --filter @draftorbit/worker dev",
     "smoke:p0": "bash ./scripts/smoke-p0.sh",
-    "smoke:v1": "bash ./scripts/smoke-v1.sh"
+    "smoke:v1": "bash ./scripts/smoke-v1.sh",
+    "acceptance:w1": "node ./scripts/w1-acceptance.mjs",
+    "uat:full": "node ./scripts/uat-full.mjs",
+    "test:paypal:webhook": "bash ./scripts/test-paypal-webhook.sh",
+    "preflight:prod": "bash ./scripts/preflight-prod.sh",
+    "release:prod": "bash ./scripts/release-prod.sh",
+    "provider:live": "pnpm --filter @draftorbit/api exec tsx ../../scripts/provider-live-evidence.ts"
   },
   "devDependencies": {
+    "@playwright/test": "1.59.1",
     "turbo": "^2.5.8",
     "typescript": "^5.8.3"
   },

@@ -11,113 +11,68 @@ import {
 } from '@nestjs/common';
 import { ProviderType } from '@draftorbit/db';
 import type { AuthUser } from '@draftorbit/shared';
-import {
-  IsArray,
-  IsBoolean,
-  IsEnum,
-  IsNumber,
-  IsOptional,
-  IsString,
-  Max,
-  Min,
-  MinLength
-} from 'class-validator';
 import { AuthGuard } from '../../common/auth.guard';
+import { withRequestId } from '../../common/response-with-request-id';
 import { ProvidersService } from './providers.service';
 
-class UpsertProviderDto {
-  @IsOptional()
-  @IsString()
+type RequestWithUser = {
+  user: AuthUser;
+};
+
+type UpsertProviderBody = {
   id?: string;
-
-  @IsString()
-  @MinLength(1)
-  name!: string;
-
-  @IsEnum(ProviderType)
-  providerType!: ProviderType;
-
-  @IsOptional()
-  @IsString()
+  name: string;
+  providerType: ProviderType;
   apiKey?: string;
-
-  @IsOptional()
-  @IsString()
   baseUrl?: string;
-
-  @IsOptional()
-  @IsArray()
   modelAllowlist?: string[];
-
-  @IsOptional()
-  @IsBoolean()
   isEnabled?: boolean;
-}
+};
 
-class ToggleProviderDto {
-  @IsBoolean()
-  isEnabled!: boolean;
-}
+type ToggleProviderBody = {
+  isEnabled: boolean;
+};
 
-class RouteTextDto {
-  @IsString()
-  @MinLength(1)
-  prompt!: string;
-
-  @IsString()
-  @MinLength(1)
-  taskType!: string;
-
-  @IsOptional()
-  @IsString()
+type RouteTextBody = {
+  prompt: string;
+  taskType: string;
   model?: string;
-
-  @IsOptional()
-  @IsEnum(ProviderType)
   providerType?: ProviderType;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  @Max(2)
   temperature?: number;
-}
-
-interface RequestWithUser {
-  user?: AuthUser;
-}
+};
 
 @Controller('providers')
 @UseGuards(AuthGuard)
 export class ProvidersController {
-  constructor(@Inject(ProvidersService) private readonly service: ProvidersService) {}
+  constructor(@Inject(ProvidersService) private readonly providersService: ProvidersService) {}
 
   @Get()
   async list(@Req() req: RequestWithUser) {
-    return this.service.list((req.user as AuthUser).userId);
+    const data = await this.providersService.list(req.user.userId);
+    return withRequestId(req, data);
   }
 
-  @Get('byok/status')
+  @Get('byok-status')
   async byokStatus(@Req() req: RequestWithUser) {
-    return this.service.byokStatus((req.user as AuthUser).userId);
+    const data = await this.providersService.byokStatus(req.user.userId);
+    return withRequestId(req, data);
   }
 
   @Post()
-  async upsert(@Req() req: RequestWithUser, @Body() body: UpsertProviderDto) {
-    return this.service.upsert((req.user as AuthUser).userId, body);
+  async upsert(@Req() req: RequestWithUser, @Body() body: UpsertProviderBody) {
+    const data = await this.providersService.upsert(req.user.userId, body);
+    return withRequestId(req, data);
   }
 
   @Patch(':id/toggle')
-  async toggle(
-    @Req() req: RequestWithUser,
-    @Param('id') id: string,
-    @Body() body: ToggleProviderDto
-  ) {
-    return this.service.toggle((req.user as AuthUser).userId, id, body.isEnabled);
+  async toggle(@Req() req: RequestWithUser, @Param('id') id: string, @Body() body: ToggleProviderBody) {
+    const data = await this.providersService.toggle(req.user.userId, id, body.isEnabled);
+    return withRequestId(req, data);
   }
 
-  @Post('route/text')
-  async routeText(@Req() req: RequestWithUser, @Body() body: RouteTextDto) {
-    return this.service.routeText((req.user as AuthUser).userId, body);
+  @Post('route-text')
+  async routeText(@Req() req: RequestWithUser, @Body() body: RouteTextBody) {
+    const data = await this.providersService.routeText(req.user.userId, body);
+    return withRequestId(req, data);
   }
 }

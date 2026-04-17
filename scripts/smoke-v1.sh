@@ -25,7 +25,7 @@ paths=(
   "/reply-jobs"
   "/workflow/templates"
   "/workflow/runs"
-  "/providers"
+  "/billing/plans"
   "/usage/summary"
   "/audit/logs"
 )

@@ -1,0 +1,27 @@
+{
+  "label": "POST-/v3/connections/obsidian",
+  "status": 201,
+  "ok": true,
+  "requestId": "b287ddda-fccd-4acc-84c2-1aee8892d84c",
+  "payload": {
+    "ok": true,
+    "source": {
+      "id": "c4be0664-3032-4d07-9a26-807a1ae7ebfa",
+      "workspaceId": "ee605462-b8de-4de2-bad6-3a1617dc5722",
+      "xAccountId": null,
+      "sourceType": "IMPORT_CSV",
+      "sourceRef": "/tmp/draftorbit-uat-60408114323505-vault",
+      "isEnabled": true,
+      "metadata": {
+        "connector": "obsidian",
+        "includePatterns": [
+          "**/*.md"
+        ]
+      },
+      "createdAt": "2026-04-08T11:43:23.660Z",
+      "updatedAt": "2026-04-08T11:43:23.660Z"
+    },
+    "nextAction": "run_first_generation",
+    "requestId": "b287ddda-fccd-4acc-84c2-1aee8892d84c"
+  }
+}

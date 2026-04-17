@@ -16,7 +16,12 @@ import type { AuthUser } from '@draftorbit/shared';
 interface RequestWithUser { user?: AuthUser; body?: any; rawBody?: Buffer; }
 import { AuthGuard } from '../../common/auth.guard';
 import { BillingService } from './billing.service';
-import { CheckoutBodyDto } from './billing.dto';
+import {
+  CancelSubscriptionBodyDto,
+  CheckoutBodyDto,
+  RefundBodyDto
+} from './billing.dto';
+import { withRequestId } from '../../common/response-with-request-id';
 
 @Controller('billing')
 export class BillingController {
@@ -45,7 +50,24 @@ export class BillingController {
   @UseGuards(AuthGuard)
   async checkout(@Req() req: RequestWithUser, @Body() body: CheckoutBodyDto) {
     const user = req.user as AuthUser;
-    return this.billing.createCheckoutSession(user.userId, body.plan, body.cycle);
+    const result = await this.billing.createCheckoutSession(user.userId, body.plan, body.cycle);
+    return withRequestId(req, result);
+  }
+
+  @Post('subscription/cancel')
+  @UseGuards(AuthGuard)
+  async cancelSubscription(@Req() req: RequestWithUser, @Body() body: CancelSubscriptionBodyDto) {
+    const user = req.user as AuthUser;
+    const result = await this.billing.cancelSubscription(user.userId, body.mode ?? 'AT_PERIOD_END');
+    return withRequestId(req, result);
+  }
+
+  @Post('refund')
+  @UseGuards(AuthGuard)
+  async refund(@Req() req: RequestWithUser, @Body() body: RefundBodyDto) {
+    const user = req.user as AuthUser;
+    const result = await this.billing.createRefund(user.userId, body);
+    return withRequestId(req, result);
   }
 
   @Post('webhook')

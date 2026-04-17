@@ -3,8 +3,8 @@ import type { Metadata } from 'next';
 import { Providers } from '../lib/providers';
 
 export const metadata: Metadata = {
-  title: 'DraftOrbit — AI 推文生成',
-  description: '输入想法，AI 推理生成，一键发推'
+  title: 'DraftOrbit — 一句话生成可发的 X 内容',
+  description: '你说一句话，DraftOrbit 帮你生成、整理并准备可发的 X 内容。'
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

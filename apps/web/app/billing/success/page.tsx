@@ -15,10 +15,10 @@ export default function BillingSuccessPage() {
           返回定价页
         </Link>
         <Link
-          href="/dashboard"
+          href="/app"
           className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
         >
-          前往工作台
+          前往生成器
         </Link>
       </div>
     </main>

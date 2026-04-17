@@ -123,6 +123,8 @@ enum ProviderType {
   OPENAI
   ANTHROPIC
   GEMINI
+  CODEX_LOCAL
+  OLLAMA
   MOCK
 }
 
@@ -306,6 +308,7 @@ model XAccount {
   twitterUserId   String
   handle          String
   status          XAccountStatus @default(ACTIVE)
+  isDefault       Boolean        @default(false)
   accessTokenEnc  String?
   refreshTokenEnc String?
   tokenExpiresAt  DateTime?
@@ -320,8 +323,10 @@ model XAccount {
   learningSources LearningSource[]
   postHistory     PostHistory[]
   replyJobs       ReplyJob[]
+  publishJobs     PublishJob[]
 
   @@unique([workspaceId, twitterUserId])
+  @@index([workspaceId, isDefault])
   @@index([userId, status])
 }
 
@@ -508,6 +513,7 @@ model PublishJob {
   id             String           @id @default(uuid())
   workspaceId    String
   userId         String
+  xAccountId     String?
   draftId        String?
   generationId   String?
   channel        PublishChannel   @default(X_TWEET)
@@ -523,11 +529,13 @@ model PublishJob {
 
   workspace      Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  xAccount       XAccount?  @relation(fields: [xAccountId], references: [id], onDelete: SetNull)
   draft          Draft?     @relation(fields: [draftId], references: [id], onDelete: SetNull)
   generation     Generation? @relation(fields: [generationId], references: [id], onDelete: SetNull)
   scheduledPost  ScheduledPost?
 
   @@index([workspaceId, status, createdAt])
+  @@index([workspaceId, xAccountId, status, createdAt])
   @@index([generationId])
 }
 
@@ -628,6 +636,7 @@ model Generation {
   style       String?
   status      GenerationStatus @default(RUNNING)
   result      Json?
+  visualRequest Json?
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 
@@ -677,9 +686,15 @@ model UsageLog {
   generationId String?
   eventType    UsageEventType @default(GENERATION)
   model        String
+  modelUsed    String?
+  routingTier  String?
+  fallbackDepth Int           @default(0)
   inputTokens  Int            @default(0)
   outputTokens Int            @default(0)
   costUsd      Decimal        @default(0) @db.Decimal(10, 6)
+  requestCostUsd Decimal      @default(0) @db.Decimal(10, 6)
+  qualityScore Decimal?       @db.Decimal(5, 2)
+  trialMode    Boolean        @default(false)
   createdAt    DateTime       @default(now())
 
   user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)

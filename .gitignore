@@ -12,3 +12,14 @@ coverage
 .playwright-cli/
 .pytest_cache/
 .vercel
+vendor/baoyu-skills/
+
+# Recovered local evidence: keep locally, do not commit large runtime bundles by default
+artifacts/**
+!artifacts/
+!artifacts/README.md
+output/playwright/**
+data/**
+!data/
+!data/README.md
+*.tsbuildinfo
