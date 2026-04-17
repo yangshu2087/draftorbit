@@ -486,11 +486,6 @@ async function startGenerationInOpenApp(page: Page, input: { prompt: string; for
   await expect(page.getByText('结果区')).toBeVisible();
 }
 
-async function startGeneration(page: Page, input: { prompt: string; format?: 'tweet' | 'thread' | 'article'; visualMode?: string }) {
-  await openApp(page);
-  await startGenerationInOpenApp(page, input);
-}
-
 async function runGenerationScenario(page: Page, scenario: GenerationScenario) {
   const scenarioStart = Date.now();
   await startGenerationInOpenApp(page, scenario);
@@ -585,8 +580,9 @@ test('app generation covers article and diagram visual outputs with minimal page
   }
 });
 
-test('app exposes Markdown copy success and retry-only visual asset recovery', async ({ page }) => {
-  await startGeneration(page, { prompt: '重试图文：生成一条带失败图片的短推，用来验证只重试图文资产。' });
+test('app handles retry-only visual recovery and latest-source fail-closed path in one user session', async ({ page }) => {
+  await openApp(page);
+  await startGenerationInOpenApp(page, { prompt: '重试图文：生成一条带失败图片的短推，用来验证只重试图文资产。' });
 
   await expect(page.getByText('部分图片资产没有达到可发布标准')).toBeVisible();
   const retryButton = page.getByRole('button', { name: /只重试图片\/图文资产/u });
@@ -597,10 +593,7 @@ test('app exposes Markdown copy success and retry-only visual asset recovery', a
 
   await page.getByRole('button', { name: '复制 Markdown' }).click();
   await expect(page.getByText('Markdown 已复制')).toBeVisible();
-});
-
-test('latest ambiguous source request fails closed with recoverable copy and no ready visual assets', async ({ page }) => {
-  await startGeneration(page, { prompt: '生成关于最新的 Hermes 的文章', format: 'article' });
+  await startGenerationInOpenApp(page, { prompt: '生成关于最新的 Hermes 的文章', format: 'article' });
 
   await expect(page.getByText('需要可靠来源，不能编造最新事实', { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: '粘贴来源 URL 再生成' })).toBeVisible();
