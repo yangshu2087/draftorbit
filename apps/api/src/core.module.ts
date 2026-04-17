@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { PrismaService } from './common/prisma.service';
 import { ModelGatewayService } from './common/model-gateway.service';
+import { CodexLocalService } from './common/codex-local.service';
 import { OpenRouterService } from './common/openrouter.service';
 import { TwitterService } from './common/twitter.service';
 import { SubscriptionGuard } from './common/subscription.guard';
@@ -15,10 +16,11 @@ import { WorkspaceContextService } from './common/workspace-context.service';
   providers: [
     PrismaService,
     OpenRouterService,
+    CodexLocalService,
     {
       provide: ModelGatewayService,
-      useFactory: (openRouter: OpenRouterService) => new ModelGatewayService(openRouter),
-      inject: [OpenRouterService]
+      useFactory: (openRouter: OpenRouterService, codexLocal: CodexLocalService) => new ModelGatewayService(openRouter, codexLocal),
+      inject: [OpenRouterService, CodexLocalService]
     },
     TwitterService,
     SubscriptionGuard,
@@ -32,6 +34,7 @@ import { WorkspaceContextService } from './common/workspace-context.service';
     PrismaService,
     ModelGatewayService,
     OpenRouterService,
+    CodexLocalService,
     TwitterService,
     SubscriptionGuard,
     QueueService,

@@ -4,7 +4,8 @@ export type VisualAssetKind =
   | 'cover'
   | 'cards'
   | 'infographic'
-  | 'illustration';
+  | 'illustration'
+  | 'diagram';
 
 export type VisualRule = {
   kind: VisualAssetKind;
@@ -64,6 +65,15 @@ export const BAOYU_VISUAL_RULES: Record<ContentFormat, VisualRule[]> = {
       style: '高密度结构图',
       palette: '浅底 + 强对比节点色',
       rationale: '适合 thread 中有固定步骤或结构对比时使用。'
+    },
+    {
+      kind: 'diagram',
+      defaultPriority: 'supporting',
+      type: 'process-diagram',
+      layout: 'flow',
+      style: 'blueprint',
+      palette: '品牌主色 + 中性灰',
+      rationale: '适合把 thread 的步骤或因果链整理成流程图。'
     }
   ],
   article: [
@@ -93,6 +103,15 @@ export const BAOYU_VISUAL_RULES: Record<ContentFormat, VisualRule[]> = {
       style: '信息图',
       palette: '浅底 + 品牌强调色',
       rationale: '适合把长文压缩成可分享的图。'
+    },
+    {
+      kind: 'diagram',
+      defaultPriority: 'supporting',
+      type: 'process-diagram',
+      layout: 'flow',
+      style: 'blueprint',
+      palette: '浅底 + 品牌强调色',
+      rationale: '适合把长文里的流程、判断树或系统关系画成 diagram。'
     }
   ]
 };

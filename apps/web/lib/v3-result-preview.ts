@@ -109,8 +109,29 @@ export function formatVisualAssetLabel(kind: string): string {
       return '信息图';
     case 'illustration':
       return '章节插图';
+    case 'diagram':
+      return '流程图';
+    case 'html':
+      return 'HTML 导出';
+    case 'markdown':
+      return 'Markdown 导出';
     default:
       return kind;
+  }
+}
+
+export function formatVisualProviderLabel(provider?: string | null): string {
+  switch (provider) {
+    case 'codex-local-svg':
+      return 'Codex 本机 SVG';
+    case 'template-svg':
+      return '模板渲染';
+    case 'baoyu-imagine':
+      return 'baoyu provider';
+    case 'ollama-text':
+      return '本地模型文本';
+    default:
+      return provider || '本地资产';
   }
 }
 
@@ -119,10 +140,19 @@ export type VisualAssetCardInput = {
   kind: string;
   status: 'ready' | 'generating' | 'failed';
   renderer?: 'template-svg' | 'provider-image';
+  provider?: 'codex-local-svg' | 'template-svg' | 'baoyu-imagine' | 'ollama-text';
+  model?: string;
+  skill?: string;
+  exportFormat?: 'svg' | 'html' | 'markdown' | 'zip';
   aspectRatio?: '1:1' | '16:9';
   textLayer?: 'app-rendered' | 'none';
+  width?: number;
+  height?: number;
+  checksum?: string;
   assetUrl?: string;
+  signedAssetUrl?: string;
   promptPath?: string;
+  specPath?: string;
   cue: string;
   reason?: string;
   error?: string;
@@ -130,6 +160,8 @@ export type VisualAssetCardInput = {
 
 export type VisualAssetCard = VisualAssetCardInput & {
   label: string;
+  providerLabel: string;
+  isExport: boolean;
   statusLabel: string;
   canPreview: boolean;
 };
@@ -142,7 +174,7 @@ export function normalizeVisualAssetUrl(assetUrl?: string): string | undefined {
 }
 
 function hasUnsafeVisualAssetPreview(asset: VisualAssetCardInput, normalizedUrl?: string): boolean {
-  const joined = [normalizedUrl, asset.assetUrl, asset.promptPath, asset.error].filter(Boolean).join(' ');
+  const joined = [normalizedUrl, asset.assetUrl, asset.signedAssetUrl, asset.promptPath, asset.specPath, asset.error].filter(Boolean).join(' ');
   if (/placeholder|mock/iu.test(joined)) return true;
   return /给我一条|更像真人|冷启动判断句|不要像|写一篇关于|生成关于最新|prompt-wrapper/iu.test(asset.cue ?? '');
 }
@@ -156,12 +188,15 @@ export function buildVisualAssetCards(assets?: VisualAssetCardInput[] | null): V
   return (assets ?? [])
     .filter((asset) => asset && asset.cue?.trim())
     .map((asset) => {
-      const normalizedUrl = normalizeVisualAssetUrl(asset.assetUrl);
+      const normalizedUrl = normalizeVisualAssetUrl(asset.signedAssetUrl ?? asset.assetUrl);
       const unsafePreview = hasUnsafeVisualAssetPreview(asset, normalizedUrl);
+      const isExport = Boolean(asset.exportFormat && asset.exportFormat !== 'svg');
       return {
         ...asset,
         assetUrl: normalizedUrl,
         label: formatVisualAssetLabel(asset.kind),
+        providerLabel: formatVisualProviderLabel(asset.provider),
+        isExport,
         statusLabel: unsafePreview
           ? '生成失败：图文 cue 或图片来源未达标'
           : asset.status === 'ready'
@@ -169,7 +204,7 @@ export function buildVisualAssetCards(assets?: VisualAssetCardInput[] | null): V
             : asset.status === 'generating'
               ? '生成中'
               : `生成失败${asset.error ? `：${asset.error}` : ''}`,
-        canPreview: asset.status === 'ready' && Boolean(normalizedUrl) && !unsafePreview
+        canPreview: asset.status === 'ready' && Boolean(normalizedUrl) && !unsafePreview && !isExport
       };
     });
 }

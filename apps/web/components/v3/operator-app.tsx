@@ -16,7 +16,8 @@ import {
   buildVisualAnchorTags,
   buildVisualAssetCards,
   formatVisualAssetLabel,
-  getResultPreviewMode
+  getResultPreviewMode,
+  normalizeVisualAssetUrl
 } from '../../lib/v3-result-preview';
 import { hydrateRunDetailUntilReady, shouldHydrateRunDetail } from '../../lib/v3-run-hydration';
 import {
@@ -38,7 +39,13 @@ import {
   type V3Format,
   type V3ProfileResponse,
   type V3QueueResponse,
-  type V3RunResponse
+  type V3RunResponse,
+  type V3VisualRequest,
+  type VisualRequestAspect,
+  type VisualRequestLayout,
+  type VisualRequestMode,
+  type VisualRequestPalette,
+  type VisualRequestStyle
 } from '../../lib/queries';
 import { buildAppTaskHref, getTaskPanelMeta } from '../../lib/v3-ui';
 import { normalizeResultText, normalizeStageSummary, summarizeWhySummary } from '../../lib/v3-result-copy';
@@ -60,6 +67,54 @@ const quickPrompts = [
   '帮我发一条关于 AI 产品冷启动的观点短推',
   '参考我最近的风格，写一条更容易引发讨论的 thread',
   '把一次产品更新整理成一条适合 X 的发布文案'
+];
+
+const visualModeOptions: Array<{ value: VisualRequestMode; label: string }> = [
+  { value: 'auto', label: '自动匹配' },
+  { value: 'cover', label: '封面' },
+  { value: 'cards', label: '卡片组' },
+  { value: 'infographic', label: '信息图' },
+  { value: 'article_illustration', label: '文章配图' },
+  { value: 'diagram', label: '流程图 / diagram' },
+  { value: 'social_pack', label: '社交图文包' }
+];
+
+const visualStyleOptions: Array<{ value: VisualRequestStyle; label: string }> = [
+  { value: 'draftorbit', label: 'DraftOrbit' },
+  { value: 'notion', label: 'Notion 风' },
+  { value: 'sketch-notes', label: '手绘笔记' },
+  { value: 'blueprint', label: '蓝图' },
+  { value: 'minimal', label: '极简' },
+  { value: 'bold-editorial', label: '强编辑感' }
+];
+
+const visualLayoutOptions: Array<{ value: VisualRequestLayout; label: string }> = [
+  { value: 'auto', label: '自动布局' },
+  { value: 'sparse', label: '留白' },
+  { value: 'balanced', label: '平衡' },
+  { value: 'dense', label: '高密度' },
+  { value: 'list', label: '列表' },
+  { value: 'comparison', label: '对比' },
+  { value: 'flow', label: '流程' },
+  { value: 'mindmap', label: '思维导图' },
+  { value: 'quadrant', label: '四象限' }
+];
+
+const visualPaletteOptions: Array<{ value: VisualRequestPalette; label: string }> = [
+  { value: 'draftorbit', label: 'DraftOrbit' },
+  { value: 'auto', label: '自动' },
+  { value: 'macaron', label: '马卡龙' },
+  { value: 'warm', label: '暖色' },
+  { value: 'neon', label: '霓虹' },
+  { value: 'mono', label: '黑白' }
+];
+
+const visualAspectOptions: Array<{ value: VisualRequestAspect; label: string }> = [
+  { value: 'auto', label: '自动比例' },
+  { value: '1:1', label: '1:1 方图' },
+  { value: '16:9', label: '16:9 横图' },
+  { value: '4:5', label: '4:5 竖图' },
+  { value: '2.35:1', label: '2.35:1 宽幅' }
 ];
 
 const stageOrder = [
@@ -111,6 +166,12 @@ export default function OperatorApp() {
   const [format, setFormat] = useState<V3Format>('tweet');
   const [withImage, setWithImage] = useState(true);
   const [safeMode, setSafeMode] = useState(true);
+  const [visualMode, setVisualMode] = useState<VisualRequestMode>('auto');
+  const [visualStyle, setVisualStyle] = useState<VisualRequestStyle>('draftorbit');
+  const [visualLayout, setVisualLayout] = useState<VisualRequestLayout>('auto');
+  const [visualPalette, setVisualPalette] = useState<VisualRequestPalette>('draftorbit');
+  const [visualAspect, setVisualAspect] = useState<VisualRequestAspect>('auto');
+  const [exportHtml, setExportHtml] = useState(true);
   const [selectedXAccountId, setSelectedXAccountId] = useState('');
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
@@ -187,6 +248,17 @@ export default function OperatorApp() {
     () => formatOptions.find((item) => item.value === format) ?? formatOptions[0],
     [format]
   );
+  const visualRequest = useMemo<V3VisualRequest>(
+    () => ({
+      mode: visualMode,
+      style: visualStyle,
+      layout: visualLayout,
+      palette: visualPalette,
+      aspect: visualAspect,
+      exportHtml
+    }),
+    [exportHtml, visualAspect, visualLayout, visualMode, visualPalette, visualStyle]
+  );
 
   const stageProgress = useMemo(
     () =>
@@ -245,13 +317,20 @@ export default function OperatorApp() {
     () => visualAssetCards.filter((asset) => asset.canPreview),
     [visualAssetCards]
   );
+  const readyExportAssetCards = useMemo(
+    () => visualAssetCards.filter((asset) => asset.status === 'ready' && asset.isExport && asset.assetUrl),
+    [visualAssetCards]
+  );
   const failedVisualAssetCards = useMemo(
     () => visualAssetCards.filter((asset) => asset.status === 'failed'),
     [visualAssetCards]
   );
   const visualAssetsZipUrl = useMemo(
-    () => buildRunAssetsZipUrl(runDetail?.runId),
-    [runDetail?.runId]
+    () =>
+      runDetail?.result?.visualAssetsBundleUrl
+        ? normalizeVisualAssetUrl(runDetail.result.visualAssetsBundleUrl)
+        : buildRunAssetsZipUrl(runDetail?.runId),
+    [runDetail?.result?.visualAssetsBundleUrl, runDetail?.runId]
   );
   const qualityGateFailed =
     runDetail?.result?.qualityGate?.status === 'failed' || runDetail?.result?.qualityGate?.safeToDisplay === false;
@@ -329,6 +408,21 @@ export default function OperatorApp() {
     [pushToast]
   );
 
+  const copyAssetText = useCallback(
+    async (assetUrl: string | undefined, label: string) => {
+      if (!assetUrl) return;
+      const response = await fetch(assetUrl);
+      if (!response.ok) throw new Error(`导出资产读取失败：${response.status}`);
+      await navigator.clipboard.writeText(await response.text());
+      pushToast({
+        title: `${label} 已复制`,
+        description: '可以粘贴到编辑器、CMS 或本地文档继续使用。',
+        variant: 'success'
+      });
+    },
+    [pushToast]
+  );
+
   const hydrateRunDetail = useCallback(async (runId: string) => {
     if (hydrationPromiseRef.current) return hydrationPromiseRef.current;
 
@@ -368,7 +462,8 @@ export default function OperatorApp() {
         format,
         withImage,
         xAccountId: selectedXAccountId || undefined,
-        safeMode
+        safeMode,
+        visualRequest: withImage ? visualRequest : undefined
       });
 
       setRunStart({ runId: started.runId, streamUrl: started.streamUrl });
@@ -390,7 +485,7 @@ export default function OperatorApp() {
       hydrationPromiseRef.current = null;
       setRunLoading(false);
     }
-  }, [format, hydrateRunDetail, intent, loadPage, safeMode, selectedXAccountId, withImage]);
+  }, [format, hydrateRunDetail, intent, loadPage, safeMode, selectedXAccountId, visualRequest, withImage]);
 
   const handleQueueAction = useCallback(async () => {
     if (!runDetail?.runId) return;
@@ -452,7 +547,7 @@ export default function OperatorApp() {
     setBusyAction('retry-assets');
     setRunError(null);
     try {
-      const refreshed = await retryRunVisualAssets(runDetail.runId);
+      const refreshed = await retryRunVisualAssets(runDetail.runId, visualRequest);
       setRunDetail(refreshed);
       pushToast({
         title: '图片已重新生成',
@@ -464,7 +559,7 @@ export default function OperatorApp() {
     } finally {
       setBusyAction(null);
     }
-  }, [pushToast, runDetail?.runId]);
+  }, [pushToast, runDetail, visualRequest]);
 
   const runTaskAction = useCallback(async (action: () => Promise<void>, busyKey: string, errorMessage: string) => {
     setBusyAction(busyKey);
@@ -687,6 +782,101 @@ export default function OperatorApp() {
                     <input type="checkbox" checked={withImage} onChange={(event) => setWithImage(event.target.checked)} className="h-4 w-4" />
                   </div>
                 </label>
+
+                <div className="rounded-2xl border border-slate-900/10 bg-white p-4 text-sm text-slate-700">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">图文能力</span>
+                      <p className="mt-2 font-medium text-slate-900">封面、卡片、信息图、diagram 与导出包</p>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">
+                        默认使用 Codex 本机 SVG / 模板渲染；不需要外部图片 key 也能产出可审计资产。
+                      </p>
+                    </div>
+                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-700">
+                      baoyu parity
+                    </span>
+                  </div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <label className="space-y-1">
+                      <span className="block text-xs font-medium text-slate-500">视觉模式</span>
+                      <select
+                        name="visualMode"
+                        value={visualMode}
+                        onChange={(event) => setVisualMode(event.target.value as VisualRequestMode)}
+                        className="w-full rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-sm"
+                      >
+                        {visualModeOptions.map((item) => (
+                          <option key={item.value} value={item.value}>{item.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="space-y-1">
+                      <span className="block text-xs font-medium text-slate-500">风格</span>
+                      <select
+                        name="visualStyle"
+                        value={visualStyle}
+                        onChange={(event) => setVisualStyle(event.target.value as VisualRequestStyle)}
+                        className="w-full rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-sm"
+                      >
+                        {visualStyleOptions.map((item) => (
+                          <option key={item.value} value={item.value}>{item.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="space-y-1">
+                      <span className="block text-xs font-medium text-slate-500">布局</span>
+                      <select
+                        name="visualLayout"
+                        value={visualLayout}
+                        onChange={(event) => setVisualLayout(event.target.value as VisualRequestLayout)}
+                        className="w-full rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-sm"
+                      >
+                        {visualLayoutOptions.map((item) => (
+                          <option key={item.value} value={item.value}>{item.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="space-y-1">
+                      <span className="block text-xs font-medium text-slate-500">配色</span>
+                      <select
+                        name="visualPalette"
+                        value={visualPalette}
+                        onChange={(event) => setVisualPalette(event.target.value as VisualRequestPalette)}
+                        className="w-full rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-sm"
+                      >
+                        {visualPaletteOptions.map((item) => (
+                          <option key={item.value} value={item.value}>{item.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="space-y-1">
+                      <span className="block text-xs font-medium text-slate-500">比例</span>
+                      <select
+                        name="visualAspect"
+                        value={visualAspect}
+                        onChange={(event) => setVisualAspect(event.target.value as VisualRequestAspect)}
+                        className="w-full rounded-xl border border-slate-900/10 bg-white px-3 py-2 text-sm"
+                      >
+                        {visualAspectOptions.map((item) => (
+                          <option key={item.value} value={item.value}>{item.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-900/10 bg-slate-50 px-3 py-2">
+                      <span>
+                        <span className="block text-xs font-medium text-slate-700">导出 HTML/Markdown</span>
+                        <span className="block text-[11px] leading-4 text-slate-500">打包成可下载资产</span>
+                      </span>
+                      <input
+                        name="exportHtml"
+                        type="checkbox"
+                        checked={exportHtml}
+                        onChange={(event) => setExportHtml(event.target.checked)}
+                        className="h-4 w-4"
+                      />
+                    </label>
+                  </div>
+                </div>
 
                 <label className="rounded-2xl border border-slate-900/10 bg-white p-4 text-sm text-slate-700">
                   <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">安全模式</span>
@@ -950,7 +1140,7 @@ export default function OperatorApp() {
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">图文资产</p>
                     <h3 className="mt-1 text-lg font-semibold text-slate-950">可发布卡片与封面</h3>
                     <p className="mt-1 text-sm leading-6 text-slate-500">
-                      后台已完成卡片排版，普通用户只需要预览、复制和下载。
+                      后台已完成封面、卡片、信息图、diagram 与导出包，普通用户只需要预览、复制和下载。
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -961,7 +1151,7 @@ export default function OperatorApp() {
                       onClick={() => void handleRetryImages()}
                     >
                       {busyAction === 'retry-assets' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCcw className="mr-2 h-4 w-4" />}
-                      只重试图片
+                      只重试图片/图文资产
                     </Button>
                     {!qualityGateFailed && readyVisualAssetCards.length && visualAssetsZipUrl ? (
                       <Button asChild variant="outline" size="sm">
@@ -973,7 +1163,7 @@ export default function OperatorApp() {
                     ) : (
                       <Button variant="outline" size="sm" disabled>
                         <Download className="mr-2 h-4 w-4" />
-                        暂无可下载图片
+                        暂无可下载资产
                       </Button>
                     )}
                   </div>
@@ -991,9 +1181,12 @@ export default function OperatorApp() {
                             <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] text-emerald-700">
                               已生成
                             </span>
-                            {asset.renderer ? (
+                            <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-1 text-[11px] text-sky-700">
+                              {asset.providerLabel}
+                            </span>
+                            {asset.skill ? (
                               <span className="rounded-full border border-slate-900/10 bg-slate-50 px-2 py-1 text-[11px] text-slate-500">
-                                {asset.renderer === 'template-svg' ? '模板排版' : '背景图'}
+                                {asset.skill}
                               </span>
                             ) : null}
                           </div>
@@ -1004,17 +1197,22 @@ export default function OperatorApp() {
                               className="inline-flex items-center rounded-lg border border-slate-900/10 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 transition hover:border-slate-900/20 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500/30"
                             >
                               <Download className="mr-1 h-3.5 w-3.5" />
-                              下载图片
+                              下载 SVG
                             </a>
                           ) : null}
                         </div>
                         <div className="bg-slate-100">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={asset.assetUrl} alt={`${asset.label}：${asset.cue}`} className="h-auto w-full object-cover" />
+                          <img src={asset.assetUrl ?? ''} alt={`${asset.label}：${asset.cue}`} className="h-auto w-full object-cover" />
                         </div>
                         <div className="space-y-1 bg-white px-3 py-3">
                           <p className="text-sm font-medium leading-6 text-slate-900">{asset.cue}</p>
                           {asset.reason ? <p className="text-xs leading-5 text-slate-500">{asset.reason}</p> : null}
+                          <div className="flex flex-wrap gap-2 pt-1 text-[11px] text-slate-400">
+                            {asset.width && asset.height ? <span>{asset.width}×{asset.height}</span> : null}
+                            {asset.checksum ? <span>sha256 {asset.checksum.slice(0, 10)}…</span> : null}
+                            {asset.specPath ? <span className="break-all">spec {asset.specPath}</span> : null}
+                          </div>
                         </div>
                       </article>
                     ))}
@@ -1028,6 +1226,61 @@ export default function OperatorApp() {
                         : '本次没有请求配图，因此只展示轻量视觉规划。'}
                   </div>
                 )}
+
+                {readyExportAssetCards.length ? (
+                  <div className="mt-4 rounded-2xl border border-slate-900/10 bg-slate-50 p-4">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">导出包</p>
+                        <p className="mt-1 text-sm text-slate-700">Markdown / HTML 已生成，适合手动发布、归档或继续编辑。</p>
+                      </div>
+                      {visualAssetsZipUrl ? (
+                        <Button asChild variant="outline" size="sm">
+                          <a href={visualAssetsZipUrl} download>
+                            <Download className="mr-2 h-4 w-4" />
+                            下载 bundle
+                          </a>
+                        </Button>
+                      ) : null}
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {readyExportAssetCards.map((asset) => (
+                        <div key={asset.id ?? asset.label} className="rounded-xl border border-slate-900/10 bg-white p-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded-full border border-slate-900/10 bg-slate-50 px-2 py-1 text-[11px] text-slate-600">
+                              {asset.label}
+                            </span>
+                            <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-1 text-[11px] text-sky-700">
+                              {asset.providerLabel}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-sm font-medium text-slate-900">{asset.reason ?? asset.cue}</p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {asset.assetUrl ? (
+                              <Button asChild variant="outline" size="sm">
+                                <a href={asset.assetUrl} download>
+                                  <Download className="mr-2 h-4 w-4" />
+                                  {asset.exportFormat === 'html' ? '导出 HTML' : '下载 Markdown'}
+                                </a>
+                              </Button>
+                            ) : null}
+                            {asset.exportFormat === 'markdown' ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => void copyAssetText(asset.assetUrl, 'Markdown')}
+                              >
+                                <Copy className="mr-2 h-4 w-4" />
+                                复制 Markdown
+                              </Button>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
 
                 {failedVisualAssetCards.length || visualHardFails.length ? (
                   <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">

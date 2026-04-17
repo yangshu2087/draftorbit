@@ -18,6 +18,7 @@ import { AuthGuard } from '../../common/auth.guard';
 import { getRequestId } from '../../common/request-id';
 import { withRequestId } from '../../common/response-with-request-id';
 import { SubscriptionGuard } from '../../common/subscription.guard';
+import type { VisualRequest } from '../generate/visual-request';
 import {
   V3BillingCheckoutDto,
   V3ConnectLocalFilesDto,
@@ -70,15 +71,16 @@ export class V3Controller {
   async getRunAsset(
     @Param('id') id: string,
     @Param('assetId') assetId: string,
+    @Query('token') token: string | undefined,
     @Res() res: any
   ) {
-    const result = await this.v3.getRunAssetPublic(id, assetId);
+    const result = await this.v3.getRunAssetPublic(id, assetId, token);
     res.type(result.contentType).send(result.data);
   }
 
   @Get('chat/runs/:id/assets.zip')
-  async getRunAssetsZip(@Param('id') id: string, @Res() res: any) {
-    const result = await this.v3.getRunAssetsZipPublic(id);
+  async getRunAssetsZip(@Param('id') id: string, @Query('token') token: string | undefined, @Res() res: any) {
+    const result = await this.v3.getRunAssetsZipPublic(id, token);
     res
       .type(result.contentType)
       .setHeader('Content-Disposition', `attachment; filename="${result.filename}"`)
@@ -87,8 +89,8 @@ export class V3Controller {
 
   @Post('chat/runs/:id/assets/retry')
   @UseGuards(AuthGuard)
-  async retryRunAssets(@Req() req: RequestWithUser, @Param('id') id: string) {
-    const result = await this.v3.retryRunVisualAssets((req.user as AuthUser).userId, id);
+  async retryRunAssets(@Req() req: RequestWithUser, @Param('id') id: string, @Body() body: { visualRequest?: unknown }) {
+    const result = await this.v3.retryRunVisualAssets((req.user as AuthUser).userId, id, body.visualRequest as VisualRequest | undefined);
     return withRequestId(req, result);
   }
 

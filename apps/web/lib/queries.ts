@@ -3,6 +3,20 @@ import { apiFetch } from './api';
 export type BillingPlanKey = 'STARTER' | 'PRO' | 'PREMIUM';
 export type BillingCycle = 'MONTHLY' | 'YEARLY';
 export type V3Format = 'tweet' | 'thread' | 'article';
+export type VisualRequestMode = 'auto' | 'cover' | 'cards' | 'infographic' | 'article_illustration' | 'diagram' | 'social_pack';
+export type VisualRequestStyle = 'draftorbit' | 'notion' | 'sketch-notes' | 'blueprint' | 'minimal' | 'bold-editorial';
+export type VisualRequestLayout = 'auto' | 'sparse' | 'balanced' | 'dense' | 'list' | 'comparison' | 'flow' | 'mindmap' | 'quadrant';
+export type VisualRequestPalette = 'auto' | 'draftorbit' | 'macaron' | 'warm' | 'neon' | 'mono';
+export type VisualRequestAspect = 'auto' | '1:1' | '16:9' | '4:5' | '2.35:1';
+
+export type V3VisualRequest = {
+  mode?: VisualRequestMode;
+  style?: VisualRequestStyle;
+  layout?: VisualRequestLayout;
+  palette?: VisualRequestPalette;
+  aspect?: VisualRequestAspect;
+  exportHtml?: boolean;
+};
 
 export type BillingPlanView = {
   key: BillingPlanKey;
@@ -92,15 +106,25 @@ export type V3RunResponse = {
       kind: string;
       status: 'ready' | 'generating' | 'failed';
       renderer?: 'template-svg' | 'provider-image';
+      provider?: 'codex-local-svg' | 'template-svg' | 'baoyu-imagine' | 'ollama-text';
+      model?: string;
+      skill?: string;
+      exportFormat?: 'svg' | 'html' | 'markdown' | 'zip';
       aspectRatio?: '1:1' | '16:9';
       textLayer?: 'app-rendered' | 'none';
+      width?: number;
+      height?: number;
+      checksum?: string;
       assetUrl?: string;
+      signedAssetUrl?: string;
       assetPath?: string;
       promptPath?: string;
+      specPath?: string;
       cue: string;
       reason?: string;
       error?: string;
     }>;
+    visualAssetsBundleUrl?: string | null;
     sourceArtifacts?: Array<{
       kind: 'url' | 'x' | 'youtube' | 'search';
       url?: string;
@@ -267,6 +291,7 @@ export async function runChat(input: {
   withImage: boolean;
   xAccountId?: string;
   safeMode?: boolean;
+  visualRequest?: V3VisualRequest;
 }) {
   return apiFetch<V3RunStartResponse>('/v3/chat/run', {
     method: 'POST',
@@ -278,10 +303,10 @@ export async function fetchRun(runId: string) {
   return apiFetch<V3RunResponse>(`/v3/chat/runs/${runId}`);
 }
 
-export async function retryRunVisualAssets(runId: string) {
+export async function retryRunVisualAssets(runId: string, visualRequest?: V3VisualRequest) {
   return apiFetch<V3RunResponse>(`/v3/chat/runs/${runId}/assets/retry`, {
     method: 'POST',
-    body: JSON.stringify({})
+    body: JSON.stringify({ visualRequest })
   });
 }
 

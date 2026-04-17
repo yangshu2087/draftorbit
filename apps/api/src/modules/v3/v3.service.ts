@@ -1,4 +1,5 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {
@@ -13,6 +14,7 @@ import { PrismaService } from '../../common/prisma.service';
 import { WorkspaceContextService } from '../../common/workspace-context.service';
 import { BillingService } from '../billing/billing.service';
 import { BaoyuRuntimeService } from '../generate/baoyu-runtime.service';
+import { normalizeVisualRequest, type VisualRequest } from '../generate/visual-request';
 import { buildContentQualityGate } from '../generate/content-quality-gate';
 import type { ContentFormat } from '../generate/content-strategy';
 import { GenerateService, type PackageResult } from '../generate/generate.service';
@@ -257,12 +259,6 @@ function buildStoredZip(entries: Array<{ name: string; data: Buffer }>): Buffer 
   return Buffer.concat([...localParts, ...centralParts, end]);
 }
 
-function isInsideBaoyuArtifactRoot(candidatePath: string): boolean {
-  const artifactRoot = path.resolve(process.cwd(), 'artifacts', 'baoyu-runtime');
-  const normalized = path.resolve(candidatePath);
-  return normalized === artifactRoot || normalized.startsWith(`${artifactRoot}${path.sep}`);
-}
-
 function buildRiskFlags(pkg: PackageResult | null, format: 'tweet' | 'thread' | 'article'): string[] {
   if (!pkg) return ['结果包缺失，请重新生成'];
   const flags: string[] = [];
@@ -317,6 +313,53 @@ function summarizeStepContent(step: string, content?: string): string | null {
   return content.slice(0, 100);
 }
 
+
+function base64url(value: Buffer | string): string {
+  return Buffer.from(value).toString('base64url');
+}
+
+function assetTokenSecret(secret?: string): string {
+  return secret?.trim() || process.env.ASSET_SIGNING_SECRET?.trim() || process.env.JWT_SECRET?.trim() || 'draftorbit-local-asset-secret';
+}
+
+export function buildAssetAccessToken(input: {
+  runId: string;
+  assetId: string;
+  expiresInSeconds?: number;
+  secret?: string;
+  nowMs?: number;
+}): string {
+  const now = input.nowMs ?? Date.now();
+  const exp = Math.floor(now / 1000) + (input.expiresInSeconds ?? 900);
+  const payload = base64url(JSON.stringify({ runId: input.runId, assetId: input.assetId, exp }));
+  const signature = createHmac('sha256', assetTokenSecret(input.secret)).update(payload).digest('base64url');
+  return `${payload}.${signature}`;
+}
+
+export function verifyAssetAccessToken(input: {
+  token?: string | null;
+  runId: string;
+  assetId: string;
+  secret?: string;
+  nowMs?: number;
+}): boolean {
+  if (!input.token || !input.token.includes('.')) return false;
+  const [payload, signature] = input.token.split('.', 2);
+  if (!payload || !signature) return false;
+  const expected = createHmac('sha256', assetTokenSecret(input.secret)).update(payload).digest('base64url');
+  const providedBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+  if (providedBuffer.length !== expectedBuffer.length || !timingSafeEqual(providedBuffer, expectedBuffer)) return false;
+  try {
+    const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as { runId?: string; assetId?: string; exp?: number };
+    if (decoded.runId !== input.runId || decoded.assetId !== input.assetId) return false;
+    const nowSeconds = Math.floor((input.nowMs ?? Date.now()) / 1000);
+    return typeof decoded.exp === 'number' && decoded.exp >= nowSeconds;
+  } catch {
+    return false;
+  }
+}
+
 @Injectable()
 export class V3Service {
   constructor(
@@ -330,6 +373,41 @@ export class V3Service {
     @Inject(BillingService) private readonly billing: BillingService,
     @Inject(BaoyuRuntimeService) private readonly baoyuRuntime: BaoyuRuntimeService
   ) {}
+
+
+  private buildSignedAssetPath(runId: string, assetId: string): string {
+    const token = buildAssetAccessToken({ runId, assetId });
+    return `/v3/chat/runs/${encodeURIComponent(runId)}/assets/${encodeURIComponent(assetId)}?token=${encodeURIComponent(token)}`;
+  }
+
+  private buildSignedZipPath(runId: string): string {
+    const token = buildAssetAccessToken({ runId, assetId: 'assets.zip' });
+    return `/v3/chat/runs/${encodeURIComponent(runId)}/assets.zip?token=${encodeURIComponent(token)}`;
+  }
+
+  private assertAssetToken(token: string | undefined, runId: string, assetId: string) {
+    if (!verifyAssetAccessToken({ token, runId, assetId })) {
+      throw new UnauthorizedException({ code: 'UNAUTHORIZED', message: '资产下载链接已失效，请重新打开结果页。' });
+    }
+  }
+
+  private isInsideBaoyuArtifactRoot(candidatePath: string): boolean {
+    const artifactRoot = path.resolve(this.baoyuRuntime.getArtifactsRoot());
+    const normalized = path.resolve(candidatePath);
+    return normalized === artifactRoot || normalized.startsWith(`${artifactRoot}${path.sep}`);
+  }
+
+  private attachSignedAssetUrls(pkg: PackageResult | null, runId: string): PackageResult | null {
+    if (!pkg) return null;
+    return {
+      ...pkg,
+      visualAssets: (pkg.visualAssets ?? []).map((asset) => {
+        if (!asset.id || asset.status !== 'ready') return asset;
+        const signedAssetUrl = this.buildSignedAssetPath(runId, asset.id);
+        return { ...asset, assetUrl: signedAssetUrl, signedAssetUrl };
+      })
+    };
+  }
 
   private async getWorkspaceScopedState(userId: string) {
     const workspaceId = await this.workspaceContext.getDefaultWorkspaceId(userId);
@@ -391,6 +469,7 @@ export class V3Service {
     const state = await this.getWorkspaceScopedState(userId);
     const styleSummary = extractStyleSummary(state.style?.analysisResult ?? null);
     const sourceEvidence = buildV3SourceEvidence(state.sources);
+    const visualRequest = normalizeVisualRequest(input.visualRequest as VisualRequest | null, input.format);
     const prompt = buildV3PromptEnvelope({
       intent: input.intent,
       format: input.format,
@@ -404,7 +483,8 @@ export class V3Service {
       customPrompt: prompt,
       type: generationTypeFromFormat(input.format),
       language: 'zh',
-      useStyle: true
+      useStyle: true,
+      visualRequest
     });
 
     await this.prisma.db.auditLog.create({
@@ -419,7 +499,8 @@ export class V3Service {
           format: input.format,
           withImage: input.withImage,
           xAccountId: input.xAccountId ?? null,
-          safeMode: input.safeMode ?? true
+          safeMode: input.safeMode ?? true,
+          visualRequest
         }
       }
     });
@@ -488,7 +569,8 @@ export class V3Service {
     if (!generation) throw new NotFoundException('生成任务不存在');
 
     const state = await this.getWorkspaceScopedState(userId);
-    const pkg = parsePackageResult(generation.result);
+    const rawPkg = parsePackageResult(generation.result);
+    const pkg = this.attachSignedAssetUrls(rawPkg, generation.id);
     const whySummary = pkg?.stepExplain
       ? Object.values(pkg.stepExplain).filter(Boolean).slice(0, 3)
       : [];
@@ -525,6 +607,9 @@ export class V3Service {
               : null,
             visualPlan: pkg.visualPlan ?? null,
             visualAssets: pkg.visualAssets ?? [],
+            visualAssetsBundleUrl: (pkg.visualAssets ?? []).some((asset) => asset.status === 'ready' && asset.assetPath)
+              ? this.buildSignedZipPath(generation.id)
+              : null,
             sourceArtifacts: pkg.sourceArtifacts ?? [],
             runtime: pkg.runtime ?? null,
             derivativeReadiness: pkg.derivativeReadiness ?? null,
@@ -578,7 +663,7 @@ export class V3Service {
     return this.readRunAssetFromGeneration(generation.result, assetId);
   }
 
-  async retryRunVisualAssets(userId: string, id: string) {
+  async retryRunVisualAssets(userId: string, id: string, visualOverride?: VisualRequest | null) {
     const generation = await this.prisma.db.generation.findFirst({ where: { id, userId } });
     if (!generation) throw new NotFoundException('生成任务不存在');
     const pkg = parsePackageResult(generation.result);
@@ -590,13 +675,15 @@ export class V3Service {
       pkg.imageKeywords.find((item) => item.trim()) ??
       pkg.visualPlan.visualizablePoints.find((item) => item.trim()) ??
       pkg.tweet.slice(0, 80);
+    const visualRequest = normalizeVisualRequest(visualOverride ?? (generation.visualRequest as VisualRequest | null) ?? null, format);
     const visualArtifacts = await this.baoyuRuntime.generateVisualArtifacts({
       runId: generation.id,
       format,
       focus,
       text: pkg.tweet,
       visualPlan: pkg.visualPlan,
-      withImage: true
+      withImage: true,
+      visualRequest
     });
     const refreshedGate = buildContentQualityGate({
       format,
@@ -628,19 +715,34 @@ export class V3Service {
 
     await this.prisma.db.generation.update({
       where: { id: generation.id },
-      data: { result: nextPkg as unknown as object }
+      data: { result: nextPkg as unknown as object, visualRequest }
     });
+
+    if (generation.workspaceId) {
+      await this.prisma.db.auditLog.create({
+        data: {
+          workspaceId: generation.workspaceId,
+          userId,
+          action: 'UPDATE',
+          resourceType: 'v3_run_visual_assets',
+          resourceId: generation.id,
+          payload: { visualRequest, assetCount: visualArtifacts.assets.length }
+        }
+      });
+    }
 
     return this.getRun(userId, id);
   }
 
-  async getRunAssetPublic(id: string, assetId: string) {
+  async getRunAssetPublic(id: string, assetId: string, token?: string) {
+    this.assertAssetToken(token, id, assetId);
     const generation = await this.prisma.db.generation.findFirst({ where: { id } });
     if (!generation) throw new NotFoundException('生成任务不存在');
     return this.readRunAssetFromGeneration(generation.result, assetId);
   }
 
-  async getRunAssetsZipPublic(id: string) {
+  async getRunAssetsZipPublic(id: string, token?: string) {
+    this.assertAssetToken(token, id, 'assets.zip');
     const generation = await this.prisma.db.generation.findFirst({ where: { id } });
     if (!generation) throw new NotFoundException('生成任务不存在');
     const pkg = parsePackageResult(generation.result);
@@ -649,14 +751,21 @@ export class V3Service {
 
     for (const asset of readyAssets) {
       const normalized = path.resolve(asset.assetPath!);
-      if (!isInsideBaoyuArtifactRoot(normalized)) continue;
+      if (!this.isInsideBaoyuArtifactRoot(normalized)) continue;
       const data = await fs.readFile(normalized);
-      const ext = path.extname(normalized) || '.svg';
-      entries.push({ name: `${asset.id || path.basename(normalized, ext)}${ext}`, data });
+      const ext = path.extname(normalized) || (asset.exportFormat === 'markdown' ? '.md' : asset.exportFormat === 'html' ? '.html' : '.svg');
+      const folder = asset.exportFormat === 'html' || asset.exportFormat === 'markdown' ? 'exports' : 'images';
+      entries.push({ name: `${folder}/${asset.id || path.basename(normalized, ext)}${ext}`, data });
       if (asset.promptPath) {
         const promptPath = path.resolve(asset.promptPath);
-        if (isInsideBaoyuArtifactRoot(promptPath)) {
+        if (this.isInsideBaoyuArtifactRoot(promptPath)) {
           entries.push({ name: `prompts/${asset.id || path.basename(promptPath, path.extname(promptPath))}.md`, data: await fs.readFile(promptPath) });
+        }
+      }
+      if (asset.specPath) {
+        const specPath = path.resolve(asset.specPath);
+        if (this.isInsideBaoyuArtifactRoot(specPath)) {
+          entries.push({ name: `specs/${asset.id || path.basename(specPath, path.extname(specPath))}.json`, data: await fs.readFile(specPath) });
         }
       }
     }
@@ -664,12 +773,24 @@ export class V3Service {
     for (const sourceArtifact of pkg?.sourceArtifacts ?? []) {
       if (sourceArtifact.status !== 'ready' || !sourceArtifact.markdownPath) continue;
       const markdownPath = path.resolve(sourceArtifact.markdownPath);
-      if (!isInsideBaoyuArtifactRoot(markdownPath)) continue;
+      if (!this.isInsideBaoyuArtifactRoot(markdownPath)) continue;
       const slug = `${sourceArtifact.kind}-${path.basename(markdownPath, path.extname(markdownPath)) || 'source'}.md`;
       entries.push({ name: `sources/${slug}`, data: await fs.readFile(markdownPath) });
     }
 
     if (entries.length === 0) throw new NotFoundException('没有可下载的视觉资产');
+    if (generation.workspaceId) {
+      await this.prisma.db.auditLog.create({
+        data: {
+          workspaceId: generation.workspaceId,
+          userId: generation.userId,
+          action: 'SYNC',
+          resourceType: 'v3_run_assets_zip',
+          resourceId: id,
+          payload: { entryCount: entries.length }
+        }
+      }).catch(() => undefined);
+    }
     return { data: buildStoredZip(entries), contentType: 'application/zip', filename: `${id}-visual-assets.zip` };
   }
 
@@ -679,7 +800,7 @@ export class V3Service {
     if (!asset?.assetPath) throw new NotFoundException('视觉资产不存在或尚未生成');
 
     const normalized = path.resolve(asset.assetPath);
-    if (!normalized.includes(`${path.sep}artifacts${path.sep}baoyu-runtime${path.sep}`)) {
+    if (!this.isInsideBaoyuArtifactRoot(normalized)) {
       throw new NotFoundException('视觉资产路径无效');
     }
 
@@ -692,8 +813,13 @@ export class V3Service {
           ? 'image/webp'
           : ext === '.svg'
             ? 'image/svg+xml'
-            : 'image/png';
-    return { data, contentType };
+            : ext === '.html'
+              ? 'text/html; charset=utf-8'
+              : ext === '.md'
+                ? 'text/markdown; charset=utf-8'
+                : 'application/octet-stream';
+    const filename = `${asset.id}${ext || ''}`;
+    return { data, contentType, filename };
   }
 
   async connectSelfX(userId: string) {

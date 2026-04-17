@@ -216,11 +216,12 @@ function detectVisualAssetHardFails(input: {
 
   const hardFails = new Set<string>();
   const readyAssets = assets.filter((asset) => asset.status === 'ready');
-  const readyCards = readyAssets.filter((asset) => asset.kind === 'cards');
-  const readyCover = readyAssets.some((asset) => asset.kind === 'cover');
-  const readySummary = readyAssets.some((asset) => asset.kind === 'infographic' || asset.kind === 'illustration');
+  const readyVisualAssets = readyAssets.filter((asset) => (asset.exportFormat ?? 'svg') === 'svg');
+  const readyCards = readyVisualAssets.filter((asset) => asset.kind === 'cards');
+  const readyCover = readyVisualAssets.some((asset) => asset.kind === 'cover');
+  const readySummary = readyVisualAssets.some((asset) => asset.kind === 'infographic' || asset.kind === 'illustration' || asset.kind === 'diagram');
 
-  if (input.requireVisualAssets && readyAssets.length === 0) hardFails.add('visual_asset_missing');
+  if (input.requireVisualAssets && readyVisualAssets.length === 0) hardFails.add('visual_asset_missing');
   if (input.format === 'thread' && input.requireVisualAssets && readyCards.length < 1) hardFails.add('thread_visual_cards_missing');
   if (input.format === 'article' && input.requireVisualAssets && (!readyCover || !readySummary)) hardFails.add('article_visual_summary_missing');
 
@@ -228,6 +229,7 @@ function detectVisualAssetHardFails(input: {
     const joined = [asset.assetUrl, asset.assetPath, asset.providerArtifactPath, asset.promptPath].filter(Boolean).join(' ');
     if (/placeholder|mock/iu.test(joined)) hardFails.add('visual_asset_placeholder');
     if (asset.cue && hasPromptWrapperCue(asset.cue)) hardFails.add('visual_asset_prompt_leakage');
+    if ((asset.exportFormat ?? 'svg') !== 'svg') continue;
     if (asset.renderer === 'provider-image' && asset.textLayer !== 'none') hardFails.add('visual_asset_text_layer_mismatch');
     if (asset.renderer === 'template-svg' && asset.textLayer !== 'app-rendered') hardFails.add('visual_asset_text_layer_mismatch');
   }

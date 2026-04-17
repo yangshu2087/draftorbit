@@ -88,7 +88,7 @@ test('BaoyuRuntimeService builds pinned skill commands with npx bun fallback', (
 
 
 test('BaoyuRuntimeService is pinned to the audited upstream baoyu-skills main revision', () => {
-  assert.equal(BAOYU_SKILLS_COMMIT, 'dcd0f81433490d85f72a0eae557a710ab34bc9b1');
+  assert.equal(BAOYU_SKILLS_COMMIT, '9977ff520c49ea0888d8d43d582973c6e8c1d55a');
 
   const ensureScript = fs.readFileSync(path.join(repoRoot, 'scripts', 'ensure-baoyu-skills-runtime.mjs'), 'utf8');
   assert.match(ensureScript, new RegExp(`const commit = '${BAOYU_SKILLS_COMMIT}'`));
@@ -136,6 +136,8 @@ test('BaoyuRuntimeService prepares baoyu-style prompt files and image batch with
   assert.equal(prepared.assets.length, 2);
   assert.equal(prepared.assets[0]?.status, 'generating');
   assert.ok(prepared.assets.every((asset) => asset.promptPath && fs.existsSync(asset.promptPath)));
+  assert.ok(prepared.assets.every((asset) => asset.specPath && fs.existsSync(asset.specPath)));
+  assert.ok(prepared.assets.every((asset) => asset.exportFormat === 'svg'));
   assert.ok(fs.existsSync(prepared.batchFilePath));
 
   const firstPrompt = fs.readFileSync(prepared.assets[0]!.promptPath!, 'utf8');
@@ -156,6 +158,9 @@ test('BaoyuRuntimeService prepares baoyu-style prompt files and image batch with
   assert.match(batch.tasks[0]?.image ?? '', /01-cover\.provider\.png$/u);
   assert.match(prepared.assets[0]?.assetPath ?? '', /01-cover\.svg$/u);
   assert.match(prepared.assets[0]?.providerArtifactPath ?? '', /01-cover\.provider\.png$/u);
+  const spec = JSON.parse(fs.readFileSync(prepared.assets[0]!.specPath!, 'utf8')) as Record<string, unknown>;
+  assert.equal(spec.kind, 'cover');
+  assert.equal(spec.provider, 'template-svg');
 });
 
 test('BaoyuRuntimeService renders crisp deterministic svg assets after provider artifact succeeds', async () => {
@@ -189,4 +194,38 @@ test('BaoyuRuntimeService renders crisp deterministic svg assets after provider 
   assert.match(svg, /<svg/u);
   assert.match(svg, /AI 产品新功能上线|周一谁都在等灵感/u);
   assert.doesNotMatch(svg, /prompt-wrapper|更像真人/u);
+});
+
+
+
+test('BaoyuRuntimeService produces local SVG assets without requiring external raster provider keys', async () => {
+  const artifactsRoot = makeTempDir();
+  const service = new BaoyuRuntimeService({
+    skillsDir: '/repo/vendor/baoyu-skills-does-not-exist',
+    artifactsRoot,
+    imageProvider: 'openrouter',
+    imageModel: 'black-forest-labs/flux.2-pro'
+  });
+
+  const result = await service.generateVisualArtifacts({
+    runId: 'run_local_svg',
+    format: 'thread',
+    focus: 'AI 产品新功能上线',
+    text: [
+      '1/4\n一次 AI 功能上线最怕的，不是信息不够，而是第一条就写成功能清单。',
+      '2/4\n这次上线别先列六个新功能，只讲“昨晚录一段语音，今天早上它已经帮你整理好跟进清单”这种使用场景。',
+      '3/4\n我会只保留一个动作：把功能清单改成“录音→跟进清单”的使用场景。',
+      '4/4\n如果这次上线只能先讲一个场景，你会先讲哪一个？'
+    ].join('\n\n'),
+    visualPlan: makeVisualPlan(),
+    withImage: true
+  });
+
+  assert.equal(result.assets.every((asset) => asset.status === 'ready'), true);
+  assert.equal(result.assets.every((asset) => asset.provider === 'template-svg'), true);
+  assert.equal(result.assets.every((asset) => asset.exportFormat === 'svg'), true);
+  assert.ok(result.assets.every((asset) => asset.checksum && asset.checksum.length >= 16));
+  assert.ok(result.assets.every((asset) => asset.width && asset.height));
+  assert.ok(result.assets.every((asset) => asset.specPath && fs.existsSync(asset.specPath)));
+  assert.match(fs.readFileSync(result.assets[0]!.assetPath!, 'utf8'), /<svg/u);
 });

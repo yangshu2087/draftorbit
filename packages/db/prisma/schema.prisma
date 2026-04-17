@@ -123,6 +123,8 @@ enum ProviderType {
   OPENAI
   ANTHROPIC
   GEMINI
+  CODEX_LOCAL
+  OLLAMA
   MOCK
 }
 
@@ -634,6 +636,7 @@ model Generation {
   style       String?
   status      GenerationStatus @default(RUNNING)
   result      Json?
+  visualRequest Json?
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 

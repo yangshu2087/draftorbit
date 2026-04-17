@@ -8,6 +8,7 @@ import {
   type RoutingTier,
   resolveOpenRouterRoutingProfile
 } from './openrouter.service';
+import { CodexLocalService } from './codex-local.service';
 
 export type ModelProviderKey = 'openai' | 'openrouter' | 'ollama' | 'codex-local';
 export type ModelRoutingProfile = 'local_free' | 'local_quality' | 'test_high' | 'prod_balanced';
@@ -151,11 +152,11 @@ export function buildModelGatewayCandidatePool(input: ModelGatewayCandidatePoolI
   }
 
   if (input.profile === 'local_quality') {
+    addModels(candidates, 'codex-local', ['codex-local'], highTier, input.codexLocalEnabled);
     addModels(candidates, 'openai', input.openaiHighModels, highTier, input.openaiAvailable);
     addModels(candidates, 'openrouter', input.openrouterHighModels, highTier);
     addModels(candidates, 'openai', input.openaiFloorModels, 'floor', input.openaiAvailable);
     addModels(candidates, 'openrouter', input.openrouterFloorModels, 'floor');
-    addModels(candidates, 'codex-local', ['codex-local'], highTier, input.codexLocalEnabled);
     addModels(candidates, 'ollama', input.ollamaModels, 'free_first');
     addModels(candidates, 'openrouter', input.openrouterFreeModels, 'free_first');
     return dedupeCandidates(candidates);
@@ -175,7 +176,8 @@ export function isInvalidTestHighEvidenceModel(input: { modelUsed?: string | nul
   const model = String(input.modelUsed ?? '').trim();
   const provider = String(input.provider ?? '').trim().toLowerCase();
   if (!model) return true;
-  if (provider === 'ollama' || provider === 'codex-local') return true;
+  if (provider === 'ollama') return true;
+  if (provider === 'codex-local') return process.env.CODEX_LOCAL_ALLOW_QUALITY_EVIDENCE !== '1';
   if (/draftorbit\/heuristic|openrouter\/free|mock\/|^ollama\//iu.test(model)) return true;
   return false;
 }
@@ -223,7 +225,10 @@ function buildOpenAiInput(messages: ChatMessage[]): { instructions?: string; inp
 
 @Injectable()
 export class ModelGatewayService {
-  constructor(private readonly openRouter: OpenRouterService) {}
+  constructor(
+    private readonly openRouter: OpenRouterService,
+    private readonly codexLocal: CodexLocalService = new CodexLocalService()
+  ) {}
 
   private get profile(): ModelRoutingProfile {
     return resolveModelRoutingProfile();
@@ -285,6 +290,7 @@ export class ModelGatewayService {
     const explicit = options.maxCandidates ?? parsePositiveInt(process.env.MODEL_GATEWAY_MAX_CANDIDATES);
     if (explicit) return Math.max(1, Math.min(candidateCount, explicit));
     if (this.profile === 'test_high') return Math.max(1, candidateCount);
+    if (this.profile === 'local_quality') return Math.max(1, Math.min(candidateCount, 6));
     if (this.profile === 'prod_balanced') return Math.max(1, Math.min(candidateCount, 4));
     return Math.max(1, Math.min(candidateCount, 3));
   }
@@ -349,7 +355,11 @@ export class ModelGatewayService {
       return await this.chatWithOllama(candidate, messages, options);
     }
 
-    throw new Error('codex-local model adapter is disabled for API runtime');
+    if (candidate.provider === 'codex-local') {
+      return await this.codexLocal.chatWithRouting(messages, options);
+    }
+
+    throw new Error(`Unsupported model provider: ${candidate.provider}`);
   }
 
   private async chatWithOpenAi(

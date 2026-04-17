@@ -10,8 +10,43 @@ import {
   Max,
   Min,
   MinLength,
-  IsInt
+  IsInt,
+  ValidateNested
 } from 'class-validator';
+import {
+  VISUAL_REQUEST_ASPECTS,
+  VISUAL_REQUEST_LAYOUTS,
+  VISUAL_REQUEST_MODES,
+  VISUAL_REQUEST_PALETTES,
+  VISUAL_REQUEST_STYLES
+} from '../generate/visual-request';
+
+
+export class V3VisualRequestDto {
+  @IsOptional()
+  @IsIn(VISUAL_REQUEST_MODES)
+  mode?: typeof VISUAL_REQUEST_MODES[number];
+
+  @IsOptional()
+  @IsIn(VISUAL_REQUEST_STYLES)
+  style?: typeof VISUAL_REQUEST_STYLES[number];
+
+  @IsOptional()
+  @IsIn(VISUAL_REQUEST_LAYOUTS)
+  layout?: typeof VISUAL_REQUEST_LAYOUTS[number];
+
+  @IsOptional()
+  @IsIn(VISUAL_REQUEST_PALETTES)
+  palette?: typeof VISUAL_REQUEST_PALETTES[number];
+
+  @IsOptional()
+  @IsIn(VISUAL_REQUEST_ASPECTS)
+  aspect?: typeof VISUAL_REQUEST_ASPECTS[number];
+
+  @IsOptional()
+  @IsBoolean()
+  exportHtml?: boolean;
+}
 
 export class V3RunChatDto {
   @IsString()
@@ -31,6 +66,12 @@ export class V3RunChatDto {
   @IsOptional()
   @IsBoolean()
   safeMode?: boolean;
+
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => V3VisualRequestDto)
+  visualRequest?: V3VisualRequestDto;
 }
 
 export class V3ConnectTargetDto {
@@ -74,6 +115,12 @@ export class V3PublishPrepareDto {
   @IsOptional()
   @IsBoolean()
   safeMode?: boolean;
+
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => V3VisualRequestDto)
+  visualRequest?: V3VisualRequestDto;
 }
 
 export class V3PublishConfirmDto {
@@ -88,6 +135,12 @@ export class V3PublishConfirmDto {
   @IsOptional()
   @IsBoolean()
   safeMode?: boolean;
+
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => V3VisualRequestDto)
+  visualRequest?: V3VisualRequestDto;
 }
 
 export class V3PublishArticleCompleteDto {

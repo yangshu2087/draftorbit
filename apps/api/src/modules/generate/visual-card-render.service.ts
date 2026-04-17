@@ -13,6 +13,8 @@ export type VisualAssetRenderMetadata = {
   renderer: VisualAssetRenderer;
   textLayer: VisualAssetTextLayer;
   aspectRatio: VisualAssetAspectRatio;
+  width: number;
+  height: number;
 };
 
 export type VisualAssetRenderDiagnostics = {
@@ -142,13 +144,19 @@ function titleFromCue(cue: string, fallback: string): string {
   return cleaned || fallback;
 }
 
+function dimensionsForAspect(aspectRatio: VisualAssetAspectRatio): { width: number; height: number } {
+  return aspectRatio === '16:9' ? { width: 1600, height: 900 } : { width: 1200, height: 1200 };
+}
+
 function withDiagnostics(svg: string, blocks: Array<{ overflow: boolean; lineCount: number }>, aspectRatio: VisualAssetAspectRatio): VisualCardRenderResult {
+  const dimensions = dimensionsForAspect(aspectRatio);
   return {
     svg,
     metadata: {
       renderer: 'template-svg',
       textLayer: 'app-rendered',
-      aspectRatio
+      aspectRatio,
+      ...dimensions
     },
     diagnostics: {
       overflow: blocks.some((block) => block.overflow),
@@ -345,6 +353,82 @@ function renderIllustrationSvg(input: { cue: string; fallback: string; format: C
 </svg>`, [title], isArticle ? '16:9' : '1:1');
 }
 
+
+function renderDiagramSvg(input: { cue: string; text: string; fallback: string; format: ContentFormat }): VisualCardRenderResult {
+  const width = 1600;
+  const height = 900;
+  const cleanedCue = titleFromCue(input.cue, input.fallback);
+  const steps = cleanedCue
+    .split(/(?:→|->|=>|，|,|、|;|；)/u)
+    .map((item) => cleanCardText(item))
+    .filter(Boolean)
+    .slice(0, 5);
+  const finalSteps = steps.length >= 3 ? steps : ['来源抓取', '判断提炼', '卡片化', '人工确认'];
+  const blocks: Array<{ overflow: boolean; lineCount: number }> = [];
+  const title = svgTextBlock({
+    text: cleanedCue,
+    x: 92,
+    y: 168,
+    maxUnits: 30,
+    maxLines: 2,
+    size: 50,
+    lineHeight: 62,
+    fill: '#0F172A',
+    weight: 900,
+    truncate: true
+  });
+  blocks.push(title);
+  const nodeWidth = 230;
+  const gap = (width - 184 - nodeWidth * finalSteps.length) / Math.max(1, finalSteps.length - 1);
+  const nodes = finalSteps.map((step, index) => {
+    const x = 92 + index * (nodeWidth + gap);
+    const y = 420;
+    const label = svgTextBlock({
+      text: step,
+      x: x + 28,
+      y: y + 118,
+      maxUnits: 8,
+      maxLines: 3,
+      size: 30,
+      lineHeight: 42,
+      fill: '#0F172A',
+      weight: 850,
+      truncate: true
+    });
+    blocks.push(label);
+    const arrow = index < finalSteps.length - 1
+      ? `<path d="M ${x + nodeWidth + 18} ${y + 112} H ${x + nodeWidth + gap - 28}" stroke="#22C55E" stroke-width="12" stroke-linecap="round"/><path d="M ${x + nodeWidth + gap - 28} ${y + 112} l -30 -18 v 36 z" fill="#22C55E"/>`
+      : '';
+    return `
+      <g>
+        <rect x="${x}" y="${y}" width="${nodeWidth}" height="224" rx="38" fill="#FFFFFF" stroke="#BAE6FD" stroke-width="4"/>
+        <circle cx="${x + 58}" cy="${y + 58}" r="30" fill="#0F172A"/>
+        <text x="${x + 58}" y="${y + 70}" text-anchor="middle" font-size="28" font-weight="900" fill="#FFFFFF">${index + 1}</text>
+        ${label.svg}
+      </g>
+      ${arrow}`;
+  }).join('\n');
+  return withDiagnostics(`<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  ${SVG_FONT_STYLE}
+  <defs>
+    <linearGradient id="diagramBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#EFF6FF"/>
+      <stop offset="50%" stop-color="#F8FAFC"/>
+      <stop offset="100%" stop-color="#ECFDF5"/>
+    </linearGradient>
+  </defs>
+  <rect width="${width}" height="${height}" fill="url(#diagramBg)"/>
+  <circle cx="1400" cy="160" r="220" fill="#93C5FD" opacity="0.24"/>
+  <circle cx="120" cy="820" r="260" fill="#86EFAC" opacity="0.25"/>
+  <text x="92" y="96" font-size="30" font-weight="900" fill="#16A34A">DraftOrbit · diagram</text>
+  ${title.svg}
+  ${nodes}
+  <rect x="92" y="748" width="480" height="18" rx="9" fill="#22C55E" opacity="0.9"/>
+  <rect x="92" y="786" width="760" height="18" rx="9" fill="#93C5FD" opacity="0.85"/>
+</svg>`, blocks, '16:9');
+}
+
 @Injectable()
 export class VisualCardRenderService {
   render(input: {
@@ -355,6 +439,7 @@ export class VisualCardRenderService {
   }): VisualCardRenderResult {
     const cue = safeCue(input.item.cue, input.focus);
     if (input.item.kind === 'cards') return renderThreadCardsSvg({ cue, text: input.text, fallback: input.focus });
+    if (input.item.kind === 'diagram') return renderDiagramSvg({ cue, text: input.text, fallback: input.focus, format: input.format });
     if (input.item.kind === 'infographic') return renderInfographicSvg({ cue, text: input.text, fallback: input.focus, format: input.format });
     if (input.item.kind === 'illustration') return renderIllustrationSvg({ cue, fallback: input.focus, format: input.format });
     return renderCoverSvg({ cue, fallback: input.focus, format: input.format });

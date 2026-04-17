@@ -12,10 +12,10 @@ import {
 } from '../../../scripts/ordinary-user-baoyu-sync';
 
 test('ordinary-user baoyu sync suite covers tweet thread and article with the real regression prompt', () => {
-  assert.equal(ORDINARY_USER_BAOYU_SYNC_CASES.length, 6);
+  assert.equal(ORDINARY_USER_BAOYU_SYNC_CASES.length, 7);
   assert.deepEqual(
     ORDINARY_USER_BAOYU_SYNC_CASES.map((item) => item.format),
-    ['tweet', 'thread', 'article', 'article', 'article', 'article']
+    ['tweet', 'thread', 'article', 'article', 'tweet', 'article', 'article']
   );
   assert.ok(
     ORDINARY_USER_BAOYU_SYNC_CASES.some((item) =>
@@ -25,6 +25,7 @@ test('ordinary-user baoyu sync suite covers tweet thread and article with the re
   assert.ok(ORDINARY_USER_BAOYU_SYNC_CASES.some((item) => item.id === 'latest-hermes-source' && item.sourceExpectation === 'ready_or_blocked'));
   assert.ok(ORDINARY_USER_BAOYU_SYNC_CASES.some((item) => item.id === 'latest-hermes-agent-url-source' && item.sourceExpectation === 'ready'));
   assert.ok(ORDINARY_USER_BAOYU_SYNC_CASES.some((item) => item.id === 'article-generic-scaffold-gate' && item.acceptQualityBlocked));
+  assert.ok(ORDINARY_USER_BAOYU_SYNC_CASES.some((item) => item.id === 'diagram-process-prompt' && item.visualMode === 'diagram'));
 });
 
 test('baoyu ordinary-user report matrix covers product-relevant skills and blocks real X publishing', () => {
@@ -40,11 +41,16 @@ test('baoyu ordinary-user report matrix covers product-relevant skills and block
       'baoyu-cover-image',
       'baoyu-infographic',
       'baoyu-article-illustrator',
+      'baoyu-diagram',
       'baoyu-compress-image',
       'baoyu-markdown-to-html',
       'baoyu-post-to-x'
     ]
   );
+  const imageGen = BAOYU_PRODUCT_SKILL_MATRIX.find((item) => item.skill === 'baoyu-image-gen');
+  assert.match(imageGen?.gapOrReason ?? '', /deprecated|baoyu-imagine|migrated/iu);
+  const markdownToHtml = BAOYU_PRODUCT_SKILL_MATRIX.find((item) => item.skill === 'baoyu-markdown-to-html');
+  assert.equal(markdownToHtml?.status, 'runtime_integrated');
   const xPublish = BAOYU_PRODUCT_SKILL_MATRIX.find((item) => item.skill === 'baoyu-post-to-x');
   assert.equal(xPublish?.status, 'blocked_external_action');
   assert.match(xPublish?.draftOrbitUsage ?? '', /prepare|manual|blocked|沙箱|阻断/iu);

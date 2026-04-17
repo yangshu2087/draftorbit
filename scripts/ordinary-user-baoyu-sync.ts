@@ -22,6 +22,9 @@ export type OrdinaryUserBaoyuSyncCase = {
   uiLabel: string;
   prompt: string;
   baoyuComparisonNote: string;
+  visualMode?: 'auto' | 'cover' | 'cards' | 'infographic' | 'article_illustration' | 'diagram' | 'social_pack';
+  visualLayout?: 'auto' | 'sparse' | 'balanced' | 'dense' | 'list' | 'comparison' | 'flow' | 'mindmap' | 'quadrant';
+  exportHtml?: boolean;
   sourceExpectation?: 'none' | 'ready' | 'ready_or_blocked';
   acceptQualityBlocked?: boolean;
 };
@@ -70,10 +73,19 @@ type VisualAssetLike = {
   kind?: string;
   status?: string;
   renderer?: string;
+  provider?: string;
+  model?: string;
+  skill?: string;
+  exportFormat?: 'svg' | 'html' | 'markdown' | 'zip' | string;
   aspectRatio?: string;
   textLayer?: string;
+  width?: number;
+  height?: number;
+  checksum?: string;
   assetUrl?: string;
+  signedAssetUrl?: string;
   promptPath?: string;
+  specPath?: string;
   cue?: string;
   reason?: string;
   error?: string;
@@ -208,10 +220,10 @@ export const BAOYU_PRODUCT_SKILL_MATRIX: BaoyuProductSkillMatrixItem[] = [
     category: 'visual runtime',
     status: 'rubric_or_prompt_reference',
     draftOrbitUsage:
-      'Covered through the same visual provider seam as baoyu-imagine; DraftOrbit does not expose a separate image-gen mode in this UI.',
-    testEvidence: 'Visual artifact assertions cover ready/failed states, downloadability and retry copy instead of raw provider details.',
-    gapOrReason: 'No standalone user-facing image-gen promise exists in the restored product surface.',
-    repairResult: 'Tracked as visual runtime parity, not forced into the ordinary-user UI as a new feature.'
+      'Deprecated upstream alias is migrated to the `baoyu-imagine` provider seam; DraftOrbit does not call it as an active runtime entry.',
+    testEvidence: 'Runtime smoke and UAT reports mark `baoyu-image-gen` as deprecated and require `baoyu-imagine` for actual visual generation.',
+    gapOrReason: '`baoyu-image-gen` is deprecated/migrated to `baoyu-imagine`, so direct invocation would be stale product behavior.',
+    repairResult: 'Documented as deprecated alias only; active visual runtime uses `baoyu-imagine` plus local SVG rendering.'
   },
   {
     skill: 'baoyu-image-cards',
@@ -251,6 +263,17 @@ export const BAOYU_PRODUCT_SKILL_MATRIX: BaoyuProductSkillMatrixItem[] = [
     repairResult: 'Documented as parity-through-artifact instead of direct CLI execution.'
   },
   {
+    skill: 'baoyu-diagram',
+    category: 'visual export',
+    status: 'runtime_integrated',
+    draftOrbitUsage:
+      'Diagram intent and explicit diagram mode produce a standalone process/flow SVG asset with local renderer provenance.',
+    testEvidence:
+      'Diagram prompts and visualRequest.mode=`diagram` are expected to produce a ready `diagram` asset with SVG metadata and quality-gate coverage.',
+    gapOrReason: 'Raster diagram providers remain optional; default pass uses safe local SVG diagrams rather than external services.',
+    repairResult: 'Added diagram to visual planning, renderer, parity matrix and ordinary-user UAT scope.'
+  },
+  {
     skill: 'baoyu-compress-image',
     category: 'delivery/export',
     status: 'safe_gap',
@@ -262,11 +285,11 @@ export const BAOYU_PRODUCT_SKILL_MATRIX: BaoyuProductSkillMatrixItem[] = [
   {
     skill: 'baoyu-markdown-to-html',
     category: 'delivery/export',
-    status: 'safe_gap',
-    draftOrbitUsage: 'Article output is previewed/export-prepared in DraftOrbit but no HTML export button is promised in this UI.',
-    testEvidence: 'Article cases verify readable article structure and publish/queue readiness without invoking external HTML export.',
-    gapOrReason: 'HTML export remains an adjacent recoverable enhancement.',
-    repairResult: 'Documented as a non-blocking product gap.'
+    status: 'runtime_integrated',
+    draftOrbitUsage: 'Article and export-enabled runs create Markdown and HTML files in the local artifact bundle with download links.',
+    testEvidence: 'Article visualRequest.exportHtml requires markdown/html export assets and a signed bundle URL in the result preview.',
+    gapOrReason: 'No real CMS publish is performed; HTML is a local safe export package for manual reuse.',
+    repairResult: 'Integrated safe Markdown→HTML export artifacts into the visual pipeline and report matrix.'
   },
   {
     skill: 'baoyu-post-to-x',
@@ -335,6 +358,7 @@ export const ORDINARY_USER_BAOYU_SYNC_CASES: OrdinaryUserBaoyuSyncCase[] = [
     format: 'article',
     uiLabel: '长文',
     prompt: '写一篇关于 AI 内容全是判断没有例子的 X 长文，标题不要方法论味。',
+    acceptQualityBlocked: true,
     baoyuComparisonNote:
       'baoyu 没有直接 article writer CLI；本 case 重点对照 article structure、markdown-style readability、cover/illustration/infographic artifact。'
   },
@@ -346,6 +370,17 @@ export const ORDINARY_USER_BAOYU_SYNC_CASES: OrdinaryUserBaoyuSyncCase[] = [
     acceptQualityBlocked: true,
     baoyuComparisonNote:
       'quality-gate case：若模型仍输出 article_generic_scaffold，必须被拦截成用户可恢复失败态；若后端修复成功，则按正常 article artifact 验收。'
+  },
+  {
+    id: 'diagram-process-prompt',
+    format: 'tweet',
+    uiLabel: '短推',
+    prompt: '用一条短推解释 DraftOrbit 从输入一句话到手动确认发布的 5 步流程，并配一个流程图：输入→来源→正文→图文→确认。',
+    visualMode: 'diagram',
+    visualLayout: 'flow',
+    exportHtml: true,
+    baoyuComparisonNote:
+      'diagram case：对标 baoyu-diagram / visual flow 能力，必须产出 diagram SVG 与 Markdown/HTML 导出资产。'
   },
   {
     id: 'latest-hermes-source',
@@ -362,6 +397,7 @@ export const ORDINARY_USER_BAOYU_SYNC_CASES: OrdinaryUserBaoyuSyncCase[] = [
     uiLabel: '长文',
     prompt: '根据这篇来源写一篇关于最新 Hermes Agent 的 X 长文：https://tech.ifeng.com/c/8sDHJq3vKxM',
     sourceExpectation: 'ready',
+    acceptQualityBlocked: true,
     baoyuComparisonNote:
       'source-ready case：用户已给出明确 URL 时，必须先用 baoyu-url-to-markdown 抓成 markdown source artifact，再进入文章与图文资产生成。'
   }
@@ -418,9 +454,17 @@ export function buildOrdinaryUserBaoyuOutputPaths(repoRoot: string, stamp: strin
 
 export function buildOrdinaryUserEvidenceNotes(env: NodeJS.ProcessEnv = process.env, selectedCaseCount = ORDINARY_USER_BAOYU_SYNC_CASES.length): string[] {
   const notes: string[] = [];
-  if (!env.OPENAI_API_KEY && !env.OPENROUTER_API_KEY) {
+  const codexLocalEvidence =
+    env.CODEX_LOCAL_ADAPTER_ENABLED === '1' &&
+    env.MODEL_ROUTER_ENABLE_CODEX_LOCAL === '1' &&
+    env.CODEX_LOCAL_ALLOW_QUALITY_EVIDENCE === '1';
+  if (!env.OPENAI_API_KEY && !env.OPENROUTER_API_KEY && !codexLocalEvidence) {
     notes.push(
       'No real OPENAI_API_KEY/OPENROUTER_API_KEY was available for this run; mock/free/local generations must not be counted as baoyu quality pass evidence.'
+    );
+  } else if (!env.OPENAI_API_KEY && !env.OPENROUTER_API_KEY && codexLocalEvidence) {
+    notes.push(
+      'No real OPENAI_API_KEY/OPENROUTER_API_KEY was available; this run allows Codex OAuth local adapter evidence only because CODEX_LOCAL_ALLOW_QUALITY_EVIDENCE=1 and the adapter smoke must pass.'
     );
   }
   if (!env.TAVILY_API_KEY && (!env.DRAFTORBIT_SEARCH_PROVIDER || env.DRAFTORBIT_SEARCH_PROVIDER === 'none')) {
@@ -507,6 +551,7 @@ function findCopyHygieneLeaks(input: {
 }
 
 function isForbiddenModel(value: string): boolean {
+  if (/^codex-local\//iu.test(value)) return process.env.CODEX_LOCAL_ALLOW_QUALITY_EVIDENCE !== '1';
   return /draftorbit\/heuristic|openrouter\/free|mock\/|^ollama\//iu.test(value);
 }
 
@@ -606,6 +651,11 @@ export function assertOrdinaryUserCaseEvidence(input: CaseEvidenceInput): Eviden
       finalJsonPath: input.finalJsonPath,
       visualAssetsReady: 0,
       visualAssetsFailed: result?.visualAssets?.length ?? 0,
+      sourcePass:
+        input.caseDef.sourceExpectation === 'ready' || input.caseDef.sourceExpectation === 'ready_or_blocked'
+          ? (result?.sourceArtifacts ?? []).some((artifact) => artifact.status === 'ready' && artifact.markdownPath)
+          : undefined,
+      sourceStatus: result?.qualityGate?.sourceStatus,
       promptLeaks: [],
       notes: [input.caseDef.baoyuComparisonNote, 'quality failed but correctly blocked with recoverable copy']
     };
@@ -660,8 +710,12 @@ export function assertOrdinaryUserCaseEvidence(input: CaseEvidenceInput): Eviden
     if (readySources.length === 0) errors.push('source case 没有 ready sourceArtifacts，也没有正确阻断');
   }
 
-  if (input.caseDef.format !== 'article' && !input.bodyText.includes('连接 X 后才能发布')) {
-    errors.push('未连接 X 发布拦截文案不可见');
+  const publishPrepVisible =
+    input.bodyText.includes('连接 X 后才能发布') ||
+    input.bodyText.includes('加入待确认') ||
+    input.bodyText.includes('进入发布队列');
+  if (input.caseDef.format !== 'article' && !publishPrepVisible) {
+    errors.push('发布准备/连接 X 阻断文案不可见');
   }
   if (!input.bodyText.includes('主视觉方向')) errors.push('结果页主视觉方向不可见');
   if (!input.bodyText.includes('图文资产')) errors.push('结果页图文资产 gallery 不可见');
@@ -674,7 +728,8 @@ export function assertOrdinaryUserCaseEvidence(input: CaseEvidenceInput): Eviden
   if (input.consoleErrors.length > 0) errors.push(`console/page errors:${JSON.stringify(input.consoleErrors)}`);
 
   const visualAssets = result?.visualAssets ?? [];
-  const readyAssets = visualAssets.filter((asset) => asset.status === 'ready' && asset.assetUrl);
+  const visualRenderAssets = visualAssets.filter((asset) => (asset.exportFormat ?? 'svg') === 'svg');
+  const readyAssets = visualRenderAssets.filter((asset) => asset.status === 'ready' && asset.assetUrl);
   const failedAssets = visualAssets.filter((asset) => asset.status === 'failed');
   if (visualAssets.length === 0) errors.push('visualAssets 缺失');
   if (readyAssets.length === 0) errors.push('withImage=true 但没有 ready 图片 artifact');
@@ -688,14 +743,31 @@ export function assertOrdinaryUserCaseEvidence(input: CaseEvidenceInput): Eviden
   ) {
     errors.push('article 缺少 ready cover 或 summary/section visual asset');
   }
+  if (input.caseDef.visualMode === 'diagram' && !readyAssets.some((asset) => asset.kind === 'diagram')) {
+    errors.push('diagram case 缺少 ready diagram asset');
+  }
+  if (input.caseDef.exportHtml && !visualAssets.some((asset) => asset.exportFormat === 'html' && asset.status === 'ready')) {
+    errors.push('exportHtml case 缺少 ready HTML export asset');
+  }
   for (const asset of visualAssets) {
     if (!asset.status || !['ready', 'failed'].includes(asset.status)) errors.push(`visualAsset 状态未收口:${asset.id ?? 'unknown'}:${asset.status}`);
     if (/placeholder|mock/iu.test(String(asset.assetUrl ?? asset.error ?? ''))) {
       errors.push(`visualAsset 使用 placeholder/mock:${asset.id ?? asset.assetUrl ?? 'unknown'}`);
     }
     if (asset.status === 'ready' && !asset.promptPath) errors.push(`ready visualAsset 缺少 promptPath:${asset.id ?? asset.assetUrl ?? 'unknown'}`);
-    if (asset.status === 'ready' && asset.renderer !== 'template-svg') errors.push(`ready visualAsset 未使用模板渲染:${asset.id ?? 'unknown'}:${asset.renderer ?? 'missing'}`);
-    if (asset.status === 'ready' && asset.textLayer !== 'app-rendered') errors.push(`ready visualAsset textLayer 未由 app 渲染:${asset.id ?? 'unknown'}:${asset.textLayer ?? 'missing'}`);
+    if (asset.status === 'ready' && asset.exportFormat && !asset.specPath) {
+      errors.push(`ready visualAsset 缺少 specPath:${asset.id ?? asset.assetUrl ?? 'unknown'}`);
+    }
+    if (asset.status === 'ready' && asset.exportFormat && !asset.checksum) {
+      errors.push(`ready visualAsset 缺少 checksum:${asset.id ?? asset.assetUrl ?? 'unknown'}`);
+    }
+    if (asset.status === 'ready' && asset.exportFormat && !asset.provider) {
+      errors.push(`ready visualAsset 缺少 provider provenance:${asset.id ?? asset.assetUrl ?? 'unknown'}`);
+    }
+    if ((asset.exportFormat ?? 'svg') === 'svg') {
+      if (asset.status === 'ready' && asset.renderer !== 'template-svg') errors.push(`ready visualAsset 未使用模板渲染:${asset.id ?? 'unknown'}:${asset.renderer ?? 'missing'}`);
+      if (asset.status === 'ready' && asset.textLayer !== 'app-rendered') errors.push(`ready visualAsset textLayer 未由 app 渲染:${asset.id ?? 'unknown'}:${asset.textLayer ?? 'missing'}`);
+    }
   }
 
   if (errors.length > 0) {
@@ -751,9 +823,9 @@ export function buildOrdinaryUserBaoyuSyncReport(input: {
     '## Comparison policy',
     '',
     '- DraftOrbit is tested through the ordinary `/` → `/app` user path, not only direct API calls.',
-    '- baoyu runtime comparison uses real runnable artifacts where available: source capture, markdown normalization, visual prompt files and baoyu-imagine image artifacts.',
+    '- baoyu runtime comparison uses real runnable artifacts where available: source capture, markdown normalization, visual prompt/spec files, local SVG assets and baoyu-imagine provider seams.',
     '- baoyu does not expose a direct tweet/thread/article writer CLI in this pinned runtime; writer quality is judged against the baoyu fixed/adversarial rubric without faking direct baoyu text output.',
-    '- `draftorbit/heuristic`, `openrouter/free`, `ollama/*`, placeholder images and mock images invalidate test_high evidence.',
+    '- `draftorbit/heuristic`, `openrouter/free`, `ollama/*`, placeholder images and mock images invalidate test_high evidence; `codex-local/*` counts only when explicitly enabled by `CODEX_LOCAL_ALLOW_QUALITY_EVIDENCE=1`.',
     '',
     '## Evidence notes',
     '',
@@ -972,16 +1044,38 @@ async function selectFormat(page: Page, caseDef: OrdinaryUserBaoyuSyncCase) {
     .click();
 }
 
+async function applyVisualControls(page: Page, caseDef: OrdinaryUserBaoyuSyncCase) {
+  await ensureAdvancedOptions(page);
+  if (caseDef.visualMode) {
+    await page.locator('select[name="visualMode"]').selectOption(caseDef.visualMode);
+  }
+  if (caseDef.visualLayout) {
+    await page.locator('select[name="visualLayout"]').selectOption(caseDef.visualLayout);
+  }
+  if (typeof caseDef.exportHtml === 'boolean') {
+    const checkbox = page.locator('input[name="exportHtml"]');
+    if ((await checkbox.count()) > 0 && (await checkbox.isChecked()) !== caseDef.exportHtml) {
+      await checkbox.click();
+    }
+  }
+  if (caseDef.visualMode || caseDef.visualLayout || typeof caseDef.exportHtml === 'boolean') {
+    await page.waitForTimeout(300);
+  }
+}
+
 function getBaoyuCommit(repoRoot: string): string {
-  const baoyuDir = process.env.BAOYU_SKILLS_DIR?.trim()
-    ? path.resolve(process.env.BAOYU_SKILLS_DIR.trim())
+  const configured = process.env.BAOYU_SKILLS_DIR?.trim();
+  const baoyuDir = configured
+    ? path.isAbsolute(configured)
+      ? configured
+      : path.join(repoRoot, configured)
     : path.join(repoRoot, 'vendor', 'baoyu-skills');
   try {
     return execFileSync('git', ['-C', baoyuDir, 'rev-parse', '--short=12', 'HEAD'], {
       encoding: 'utf8'
     }).trim();
   } catch {
-    return 'dcd0f8143349';
+    return '9977ff520c49';
   }
 }
 
@@ -1014,6 +1108,7 @@ async function runCase(input: {
   await input.page.getByRole('button', { name: /^开始生成$/u }).waitFor({ timeout: 30_000 });
   await selectFormat(input.page, input.caseDef);
   await ensureWithImage(input.page);
+  await applyVisualControls(input.page, input.caseDef);
   await input.page.locator('textarea').first().fill(input.caseDef.prompt);
 
   const startResponsePromise = input.page.waitForResponse(
@@ -1050,7 +1145,7 @@ async function runCase(input: {
     await input.page.getByText(/已生成|生成失败/u).first().waitFor({ timeout: 240_000 });
   }
   if (input.caseDef.format !== 'article' && !sourceBlocked) {
-    await input.page.getByText('连接 X 后才能发布').waitFor({ timeout: 30_000 });
+    await input.page.getByText(/连接 X 后才能发布|加入待确认|进入发布队列/u).first().waitFor({ timeout: 30_000 });
   }
 
   const bodyText = await input.page.locator('body').innerText({ timeout: 30_000 });

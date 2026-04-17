@@ -76,3 +76,31 @@ test('renderDeterministicVisualAsset writes thread card SVG with safe metadata',
   assert.match(svg, /录音→跟进清单/u);
   assert.doesNotMatch(svg, /更像真人|冷启动判断句/u);
 });
+
+test('VisualCardRenderService renders diagram assets as safe SVG flow diagrams', () => {
+  const service = new VisualCardRenderService();
+
+  const result = service.render({
+    format: 'article',
+    focus: '内容生产流程',
+    text: '把灵感输入改成稳定流程：来源抓取、判断提炼、卡片化、人工确认，然后再发布。',
+    item: {
+      kind: 'diagram',
+      priority: 'supporting',
+      type: 'process-diagram',
+      layout: 'flow',
+      style: 'blueprint',
+      palette: 'draftorbit',
+      cue: '来源抓取 → 判断提炼 → 卡片化 → 人工确认',
+      reason: '用户明确要求 diagram/process prompt'
+    }
+  });
+
+  assert.equal(result.metadata.renderer, 'template-svg');
+  assert.equal(result.metadata.textLayer, 'app-rendered');
+  assert.equal(result.metadata.aspectRatio, '16:9');
+  assert.equal(result.diagnostics.overflow, false);
+  assert.match(result.svg, /DraftOrbit · diagram/u);
+  assert.match(result.svg, /来源抓取|判断提炼|人工确认/u);
+  assert.doesNotMatch(result.svg, /prompt-wrapper|更像真人/u);
+});

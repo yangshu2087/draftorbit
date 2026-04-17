@@ -123,3 +123,26 @@ test('buildV3SuggestedAction still recommends learning/profile upgrades after fi
     'connect_learning_source'
   );
 });
+
+import {
+  buildAssetAccessToken,
+  verifyAssetAccessToken
+} from '../src/modules/v3/v3.service';
+
+test('asset access tokens are run/asset scoped and expire', () => {
+  const secret = 'test-secret-for-assets';
+  const token = buildAssetAccessToken({ runId: 'run_1', assetId: '01-cover', expiresInSeconds: 60, secret, nowMs: 1_700_000_000_000 });
+
+  assert.equal(
+    verifyAssetAccessToken({ token, runId: 'run_1', assetId: '01-cover', secret, nowMs: 1_700_000_010_000 }),
+    true
+  );
+  assert.equal(
+    verifyAssetAccessToken({ token, runId: 'run_1', assetId: '02-cover', secret, nowMs: 1_700_000_010_000 }),
+    false
+  );
+  assert.equal(
+    verifyAssetAccessToken({ token, runId: 'run_1', assetId: '01-cover', secret, nowMs: 1_700_000_061_000 }),
+    false
+  );
+});

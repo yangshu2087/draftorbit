@@ -49,6 +49,7 @@ import {
 } from './content-strategy';
 import { ContentBenchmarkService } from './content-benchmark.service';
 import { VisualPlanningService, type VisualPlan } from './visual-planning.service';
+import { normalizeVisualRequest, type VisualRequest } from './visual-request';
 import { DerivativeGuidanceService, type DerivativeReadiness } from './derivative-guidance.service';
 import { buildContentQualityGate, type ContentQualityGateResult } from './content-quality-gate';
 import {
@@ -197,6 +198,8 @@ function hasRepairableArticleStructureFail(qualityGate: ContentQualityGateResult
 function providerTypeFromModelProvider(provider: ModelProviderKey | undefined): ProviderType {
   if (provider === 'openai') return ProviderType.OPENAI;
   if (provider === 'openrouter') return ProviderType.OPENROUTER;
+  if (provider === 'codex-local') return ProviderType.CODEX_LOCAL;
+  if (provider === 'ollama') return ProviderType.OLLAMA;
   return ProviderType.MOCK;
 }
 
@@ -277,6 +280,7 @@ type GenerationStartInput = {
   type?: GenerationType;
   language?: string;
   useStyle?: boolean;
+  visualRequest?: VisualRequest;
 };
 
 type ResearchStepPayload = {
@@ -567,6 +571,10 @@ export class GenerateService {
   private get heuristicFallbackAllowed(): boolean {
     const raw = process.env.ALLOW_HEURISTIC_FALLBACK?.trim().toLowerCase();
     return raw !== 'false' && raw !== '0';
+  }
+
+  private get qualityRepairEnabled(): boolean {
+    return this.routingProfile === 'test_high' || this.routingProfile === 'local_quality';
   }
 
   private isHeuristicRoutedResult(routed: RoutedChatResult | null | undefined): boolean {
@@ -1307,6 +1315,7 @@ export class GenerateService {
         language: input.language ?? 'zh',
         style,
         status: GenerationStatus.RUNNING,
+        visualRequest: input.visualRequest ? normalizeVisualRequest(input.visualRequest, input.type === GenerationType.LONG ? 'article' : input.type === GenerationType.THREAD ? 'thread' : 'tweet') : undefined,
         steps: {
           create: STEP_ORDER.map((step) => ({
             step,
@@ -1438,6 +1447,7 @@ export class GenerateService {
       language,
       styleAnalysis
     });
+    const visualRequest = normalizeVisualRequest((gen.visualRequest as VisualRequest | null) ?? null, strategyContext.format);
     const strategyPromptContext = renderStrategyPromptContext(strategyContext);
     const benchmarkPromptContext = this.contentBenchmark.buildPromptContext({
       format: strategyContext.format,
@@ -1449,7 +1459,8 @@ export class GenerateService {
         format: strategyContext.format,
         focus: strategyContext.focus,
         text: [restoredOutline.title, restoredOutline.hook, ...restoredOutline.body].join('。'),
-        outline: restoredOutline
+        outline: restoredOutline,
+        visualRequest
       });
     }
     const styleInjection = gen.style
@@ -1572,7 +1583,8 @@ export class GenerateService {
             format: strategyContext.format,
             focus: strategyContext.focus,
             text: [outlinePayload.title, outlinePayload.hook, ...outlinePayload.body].join('。'),
-            outline: outlinePayload
+            outline: outlinePayload,
+            visualRequest
           });
         } else if (stepName === StepName.DRAFT) {
           if (!outlinePayload) {
@@ -1811,7 +1823,8 @@ export class GenerateService {
               format: strategyContext.format,
               focus: strategyContext.focus,
               text: humanizedPayload.humanized,
-              outline: outlinePayload
+              outline: outlinePayload,
+              visualRequest
             });
           }
 
@@ -1866,7 +1879,8 @@ export class GenerateService {
               format: strategyContext.format,
               focus: strategyContext.focus,
               text: humanizedPayload.humanized,
-              outline: outlinePayload
+              outline: outlinePayload,
+              visualRequest
             });
           }
 
@@ -2127,7 +2141,8 @@ export class GenerateService {
                     hook: outlinePayload.hook,
                     body: outlinePayload.body
                   }
-                : null
+                : null,
+              visualRequest
             });
 
           let finalVisualPlan = rebuildFinalVisualPlan();
@@ -2146,7 +2161,7 @@ export class GenerateService {
           });
           qualityGate = this.enforceRealModelGate({ routed: packageRouted, qualityGate });
 
-          if (!qualityGate.safeToDisplay && this.routingProfile === 'test_high') {
+          if (!qualityGate.safeToDisplay && this.qualityRepairEnabled) {
             for (let attempt = 0; attempt < 2 && !qualityGate.safeToDisplay; attempt += 1) {
               try {
                 const gateRewrite = await this.modelGateway.chatWithRouting(
@@ -2250,7 +2265,7 @@ export class GenerateService {
             }
           }
 
-          if (!qualityGate.safeToDisplay && this.routingProfile === 'test_high' && gen.type === GenerationType.TWEET) {
+          if (!qualityGate.safeToDisplay && this.qualityRepairEnabled && gen.type === GenerationType.TWEET) {
             finalTweet = buildTweetHumanizedFallback({
               focus: strategyContext.focus,
               hook: outlinePayload?.hook,
@@ -2276,7 +2291,7 @@ export class GenerateService {
             qualityGate = this.enforceRealModelGate({ routed: packageRouted, qualityGate });
           }
 
-          if (!qualityGate.safeToDisplay && this.routingProfile === 'test_high' && gen.type === GenerationType.THREAD) {
+          if (!qualityGate.safeToDisplay && this.qualityRepairEnabled && gen.type === GenerationType.THREAD) {
             finalThread = formatThreadPosts({
               focus: strategyContext.focus,
               hook: outlinePayload?.hook,
@@ -2306,7 +2321,7 @@ export class GenerateService {
 
           if (
             !qualityGate.safeToDisplay &&
-            this.routingProfile === 'test_high' &&
+            this.qualityRepairEnabled &&
             gen.type === GenerationType.LONG &&
             !hasSourceBlockedQualityGate(qualityGate)
           ) {
@@ -2364,7 +2379,8 @@ export class GenerateService {
                   focus: strategyContext.focus,
                   text: finalTweet,
                   visualPlan: displayVisualPlan,
-                  withImage: withImageRequested
+                  withImage: withImageRequested,
+                  visualRequest
                 })
               : null;
           if (qualityGate.safeToDisplay) {
