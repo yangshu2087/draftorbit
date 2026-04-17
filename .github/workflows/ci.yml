@@ -10,6 +10,9 @@ on:
 permissions:
   contents: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -24,28 +27,44 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5
         with:
           version: 10.23.0
           run_install: false
 
       - name: Setup Node.js with pnpm store cache
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
-      - name: Cache Playwright Chromium
-        uses: actions/cache@v4
+      - name: Restore Playwright Chromium cache
+        id: playwright-cache
+        uses: actions/cache/restore@v5
         with:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: |
             playwright-chromium-${{ runner.os }}-
+
+      - name: Record CI runtime and cache inputs
+        env:
+          PLAYWRIGHT_CACHE_HIT: ${{ steps.playwright-cache.outputs.cache-hit }}
+          PLAYWRIGHT_CACHE_KEY: playwright-chromium-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+        run: |
+          {
+            echo "### CI runtime and cache settings"
+            echo
+            echo "| setting | value |"
+            echo "| --- | ---: |"
+            echo "| JavaScript actions Node 24 opt-in | ${FORCE_JAVASCRIPT_ACTIONS_TO_NODE24} |"
+            echo "| Playwright Chromium cache hit | ${PLAYWRIGHT_CACHE_HIT:-false} |"
+            echo "| Playwright Chromium cache key | ${PLAYWRIGHT_CACHE_KEY} |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -90,9 +109,16 @@ jobs:
           NEXT_PUBLIC_ENABLE_LOCAL_LOGIN: 'true'
         run: pnpm --filter @draftorbit/web build
 
+      - name: Save Playwright Chromium cache
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
       - name: Upload Playwright failure artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: web-playwright-artifacts
           if-no-files-found: ignore

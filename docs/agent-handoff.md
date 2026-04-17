@@ -4,6 +4,27 @@ Use this file to transfer execution state between Codex, Cursor, and other agent
 Update it before pausing work, switching tools, or asking another agent to continue.
 
 
+## Current Actions Node 24 CI compatibility pass (2026-04-17)
+
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/actions-node24-ci-observability`
+- Branch: `codex/actions-node24-ci-observability`
+- Base: `origin/main` at `ca77f0d07a2af585dda9be1be635c7798ed581f5` after PR #4 was merged.
+- Goal: pre-test GitHub JavaScript Actions under Node 24 by setting `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true`, while keeping the required `Web required checks` contract unchanged.
+- CI workflow updates in this pass:
+  - `.github/workflows/ci.yml` now sets workflow-level `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'` and upgrades the workflow to current Node 24-native actions: `actions/checkout@v6`, `actions/setup-node@v6`, `actions/cache/*@v5`, `actions/upload-artifact@v7`, and `pnpm/action-setup@v5`.
+  - Playwright Chromium cache is split into explicit `actions/cache/restore@v5` and `actions/cache/save@v5` steps, so cache save latency is visible as a named step instead of being hidden in a post-job action.
+  - `$GITHUB_STEP_SUMMARY` records the Node 24 opt-in flag, Playwright cache hit status, cache key, existing web test step wall time, Playwright reporter time, and harness wall time.
+- Required check contract remains: `Web required checks` still runs `pnpm --filter @draftorbit/web typecheck`, `pnpm --filter @draftorbit/web test`, and `pnpm --filter @draftorbit/web build`.
+- GitHub iteration note: forcing the old v4 actions to Node 24 passed but still emitted a deprecation annotation because those actions target Node 20. The pass now upgrades to the current Node 24-native major versions and keeps `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` as an explicit compatibility guard.
+- GitHub evidence captured on PR #5 after upgrading actions:
+  - PR: `https://github.com/yangshu2087/draftorbit/pull/5`
+  - PR run: `https://github.com/yangshu2087/draftorbit/actions/runs/24558696855`, job `71801586206`, `Web required checks` passed in `1m3s`.
+  - Node 24 action runtime: `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` appeared in action step env logs, and `gh run view 24558696855 --log | grep -q "Node.js 20"` returned absent.
+  - Action compatibility: `actions/checkout@v6`, `pnpm/action-setup@v5`, `actions/setup-node@v6`, and `actions/cache/restore@v5` all completed successfully; `actions/cache/save@v5` was skipped because the Playwright Chromium cache hit.
+  - Playwright/browser evidence: `Running 5 tests using 2 workers`; `5 passed (9.4s)`; harness wall time `16.76s`; reporter budget remained under `10s`.
+  - Cache timing observation: Playwright Chromium cache restore completed in about `2s`; explicit save step was skipped on cache hit, avoiding the previous hidden post-job cache-save delay.
+
+
 ## Current CI web performance observability pass (2026-04-17)
 
 - Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/ci-web-performance-observability`
