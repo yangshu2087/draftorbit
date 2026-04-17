@@ -32,10 +32,13 @@ Update it before pausing work, switching tools, or asking another agent to conti
   - Initial PR/push runs appeared under workflow `CI` with job `Web required checks`.
   - The first run failed in the web node tests because the workflow intentionally sets `NEXT_PUBLIC_API_URL=/__api`, while two assertions still expected the old default `http://localhost:4000`.
   - Fix applied in `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/live-provider-evidence/apps/web/test/v3-result-preview.test.ts`: asset and ZIP URL expectations now derive from `process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000'`, matching the public web API contract in CI and local runs.
+  - The next run reached Chromium and exposed a mock contract mismatch: e2e fixture asset URLs already included `/__api`, while the app correctly prefixes relative API asset paths with `NEXT_PUBLIC_API_URL=/__api`, producing `/__api/__api/...`.
+  - Fix applied in `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/live-provider-evidence/apps/web/e2e/ordinary-user-ci.spec.ts`: mocked backend asset and bundle URLs now use backend-style `/v3/...` paths so the client owns API-base qualification.
 - Local caveat: one local CI-mode simulation that tried to launch a second Next dev server was blocked by an existing Next dev-server lock from the already-open local web page. The workflow runs on a clean GitHub runner and the non-CI Playwright pass verified the actual browser suite against the reused local server.
 - Verification run in this pass:
   - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web test` — passed: `23/23` node tests and `8/8` Playwright tests, Playwright reporter time `6.3s`.
   - `NEXT_PUBLIC_API_URL=/__api NEXT_PUBLIC_ENABLE_LOCAL_LOGIN=true npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web test` — passed after the CI-only URL expectation fix: `23/23` node tests and `8/8` Playwright tests, Playwright reporter time `6.4s`.
+  - `NEXT_PUBLIC_API_URL=/__api NEXT_PUBLIC_ENABLE_LOCAL_LOGIN=true npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web test` — passed after the backend-style mock asset URL fix: `23/23` node tests and `8/8` Playwright tests, Playwright reporter time `7.4s`.
   - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web typecheck` — passed.
   - `NEXT_PUBLIC_API_URL=http://127.0.0.1:4311 npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web build` — passed.
   - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/api test` — passed: `236/236` tests.

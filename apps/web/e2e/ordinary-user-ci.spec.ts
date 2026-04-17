@@ -122,7 +122,7 @@ function visualAsset(runId: string, id: string, kind: string, cue: string, expor
     width: exportFormat === 'svg' ? 1200 : undefined,
     height: exportFormat === 'svg' ? 900 : undefined,
     checksum: `sha256-${id}-ci`,
-    signedAssetUrl: `${API_PREFIX}/v3/chat/runs/${runId}/assets/${id}.${extension}?token=ci-token-${id}`,
+    signedAssetUrl: `/v3/chat/runs/${runId}/assets/${id}.${extension}?token=ci-token-${id}`,
     promptPath: `/artifacts/baoyu-runtime/${runId}/visual/${id}.prompt.md`,
     specPath: exportFormat === 'svg' ? `/artifacts/baoyu-runtime/${runId}/visual/${id}.spec.json` : undefined,
     cue,
@@ -270,7 +270,7 @@ function makeRunDetail(state: RunState, overrideReadyAsset = false) {
         ]
       },
       visualAssets,
-      visualAssetsBundleUrl: `${API_PREFIX}/v3/chat/runs/${runId}/assets.zip?token=ci-bundle`,
+      visualAssetsBundleUrl: `/v3/chat/runs/${runId}/assets.zip?token=ci-bundle`,
       sourceArtifacts:
         kind === 'article'
           ? [
