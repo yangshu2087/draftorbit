@@ -74,6 +74,48 @@ test('ordinary-user route audit covers the restored public app queue connect and
   assert.ok(ORDINARY_USER_ROUTE_AUDIT_TARGETS.find((item) => item.id === 'pricing')?.notes.join(' ').includes('payment'));
 });
 
+test('ordinary-user case evidence requires signed asset and bundle download coverage for ready visual runs', () => {
+  assert.throws(
+    () =>
+      assertOrdinaryUserCaseEvidence({
+        caseDef: ORDINARY_USER_BAOYU_SYNC_CASES[0],
+        finalPayload: {
+          runId: 'run-unsigned-assets',
+          status: 'DONE',
+          format: 'tweet',
+          result: {
+            text: '内容团队别等灵感。周一打开空白页时，先把一个真实对话写下来，推文就有了第一句。',
+            routing: { primaryModel: 'x-ai/grok-4.20', routingTier: 'quality_fallback', profile: 'test_high' },
+            runtime: { engine: 'baoyu-skills', commit: '9977ff520c49', skills: ['baoyu-imagine'] },
+            qualityGate: { status: 'passed', safeToDisplay: true, hardFails: [], judgeNotes: [] },
+            visualPlan: { primaryAsset: 'cover', visualizablePoints: ['周一打开空白页'], keywords: [], items: [] },
+            visualAssets: [
+              {
+                id: '01-cover',
+                kind: 'cover',
+                status: 'ready',
+                renderer: 'template-svg',
+                textLayer: 'app-rendered',
+                provider: 'template-svg',
+                exportFormat: 'svg',
+                checksum: 'abc123',
+                assetUrl: '/v3/chat/runs/run-unsigned-assets/assets/01-cover',
+                promptPath: '/artifacts/baoyu-runtime/run-unsigned-assets/visual/prompts/01-cover.md',
+                specPath: '/artifacts/baoyu-runtime/run-unsigned-assets/visual/specs/01-cover.json',
+                cue: '周一打开空白页'
+              }
+            ]
+          }
+        },
+        bodyText: '结果已生成\n连接 X 后才能发布\n图文资产\n只重试图片\n下载全部图文资产\n主视觉方向\n已生成',
+        consoleErrors: [],
+        screenshotPath: '/tmp/screenshot.png',
+        finalJsonPath: '/tmp/final.json'
+      }),
+    /signed asset url|bundle download/u
+  );
+});
+
 test('ordinary-user evidence notes do not count missing model-key route-only runs as baoyu quality evidence', () => {
   const notes = buildOrdinaryUserEvidenceNotes({ DRAFTORBIT_SEARCH_PROVIDER: 'none' }, 0);
   assert.ok(notes.some((note) => note.includes('No real OPENAI_API_KEY/OPENROUTER_API_KEY')));
@@ -319,23 +361,36 @@ test('assertOrdinaryUserCaseEvidence accepts source-ready URL artifacts for late
             markdownPath: '/tmp/hermes-agent.md'
           }
         ],
+        visualAssetsBundleUrl: '/v3/chat/runs/run-source-ready/assets.zip?token=test',
         visualAssets: [
           {
+            id: '01-cover',
             kind: 'cover',
             status: 'ready',
             renderer: 'template-svg',
             textLayer: 'app-rendered',
-            assetUrl: '/v3/chat/runs/run-source-ready/assets/cover.svg',
+            provider: 'template-svg',
+            exportFormat: 'svg',
+            checksum: 'cover123',
+            assetUrl: '/v3/chat/runs/run-source-ready/assets/cover.svg?token=test',
+            signedAssetUrl: '/v3/chat/runs/run-source-ready/assets/cover.svg?token=test',
             promptPath: '/tmp/cover.md',
+            specPath: '/tmp/cover.json',
             cue: '两个月四万多星的增长数字'
           },
           {
+            id: '02-infographic',
             kind: 'infographic',
             status: 'ready',
             renderer: 'template-svg',
             textLayer: 'app-rendered',
-            assetUrl: '/v3/chat/runs/run-source-ready/assets/infographic.svg',
+            provider: 'template-svg',
+            exportFormat: 'svg',
+            checksum: 'info123',
+            assetUrl: '/v3/chat/runs/run-source-ready/assets/infographic.svg?token=test',
+            signedAssetUrl: '/v3/chat/runs/run-source-ready/assets/infographic.svg?token=test',
             promptPath: '/tmp/infographic.md',
+            specPath: '/tmp/infographic.json',
             cue: '用户从原有工具链迁移到新 agent 的前后对比'
           }
         ]
@@ -532,6 +587,7 @@ test('assertOrdinaryUserCaseEvidence accepts real baoyu runtime evidence with vi
             }
           ]
         },
+        visualAssetsBundleUrl: '/v3/chat/runs/run-good/assets.zip?token=test',
         visualAssets: [
           {
             id: '01-cover',
@@ -539,10 +595,15 @@ test('assertOrdinaryUserCaseEvidence accepts real baoyu runtime evidence with vi
             status: 'ready',
             renderer: 'template-svg',
             textLayer: 'app-rendered',
+            provider: 'template-svg',
+            exportFormat: 'svg',
+            checksum: 'cover123',
             aspectRatio: '1:1',
-            assetUrl: '/v3/chat/runs/run-good/assets/01-cover',
+            assetUrl: '/v3/chat/runs/run-good/assets/01-cover?token=test',
+            signedAssetUrl: '/v3/chat/runs/run-good/assets/01-cover?token=test',
             cue: '上传录音后 3 分钟拿到纪要',
-            promptPath: '/artifacts/baoyu-runtime/run-good/visual/prompts/01-cover.md'
+            promptPath: '/artifacts/baoyu-runtime/run-good/visual/prompts/01-cover.md',
+            specPath: '/artifacts/baoyu-runtime/run-good/visual/specs/01-cover.json'
           },
           {
             id: '02-cards',
@@ -550,10 +611,15 @@ test('assertOrdinaryUserCaseEvidence accepts real baoyu runtime evidence with vi
             status: 'ready',
             renderer: 'template-svg',
             textLayer: 'app-rendered',
+            provider: 'template-svg',
+            exportFormat: 'svg',
+            checksum: 'cards123',
             aspectRatio: '1:1',
-            assetUrl: '/v3/chat/runs/run-good/assets/02-cards',
+            assetUrl: '/v3/chat/runs/run-good/assets/02-cards?token=test',
+            signedAssetUrl: '/v3/chat/runs/run-good/assets/02-cards?token=test',
             cue: '上传录音后 3 分钟拿到纪要',
-            promptPath: '/artifacts/baoyu-runtime/run-good/visual/prompts/02-cards.md'
+            promptPath: '/artifacts/baoyu-runtime/run-good/visual/prompts/02-cards.md',
+            specPath: '/artifacts/baoyu-runtime/run-good/visual/specs/02-cards.json'
           }
         ]
       }

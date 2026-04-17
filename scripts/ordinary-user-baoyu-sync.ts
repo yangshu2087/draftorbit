@@ -46,6 +46,7 @@ export type EvidenceSummary = {
   sourcePass?: boolean;
   sourceStatus?: string;
   promptLeaks: string[];
+  actionChecks?: string[];
   notes: string[];
 };
 
@@ -140,6 +141,7 @@ type FinalRunPayload = {
     } | null;
     visualPlan?: VisualPlanLike | null;
     visualAssets?: VisualAssetLike[];
+    visualAssetsBundleUrl?: string | null;
     sourceArtifacts?: Array<{
       kind?: string;
       url?: string;
@@ -733,6 +735,9 @@ export function assertOrdinaryUserCaseEvidence(input: CaseEvidenceInput): Eviden
   const failedAssets = visualAssets.filter((asset) => asset.status === 'failed');
   if (visualAssets.length === 0) errors.push('visualAssets 缺失');
   if (readyAssets.length === 0) errors.push('withImage=true 但没有 ready 图片 artifact');
+  if (readyAssets.length > 0 && !String(result?.visualAssetsBundleUrl ?? '').includes('token=')) {
+    errors.push('bundle download signed URL missing');
+  }
   if (input.caseDef.format === 'thread' && !readyAssets.some((asset) => asset.kind === 'cards')) {
     errors.push('thread 缺少 ready cards asset');
   }
@@ -764,6 +769,10 @@ export function assertOrdinaryUserCaseEvidence(input: CaseEvidenceInput): Eviden
     if (asset.status === 'ready' && asset.exportFormat && !asset.provider) {
       errors.push(`ready visualAsset 缺少 provider provenance:${asset.id ?? asset.assetUrl ?? 'unknown'}`);
     }
+    if (asset.status === 'ready') {
+      const signedUrl = String(asset.signedAssetUrl ?? asset.assetUrl ?? '');
+      if (!signedUrl.includes('token=')) errors.push(`signed asset url missing:${asset.id ?? asset.assetUrl ?? 'unknown'}`);
+    }
     if ((asset.exportFormat ?? 'svg') === 'svg') {
       if (asset.status === 'ready' && asset.renderer !== 'template-svg') errors.push(`ready visualAsset 未使用模板渲染:${asset.id ?? 'unknown'}:${asset.renderer ?? 'missing'}`);
       if (asset.status === 'ready' && asset.textLayer !== 'app-rendered') errors.push(`ready visualAsset textLayer 未由 app 渲染:${asset.id ?? 'unknown'}:${asset.textLayer ?? 'missing'}`);
@@ -794,6 +803,7 @@ export function assertOrdinaryUserCaseEvidence(input: CaseEvidenceInput): Eviden
         : undefined,
     sourceStatus: result?.qualityGate?.sourceStatus,
     promptLeaks,
+    actionChecks: [],
     notes: [input.caseDef.baoyuComparisonNote]
   };
 }
@@ -879,6 +889,7 @@ export function buildOrdinaryUserBaoyuSyncReport(input: {
       `- visualAssetsReady: \`${item.visualAssetsReady}\``,
       `- visualAssetsFailed: \`${item.visualAssetsFailed}\``,
       ...(item.sourceStatus ? [`- sourceStatus: \`${item.sourceStatus}\``, `- sourcePass: \`${item.sourcePass ?? false}\``] : []),
+      ...(item.actionChecks?.length ? [`- actionChecks: ${item.actionChecks.map((check) => `\`${check}\``).join(', ')}`] : []),
       `- screenshot: \`${item.screenshotPath}\``,
       ...((item.responsiveScreenshotPaths ?? []).length
         ? [`- responsive screenshots: ${(item.responsiveScreenshotPaths ?? []).map((itemPath) => `\`${itemPath}\``).join(', ')}`]
@@ -950,6 +961,14 @@ async function auditOrdinaryUserRoutes(input: {
 
     const bodyText = await input.page.locator('body').innerText({ timeout: 30_000 });
     await fs.writeFile(bodyPath, bodyText, 'utf8');
+    if (target.id === 'pricing') {
+      const checkoutEntry = input.page.getByRole('button', { name: /开始 \d+ 天试用|继续结账/u }).first();
+      if ((await checkoutEntry.count()) > 0) {
+        notes.push(`checkout entry visible and not clicked: ${await checkoutEntry.innerText({ timeout: 10_000 })}`);
+      } else {
+        errors.push('checkout entry button not visible');
+      }
+    }
     for (const viewport of RESPONSIVE_VIEWPORTS) {
       await input.page.setViewportSize({ width: viewport.width, height: viewport.height });
       await input.page.waitForTimeout(250);
@@ -997,6 +1016,29 @@ async function requestJson(url: string, options: RequestInit = {}) {
   return payload as Record<string, any>;
 }
 
+function absoluteApiUrl(apiUrl: string, assetUrl?: string | null): string | null {
+  if (!assetUrl) return null;
+  if (/^https?:\/\//iu.test(assetUrl)) return assetUrl;
+  if (assetUrl.startsWith('/')) return `${apiUrl.replace(/\/$/u, '')}${assetUrl}`;
+  return assetUrl;
+}
+
+async function fetchAssetText(apiUrl: string, assetUrl?: string | null): Promise<string> {
+  const url = absoluteApiUrl(apiUrl, assetUrl);
+  if (!url) throw new Error('asset URL missing');
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`asset fetch failed ${response.status}: ${url}`);
+  return await response.text();
+}
+
+async function fetchAssetBuffer(apiUrl: string, assetUrl?: string | null): Promise<Buffer> {
+  const url = absoluteApiUrl(apiUrl, assetUrl);
+  if (!url) throw new Error('asset URL missing');
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`asset fetch failed ${response.status}: ${url}`);
+  return Buffer.from(await response.arrayBuffer());
+}
+
 async function waitForFinal(apiUrl: string, token: string, runId: string): Promise<FinalRunPayload> {
   const attempts = Number(process.env.ORDINARY_USER_FINAL_WAIT_ATTEMPTS ?? 240);
   for (let index = 0; index < attempts; index += 1) {
@@ -1008,6 +1050,73 @@ async function waitForFinal(apiUrl: string, token: string, runId: string): Promi
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
   throw new Error(`Timed out waiting for final payload for ${runId}`);
+}
+
+async function verifyOrdinaryUserActions(input: {
+  apiUrl: string;
+  token: string;
+  page: Page;
+  caseDef: OrdinaryUserBaoyuSyncCase;
+  finalPayload: FinalRunPayload;
+}): Promise<string[]> {
+  const result = input.finalPayload.result;
+  const checks: string[] = [];
+  if (!result) return checks;
+
+  const readyAssets = (result.visualAssets ?? []).filter((asset) => asset.status === 'ready');
+  const firstSvg = readyAssets.find((asset) => (asset.exportFormat ?? 'svg') === 'svg' && (asset.signedAssetUrl || asset.assetUrl));
+  if (firstSvg) {
+    const svg = await fetchAssetText(input.apiUrl, firstSvg.signedAssetUrl ?? firstSvg.assetUrl);
+    if (!/<svg[\s>]/iu.test(svg)) throw new Error(`download SVG did not return SVG content:${firstSvg.id ?? firstSvg.kind}`);
+    if (/prompt-wrapper|给我一条|不要像建议模板/iu.test(svg)) {
+      throw new Error(`download SVG leaks prompt-wrapper copy:${firstSvg.id ?? firstSvg.kind}`);
+    }
+    checks.push(`download-svg:${firstSvg.id ?? firstSvg.kind}`);
+  }
+
+  if (result.visualAssetsBundleUrl) {
+    const zip = await fetchAssetBuffer(input.apiUrl, result.visualAssetsBundleUrl);
+    if (zip.length < 4 || zip[0] !== 0x50 || zip[1] !== 0x4b) throw new Error('bundle download did not return a ZIP payload');
+    checks.push('download-bundle:zip');
+  }
+
+  const htmlAsset = readyAssets.find((asset) => asset.exportFormat === 'html' && (asset.signedAssetUrl || asset.assetUrl));
+  if (htmlAsset) {
+    const html = await fetchAssetText(input.apiUrl, htmlAsset.signedAssetUrl ?? htmlAsset.assetUrl);
+    if (!/<(?:!doctype html|html|article|section)[\s>]/iu.test(html)) throw new Error(`HTML export content invalid:${htmlAsset.id ?? 'html'}`);
+    checks.push(`download-html:${htmlAsset.id ?? 'html'}`);
+  }
+
+  const markdownAsset = readyAssets.find((asset) => asset.exportFormat === 'markdown' && (asset.signedAssetUrl || asset.assetUrl));
+  if (markdownAsset) {
+    const markdown = await fetchAssetText(input.apiUrl, markdownAsset.signedAssetUrl ?? markdownAsset.assetUrl);
+    if (markdown.trim().length < 40) throw new Error(`Markdown export content too short:${markdownAsset.id ?? 'markdown'}`);
+    checks.push(`download-markdown:${markdownAsset.id ?? 'markdown'}`);
+    const copyButton = input.page.getByRole('button', { name: /复制 Markdown/u }).first();
+    if ((await copyButton.count()) > 0) {
+      await copyButton.click();
+      await input.page.getByText('Markdown 已复制').waitFor({ timeout: 10_000 });
+      checks.push('copy-markdown:toast');
+    }
+  }
+
+  const retryButton = input.page.getByRole('button', { name: /只重试图片/u }).first();
+  if ((await retryButton.count()) > 0) {
+    checks.push((await retryButton.isDisabled()) ? 'retry-ui:disabled-no-failed-assets' : 'retry-ui:enabled');
+  }
+
+  if (input.caseDef.id === 'tweet-cold-start') {
+    const retryPayload = await requestJson(`${input.apiUrl}/v3/chat/runs/${input.finalPayload.runId}/assets/retry`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${input.token}`, 'content-type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ visualRequest: { mode: 'cover', style: 'draftorbit', layout: 'auto', palette: 'draftorbit', aspect: '1:1', exportHtml: false } })
+    }) as FinalRunPayload;
+    const retryReady = retryPayload.result?.visualAssets?.some((asset) => asset.status === 'ready' && (asset.signedAssetUrl || asset.assetUrl));
+    if (!retryReady) throw new Error('retry visual assets did not return ready signed assets');
+    checks.push('retry-assets-api:ok');
+  }
+
+  return checks;
 }
 
 async function ensureAdvancedOptions(page: Page) {
@@ -1156,7 +1265,7 @@ async function runCase(input: {
   await input.page.screenshot({ path: screenshotPath, fullPage: true });
   const responsiveScreenshotPaths = sourceBlocked || qualityBlocked ? [] : await captureResponsiveScreenshots(input.page, caseDir);
 
-  return assertOrdinaryUserCaseEvidence({
+  const summary = assertOrdinaryUserCaseEvidence({
     caseDef: input.caseDef,
     finalPayload,
     bodyText,
@@ -1165,6 +1274,16 @@ async function runCase(input: {
     responsiveScreenshotPaths,
     finalJsonPath
   });
+  if (!sourceBlocked && !qualityBlocked) {
+    summary.actionChecks = await verifyOrdinaryUserActions({
+      apiUrl: input.apiUrl,
+      token: input.token,
+      page: input.page,
+      caseDef: input.caseDef,
+      finalPayload
+    });
+  }
+  return summary;
 }
 
 async function main() {
@@ -1185,7 +1304,12 @@ async function main() {
   await apiContext.dispose();
 
   const browser = await chromium.launch({ headless: process.env.PLAYWRIGHT_HEADLESS !== '0' });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 1200 } });
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 1200 },
+    permissions: ['clipboard-read', 'clipboard-write'],
+    baseURL: webUrl
+  });
+  const page = await context.newPage();
   await page.addInitScript((tokenValue) => {
     window.localStorage.setItem('draftorbit_token', tokenValue);
   }, String(token));
