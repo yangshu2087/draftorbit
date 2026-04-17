@@ -4,6 +4,29 @@ Use this file to transfer execution state between Codex, Cursor, and other agent
 Update it before pausing work, switching tools, or asking another agent to continue.
 
 
+## Current web CI Playwright suite pass (2026-04-17)
+
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/live-provider-evidence`
+- Branch: `codex/live-provider-evidence`
+- User request: turn the ordinary-user UAT critical paths into a CI-runnable Playwright suite and replace the `@draftorbit/web` placeholder test.
+- New web test command: `pnpm --filter @draftorbit/web test` now runs `tsx --test test/**/*.test.ts` plus `playwright test --config playwright.config.ts`; it no longer prints `web tests pending`.
+- New Playwright config: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/live-provider-evidence/apps/web/playwright.config.ts`
+  - starts/reuses a Next dev server on `127.0.0.1:3300`; default API base is `/__api` for CI mocks.
+  - output is ignored/local-only under `output/playwright/web-ci/`.
+- New CI suite: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/live-provider-evidence/apps/web/e2e/ordinary-user-ci.spec.ts`
+  - mocks local auth, bootstrap/profile/queue/billing, V3 run/stream/detail, signed assets, bundle zip, retry assets, and safe connection routes.
+  - covers `/` → `/app`, hover/focus-visible local CTA, mobile overflow guard, tweet cover, thread cards, article cover/infographic/illustration/export/source evidence, diagram SVG, latest-source fail-closed, Markdown copy success, visual retry success, queue/connect/pricing safe gates.
+  - does not use real OpenAI/OpenRouter/Tavily keys and does not execute real X posting or payment.
+- Existing web node tests were kept and made cwd-independent by using `import.meta.url` for source-file reads.
+- Browser/visual evidence from the passing run: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/live-provider-evidence/output/playwright/web-ci/ordinary-user-ci-ordinary--9617e-focus-and-responsive-layout-chromium/home-local-cta-mobile.png`
+- Verification run in this pass:
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web test` — passed: `23/23` node tests and `8/8` Playwright tests.
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web typecheck` — passed.
+  - `NEXT_PUBLIC_API_URL=http://127.0.0.1:4311 npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web build` — passed.
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/api test` — passed: `236/236` tests.
+- Product status after this pass: `Core Flow Ready` for the CI UI contract; `Mock / Stubs Remaining` is intentional inside the web CI suite because real provider/baoyu quality remains covered by the separate UAT/live-provider lanes.
+
+
 ## Current ordinary-user full-flow validation (2026-04-17_01-07-30)
 
 - Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/live-provider-evidence`

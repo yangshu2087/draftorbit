@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   buildArticlePreview,
   buildPrimaryResultHighlights,
@@ -13,6 +14,9 @@ import {
   buildVisualAssetCards,
   formatVisualAssetLabel
 } from '../lib/v3-result-preview';
+
+const testDir = dirname(fileURLToPath(import.meta.url));
+const webRoot = join(testDir, '..');
 
 test('buildThreadPreview turns a publish-ready thread into card-like posts with roles', () => {
   const posts = buildThreadPreview(
@@ -201,7 +205,7 @@ test('buildQualityFailureView hides raw hard fail tags from the primary user cop
 });
 
 test('sourceReadyStageSummary stays module-scoped to avoid stale useMemo dependencies', () => {
-  const source = readFileSync(join(process.cwd(), 'apps/web/components/v3/operator-app.tsx'), 'utf8');
+  const source = readFileSync(join(webRoot, 'components/v3/operator-app.tsx'), 'utf8');
   const summaryIndex = source.indexOf('const sourceReadyStageSummary');
   const componentIndex = source.indexOf('export default function OperatorApp');
 
@@ -211,7 +215,7 @@ test('sourceReadyStageSummary stays module-scoped to avoid stale useMemo depende
 });
 
 test('HomePage ordinary auth CTAs expose X and local testing but not Google login', () => {
-  const source = readFileSync(join(process.cwd(), 'apps/web/components/v3/home-page.tsx'), 'utf8');
+  const source = readFileSync(join(webRoot, 'components/v3/home-page.tsx'), 'utf8');
 
   assert.match(source, /startXOAuth/u);
   assert.match(source, /createLocalSession/u);
