@@ -7,22 +7,23 @@ const baseURL = process.env.WEB_PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${port}
 
 export default defineConfig({
   testDir: './e2e',
-  timeout: 45_000,
-  expect: { timeout: 8_000 },
+  timeout: 30_000,
+  expect: { timeout: 5_000 },
   fullyParallel: false,
+  workers: 1,
   retries: process.env.CI ? 1 : 0,
-  reporter: process.env.CI ? [['list'], ['html', { open: 'never', outputFolder: resolve(webRoot, '../../output/playwright/web-ci-report') }]] : 'list',
+  reporter: 'list',
   outputDir: resolve(webRoot, '../../output/playwright/web-ci'),
   use: {
     baseURL,
-    trace: 'retain-on-failure',
+    trace: process.env.CI ? 'on-first-retry' : 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'off',
     locale: 'zh-CN',
     timezoneId: 'America/Los_Angeles'
   },
   webServer: {
-    command: `NEXT_PUBLIC_API_URL=/__api NEXT_PUBLIC_ENABLE_LOCAL_LOGIN=true pnpm exec next dev --hostname 127.0.0.1 --port ${port}`,
+    command: `NEXT_TELEMETRY_DISABLED=1 NEXT_PUBLIC_API_URL=/__api NEXT_PUBLIC_ENABLE_LOCAL_LOGIN=true pnpm exec next dev --hostname 127.0.0.1 --port ${port}`,
     cwd: webRoot,
     url: baseURL,
     reuseExistingServer: !process.env.CI,

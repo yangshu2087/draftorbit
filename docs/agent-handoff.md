@@ -4,6 +4,38 @@ Use this file to transfer execution state between Codex, Cursor, and other agent
 Update it before pausing work, switching tools, or asking another agent to continue.
 
 
+## Current PR CI web required-check wiring pass (2026-04-17)
+
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/live-provider-evidence`
+- Branch: `codex/live-provider-evidence`
+- User request: wire the new ordinary-user web Playwright suite into repository/PR CI, make `pnpm --filter @draftorbit/web test` a required check, then do a focused CI performance pass so the Playwright suite stays around the 10-second lane.
+- New workflow: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/live-provider-evidence/.github/workflows/ci.yml`
+  - Runs on `pull_request` and pushes to `main` / `codex/**`.
+  - Adds the PR check job `Web required checks`.
+  - Installs pnpm `10.23.0`, Node `22`, project dependencies, and Chromium via `pnpm --filter @draftorbit/web exec playwright install --with-deps chromium`.
+  - Required web lane steps are `pnpm --filter @draftorbit/web typecheck`, `pnpm --filter @draftorbit/web test`, and `pnpm --filter @draftorbit/web build`.
+  - Uploads ignored Playwright failure artifacts from `output/playwright/web-ci` for debugging.
+- Required-test status: repository code now provides the GitHub Actions check and includes `pnpm --filter @draftorbit/web test` as a non-optional workflow step. GitHub branch protection still needs an admin/settings step to mark `Web required checks` as a protected required status check after the workflow has run once.
+- Playwright performance pass in `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/live-provider-evidence/apps/web/playwright.config.ts`:
+  - Chromium-only suite remains serial and deterministic with `workers: 1`.
+  - Test timeout is reduced to `30s`; expect timeout is reduced to `5s`.
+  - HTML report generation is removed from the normal CI path; reporter is `list`.
+  - Video remains off; screenshots are failure-only; CI trace is `on-first-retry`.
+  - `NEXT_TELEMETRY_DISABLED=1` is set for the dev server command.
+- Performance evidence:
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web test` passed with `23/23` node tests and `8/8` Playwright tests; Playwright reporter time was `6.3s`.
+  - Timed direct Playwright run passed with `8/8` tests; Playwright reporter time was `7.8s` (`/usr/bin/time` shell real time was `10.54s`, including `npx`/pnpm startup overhead).
+- Browser/visual evidence: the Playwright suite is a real Chromium browser pass over `/`, `/app`, `/queue`, `/connect`, and `/pricing`; local visual artifact remains ignored at `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/live-provider-evidence/output/playwright/web-ci/ordinary-user-ci-ordinary--9617e-focus-and-responsive-layout-chromium/home-local-cta-mobile.png`.
+- Backend/API lane evidence kept for this CI wiring pass: `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/api test` passed `236/236`, covering V3 DTO validation, signed asset-token access, source fail-closed semantics, publish safety, provider-live skip/fail-closed policy, and visual quality gates.
+- Local caveat: one local CI-mode simulation that tried to launch a second Next dev server was blocked by an existing Next dev-server lock from the already-open local web page. The workflow runs on a clean GitHub runner and the non-CI Playwright pass verified the actual browser suite against the reused local server.
+- Verification run in this pass:
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web test` — passed: `23/23` node tests and `8/8` Playwright tests, Playwright reporter time `6.3s`.
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web typecheck` — passed.
+  - `NEXT_PUBLIC_API_URL=http://127.0.0.1:4311 npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web build` — passed.
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/api test` — passed: `236/236` tests.
+  - `git diff --check` — passed.
+
+
 ## Current web CI Playwright suite pass (2026-04-17)
 
 - Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/live-provider-evidence`
