@@ -4,6 +4,26 @@ Use this file to transfer execution state between Codex, Cursor, and other agent
 Update it before pausing work, switching tools, or asking another agent to continue.
 
 
+## Current ordinary-user full-flow validation (2026-04-17_01-07-30)
+
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/live-provider-evidence`
+- Branch: `codex/live-provider-evidence`
+- User request: validate the ordinary `/` → `/app` path and full product workflow: tweet, thread, article, diagram, URL source, latest fail-closed, visual assets, export, queue, connect and pricing.
+- Local services used: API `http://127.0.0.1:4311`, Web `http://127.0.0.1:3300`, Postgres `5433`, Redis `6379`.
+- baoyu runtime pin verified with `node scripts/ensure-baoyu-skills-runtime.mjs`: `9977ff520c49ea0888d8d43d582973c6e8c1d55a`.
+- Browser/UAT command passed with Codex local quality evidence enabled: `7/7` generation/source cases and `5/5` route audits.
+- Tracked UAT report: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/live-provider-evidence/output/reports/uat-full/BAOYU-ORDINARY-USER-SYNC-2026-04-17_01-07-30.md`
+- Local-only screenshot/artifact root: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/live-provider-evidence/output/playwright/ordinary-user-baoyu-sync-2026-04-17_01-07-30/`
+- Manual `/` → `/app` CTA verification screenshots:
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/live-provider-evidence/output/playwright/full-flow-manual/home-local-cta-hover-focus.png`
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/live-provider-evidence/output/playwright/full-flow-manual/app-after-local-cta.png`
+- Direct fixes applied in this validation pass: none required; UAT and manual browser checks did not expose a confirmed user-facing defect.
+- Safety outcomes: latest ambiguous Hermes query failed closed with source guidance; explicit URL source generated ready `sourceArtifacts`; X publish remained prepare/manual-confirm/connect only; pricing checkout entry was visible but no real payment was executed.
+- UI states covered: default route shells, hover/focus on the local home CTA, generation loading/result success, source error/fail-closed recovery copy, disabled retry state when no failed assets, copy Markdown success toast, responsive route/generation screenshots at `375`, `768`, `1024`, `1440`.
+- Backend/API lane evidence: `GET /health/ready` returned DB/Redis ready; UAT exercised `POST /auth/local/session`, `POST /v3/session/bootstrap`, `POST /v3/chat/run`, `GET /v3/chat/runs/:id`, signed asset downloads, `GET /v3/chat/runs/:id/assets.zip`, and `POST /v3/chat/runs/:id/assets/retry`. Error semantics observed: latest/no-source path returned a quality/source-blocked result rather than fabricated content; signed download URLs required tokens; workspace-authenticated retry returned ready signed assets.
+- Remaining caveat: this pass used Codex OAuth local evidence and no live OpenAI/OpenRouter/Tavily keys; provider-live evidence remains a separate optional lane via `pnpm provider:live`.
+
+
 ## Current live provider evidence pass
 
 - Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/live-provider-evidence`
