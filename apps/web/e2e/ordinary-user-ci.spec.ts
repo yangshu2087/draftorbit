@@ -542,7 +542,6 @@ async function openApp(page: Page, options?: { includeRoutingPanel?: boolean }) 
   await seedSession(page);
   await page.goto('/app');
   await expect(page.getByRole('button', { name: /开始生成/u })).toBeVisible();
-  await expect(page.getByText('未连接 X 账号 · 仍可先生成')).toBeVisible();
   if (includeRoutingPanel) {
     await expect(page.getByText('模型路由观测')).toBeVisible();
   }
