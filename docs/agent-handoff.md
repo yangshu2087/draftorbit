@@ -93,6 +93,38 @@ Update it before pausing work, switching tools, or asking another agent to conti
     - real Playwright pass: `4 passed (6.9s)`, harness `7.33s`.
   - `NEXT_PUBLIC_API_URL=http://127.0.0.1:4311 npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web build` ✅
 
+## Current CI performance branch for routing-panel timing observability (2026-04-18)
+
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability`
+- Branch: `codex/web-ci-panel-observability-8s`
+- Base commit: `4ab70d0` (`feat: surface routing health and fallback hotspots in app`)
+- Goal in this pass:
+  - keep `pnpm --filter @draftorbit/web test` in the required lane stable.
+  - add explicit CI timing visibility for the new `/app` routing-observability panel request path (`/usage/summary`) without changing product behavior.
+- Changes in this pass:
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/web/e2e/ordinary-user-ci.spec.ts`
+    - `openApp()` now emits:
+      - `[ci-perf] app bootstrap (includes /usage/summary panel) completed in <Xs>`
+    - this captures user-visible `/app` bootstrap timing including the new panel readiness.
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/web/scripts/run-playwright-ci.mjs`
+    - parses app-bootstrap timing markers from Playwright output.
+    - parses generation-scenario timings and computes count/avg/slowest.
+    - appends these metrics into `$GITHUB_STEP_SUMMARY`:
+      - app bootstrap target/avg/max/status
+      - generation scenario count/avg/slowest
+    - adds `WEB_PLAYWRIGHT_APP_BOOTSTRAP_TARGET_SECONDS` (default `2.5`) as non-blocking watch metric.
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/.github/workflows/ci.yml`
+    - sets `WEB_PLAYWRIGHT_APP_BOOTSTRAP_TARGET_SECONDS: '2.5'` in the required `Web test (required)` job.
+- Performance/verification evidence in this pass:
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web test` ✅
+    - node tests: `23/23`
+    - Playwright: `4 passed (6.0s)` (reporter), harness `6.43s`
+    - app bootstrap markers from logs:
+      - `0.37s`, `0.29s`, `0.32s` (includes `/usage/summary` panel)
+    - generation markers still present for scenario-level hotspot tracking.
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web typecheck` ✅
+  - `NEXT_PUBLIC_API_URL=http://127.0.0.1:4311 npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web build` ✅
+
 ## Current built-in browser UAT-driven iteration pass (2026-04-18)
 
 - Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability`

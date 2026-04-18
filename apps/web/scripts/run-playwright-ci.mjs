@@ -9,6 +9,7 @@ const targetSeconds = Number(process.env.WEB_PLAYWRIGHT_REPORTER_TARGET_SECONDS 
 const hardBudgetSeconds = Number(
   process.env.WEB_PLAYWRIGHT_REPORTER_HARD_BUDGET_SECONDS ?? process.env.WEB_PLAYWRIGHT_REPORTER_BUDGET_SECONDS ?? 12
 );
+const appBootstrapTargetSeconds = Number(process.env.WEB_PLAYWRIGHT_APP_BOOTSTRAP_TARGET_SECONDS ?? 2.5);
 const enforceBudget = process.env.WEB_PLAYWRIGHT_ENFORCE_BUDGET === '1';
 const warmupPaths = (process.env.WEB_PLAYWRIGHT_WARMUP_PATHS ?? '/,/app,/pricing,/connect?intent=connect_x_self,/queue?intent=confirm_publish')
   .split(',')
@@ -86,7 +87,47 @@ function parseReporterSeconds(output) {
   return last ? Number(last[1]) : null;
 }
 
-function writeSummary({ commandCode, reporterSeconds, playwrightWallSeconds, targetOk, budgetOk }) {
+function parsePerfDurations(output, regex) {
+  return [...output.matchAll(regex)]
+    .map((match) => Number(match[1]))
+    .filter((value) => Number.isFinite(value));
+}
+
+function buildScenarioMetrics(output) {
+  const matches = [...output.matchAll(/\[ci-perf\]\s+generation scenario\s+"([^"]+)"\s+completed in\s+(\d+(?:\.\d+)?)s/gu)];
+  const parsed = matches
+    .map((match) => ({
+      name: match[1],
+      durationSeconds: Number(match[2])
+    }))
+    .filter((item) => Number.isFinite(item.durationSeconds));
+  if (!parsed.length) {
+    return {
+      count: 0,
+      averageSeconds: null,
+      slowest: null
+    };
+  }
+  const total = parsed.reduce((sum, item) => sum + item.durationSeconds, 0);
+  const slowest = [...parsed].sort((a, b) => b.durationSeconds - a.durationSeconds)[0];
+  return {
+    count: parsed.length,
+    averageSeconds: total / parsed.length,
+    slowest
+  };
+}
+
+function writeSummary({
+  commandCode,
+  reporterSeconds,
+  playwrightWallSeconds,
+  targetOk,
+  budgetOk,
+  appBootstrapAverageSeconds,
+  appBootstrapMaxSeconds,
+  appBootstrapTargetOk,
+  scenarioMetrics
+}) {
   const summaryPath = process.env.GITHUB_STEP_SUMMARY;
   if (!summaryPath) return;
   const rows = [
@@ -96,6 +137,16 @@ function writeSummary({ commandCode, reporterSeconds, playwrightWallSeconds, tar
     ['Reporter hard budget', `${hardBudgetSeconds.toFixed(2)}s`],
     ['Target status', targetOk ? 'pass' : 'watch'],
     ['Required-check budget status', budgetOk ? 'pass' : 'fail'],
+    ['App bootstrap target', `${appBootstrapTargetSeconds.toFixed(2)}s`],
+    ['App bootstrap average', appBootstrapAverageSeconds == null ? 'not parsed' : `${appBootstrapAverageSeconds.toFixed(2)}s`],
+    ['App bootstrap max', appBootstrapMaxSeconds == null ? 'not parsed' : `${appBootstrapMaxSeconds.toFixed(2)}s`],
+    ['App bootstrap status', appBootstrapTargetOk == null ? 'watch' : appBootstrapTargetOk ? 'pass' : 'watch'],
+    ['Generation scenarios observed', String(scenarioMetrics.count)],
+    ['Generation scenario avg', scenarioMetrics.averageSeconds == null ? 'not parsed' : `${scenarioMetrics.averageSeconds.toFixed(2)}s`],
+    [
+      'Generation slowest scenario',
+      scenarioMetrics.slowest ? `${scenarioMetrics.slowest.name} (${scenarioMetrics.slowest.durationSeconds.toFixed(2)}s)` : 'not parsed'
+    ],
     ['Playwright exit code', String(commandCode)]
   ];
   const warmupRows = timings.map(([name, value]) => `| ${name} | ${value} |`).join('\n');
@@ -147,9 +198,31 @@ async function main() {
   const result = await run('pnpm', ['exec', 'playwright', 'test', '--config', 'playwright.config.ts'], { env });
   const playwrightWallSeconds = (Date.now() - playwrightStart) / 1000;
   const reporterSeconds = parseReporterSeconds(result.output);
+  const appBootstrapDurations = parsePerfDurations(
+    result.output,
+    /\[ci-perf\]\s+app bootstrap\s+\(includes \/usage\/summary panel\)\s+completed in\s+(\d+(?:\.\d+)?)s/gu
+  );
+  const appBootstrapAverageSeconds = appBootstrapDurations.length
+    ? appBootstrapDurations.reduce((sum, value) => sum + value, 0) / appBootstrapDurations.length
+    : null;
+  const appBootstrapMaxSeconds = appBootstrapDurations.length
+    ? Math.max(...appBootstrapDurations)
+    : null;
+  const appBootstrapTargetOk = appBootstrapMaxSeconds == null ? null : appBootstrapMaxSeconds <= appBootstrapTargetSeconds;
+  const scenarioMetrics = buildScenarioMetrics(result.output);
   const targetOk = reporterSeconds != null && reporterSeconds <= targetSeconds;
   const budgetOk = reporterSeconds != null && reporterSeconds <= hardBudgetSeconds;
-  writeSummary({ commandCode: result.code, reporterSeconds, playwrightWallSeconds, targetOk, budgetOk });
+  writeSummary({
+    commandCode: result.code,
+    reporterSeconds,
+    playwrightWallSeconds,
+    targetOk,
+    budgetOk,
+    appBootstrapAverageSeconds,
+    appBootstrapMaxSeconds,
+    appBootstrapTargetOk,
+    scenarioMetrics
+  });
 
   if (result.code !== 0) process.exit(result.code);
   if (enforceBudget && !budgetOk) {
