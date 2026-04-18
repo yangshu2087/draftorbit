@@ -28,7 +28,8 @@
     "test:paypal:webhook": "bash ./scripts/test-paypal-webhook.sh",
     "preflight:prod": "bash ./scripts/preflight-prod.sh",
     "release:prod": "bash ./scripts/release-prod.sh",
-    "provider:live": "pnpm --filter @draftorbit/api exec tsx ../../scripts/provider-live-evidence.ts"
+    "provider:live": "pnpm --filter @draftorbit/api exec tsx ../../scripts/provider-live-evidence.ts",
+    "report:model-routing": "pnpm --filter @draftorbit/api exec tsx ../../scripts/model-routing-dashboard-report.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.59.1",

@@ -3,6 +3,44 @@
 Use this file to transfer execution state between Codex, Cursor, and other agents.
 Update it before pausing work, switching tools, or asking another agent to continue.
 
+## Current high-yield minimal upgrade package (2026-04-18)
+
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability`
+- Branch: `codex/web-ci-perf-8s-stability`
+- Scope completed in this pass:
+  1. Routing strategy layering by `taskType + contentFormat`.
+  2. Health-probe-driven provider fallback (cooldown skip).
+  3. Observability instrumentation + dashboard/report template.
+- API routing changes:
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/api/src/common/openrouter.service.ts`
+    - `RoutedChatOptions` now supports `contentFormat: tweet|thread|article|diagram|generic`.
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/api/src/common/model-gateway.service.ts`
+    - candidate pool now factors both `taskType` and `contentFormat`.
+    - low-latency tweet lanes prefer floor models earlier; depth-critical lanes (article/diagram/package) keep high-tier priority.
+    - provider health state tracks recent success/failure samples and cooldown windows.
+    - cooldown providers are skipped when alternatives exist; if all candidates are cooling down, original pool is retained to avoid deadlock.
+    - request-level observability events are appended as NDJSON when `MODEL_GATEWAY_OBSERVABILITY_ENABLED=1`.
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/api/src/common/codex-local.service.ts`
+    - local Codex prompt now carries `contentFormat` hint.
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/api/src/modules/generate/generate.service.ts`
+    - all major `chatWithRouting` callsites now pass `contentFormat` (and `diagram` hint when visual mode is diagram).
+- Regression coverage:
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/api/test/model-gateway.test.ts`
+    - added tests for format-aware layering and health fallback behavior.
+- Observability/reporting deliverables:
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/scripts/model-routing-dashboard-report.ts`
+    - reads NDJSON routing events and outputs markdown dashboard.
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/docs/observability/MODEL-ROUTING-DASHBOARD-TEMPLATE.md`
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/output/reports/observability/MODEL-ROUTING-DASHBOARD-2026-04-18_14-48-28.md` (sample generated report)
+  - root `package.json`: new command `pnpm report:model-routing`.
+- Verification in this pass:
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/api test -- model-gateway.test.ts` ✅
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/api typecheck` ✅
+  - `NEXT_PUBLIC_API_URL=http://127.0.0.1:4311 npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web build` ✅
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web typecheck` ✅
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web test` ✅ (Playwright reporter ~8.15s)
+  - `MODEL_GATEWAY_OBSERVABILITY_ENABLED=1 ... npx pnpm@10.23.0 report:model-routing` ✅
+
 ## Current built-in browser UAT-driven iteration pass (2026-04-18)
 
 - Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability`

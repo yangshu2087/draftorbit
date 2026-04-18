@@ -4,8 +4,10 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  applyModelGatewayHealthFallback,
   buildModelGatewayCandidatePool,
   isInvalidTestHighEvidenceModel,
+  type ProviderHealthState,
   resolveModelRoutingProfile
 } from '../src/common/model-gateway.service';
 
@@ -100,6 +102,125 @@ test('local_quality candidate pool prefers Codex local before paid and Ollama fa
     ]
   );
   assert.equal(candidates.at(-2)?.provider, 'ollama');
+});
+
+test('local_quality route layering prefers floor models first for tweet hook low-latency lane', () => {
+  const candidates = buildModelGatewayCandidatePool({
+    profile: 'local_quality',
+    taskType: 'hook',
+    contentFormat: 'tweet',
+    openaiAvailable: true,
+    openaiHighModels: ['gpt-5.4'],
+    openaiFloorModels: ['gpt-5.4-mini'],
+    openrouterHighModels: ['anthropic/claude-sonnet-4.6'],
+    openrouterFloorModels: ['deepseek/deepseek-v3.2'],
+    openrouterFreeModels: ['openrouter/free'],
+    ollamaModels: ['qwen3.5:9b'],
+    codexLocalEnabled: true
+  });
+
+  assert.deepEqual(
+    candidates.map((item) => `${item.provider}:${item.model}:${item.tier}`).slice(0, 5),
+    [
+      'codex-local:codex-local:quality_fallback',
+      'openai:gpt-5.4-mini:floor',
+      'openrouter:deepseek/deepseek-v3.2:floor',
+      'openai:gpt-5.4:quality_fallback',
+      'openrouter:anthropic/claude-sonnet-4.6:quality_fallback'
+    ]
+  );
+});
+
+test('local_quality route layering keeps high-tier first for article package lane', () => {
+  const candidates = buildModelGatewayCandidatePool({
+    profile: 'local_quality',
+    taskType: 'package',
+    contentFormat: 'article',
+    openaiAvailable: true,
+    openaiHighModels: ['gpt-5.4'],
+    openaiFloorModels: ['gpt-5.4-mini'],
+    openrouterHighModels: ['anthropic/claude-sonnet-4.6'],
+    openrouterFloorModels: ['deepseek/deepseek-v3.2'],
+    openrouterFreeModels: ['openrouter/free'],
+    ollamaModels: ['qwen3.5:9b'],
+    codexLocalEnabled: true
+  });
+
+  assert.deepEqual(
+    candidates.map((item) => `${item.provider}:${item.model}:${item.tier}`).slice(0, 5),
+    [
+      'codex-local:codex-local:quality_fallback',
+      'openai:gpt-5.4:quality_fallback',
+      'openrouter:anthropic/claude-sonnet-4.6:quality_fallback',
+      'openai:gpt-5.4-mini:floor',
+      'openrouter:deepseek/deepseek-v3.2:floor'
+    ]
+  );
+});
+
+test('health fallback skips providers that are in cooldown when alternatives exist', () => {
+  const candidates = [
+    { provider: 'codex-local' as const, model: 'codex-local', tier: 'quality_fallback' as const },
+    { provider: 'openai' as const, model: 'gpt-5.4', tier: 'quality_fallback' as const },
+    { provider: 'openrouter' as const, model: 'anthropic/claude-sonnet-4.6', tier: 'quality_fallback' as const }
+  ];
+  const now = Date.now();
+  const healthStates: Partial<Record<'openai' | 'openrouter' | 'ollama' | 'codex-local', ProviderHealthState | undefined>> = {
+    'codex-local': {
+      provider: 'codex-local',
+      events: [{ atMs: now - 1_000, ok: false, durationMs: 1200, errorCode: 'CODEX_LOCAL_TIMEOUT' }],
+      cooldownUntilMs: now + 15_000
+    }
+  };
+  const result = applyModelGatewayHealthFallback({
+    candidates,
+    healthStates,
+    nowMs: now,
+    config: {
+      enabled: true,
+      windowMs: 300_000,
+      minSamples: 3,
+      failureRateThreshold: 0.6,
+      consecutiveFailureThreshold: 2,
+      cooldownMs: 45_000
+    }
+  });
+
+  assert.equal(result.candidates[0]?.provider, 'openai');
+  assert.equal(result.candidates.some((item) => item.provider === 'codex-local'), false);
+  assert.deepEqual(result.skippedProviders, ['codex-local']);
+});
+
+test('health fallback keeps original pool when every candidate is cooling down', () => {
+  const now = Date.now();
+  const candidates = [
+    { provider: 'codex-local' as const, model: 'codex-local', tier: 'quality_fallback' as const }
+  ];
+  const healthStates: Partial<Record<'openai' | 'openrouter' | 'ollama' | 'codex-local', ProviderHealthState | undefined>> = {
+    'codex-local': {
+      provider: 'codex-local',
+      events: [{ atMs: now - 500, ok: false, durationMs: 800, errorCode: 'CODEX_LOCAL_BUSY' }],
+      cooldownUntilMs: now + 10_000
+    }
+  };
+
+  const result = applyModelGatewayHealthFallback({
+    candidates,
+    healthStates,
+    nowMs: now,
+    config: {
+      enabled: true,
+      windowMs: 300_000,
+      minSamples: 3,
+      failureRateThreshold: 0.6,
+      consecutiveFailureThreshold: 2,
+      cooldownMs: 45_000
+    }
+  });
+
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates[0]?.provider, 'codex-local');
+  assert.deepEqual(result.skippedProviders, ['codex-local']);
 });
 
 test('test_high evidence rejects free, mock and local models except explicitly allowed Codex local', () => {

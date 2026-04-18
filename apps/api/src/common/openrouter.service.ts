@@ -22,11 +22,14 @@ export type RouterTaskType =
   | 'package'
   | 'generic';
 
+export type RoutingContentFormat = 'tweet' | 'thread' | 'article' | 'diagram' | 'generic';
+
 export type RoutingTier = 'trial_high' | 'free_first' | 'floor' | 'quality_fallback';
 export type OpenRouterRoutingProfile = 'local' | 'test_high' | 'prod_balanced';
 
 export type RoutedChatOptions = {
   taskType?: RouterTaskType;
+  contentFormat?: RoutingContentFormat;
   temperature?: number;
   trialMode?: boolean;
   forceHighTier?: boolean;
