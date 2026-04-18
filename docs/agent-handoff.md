@@ -11,12 +11,17 @@ Update it before pausing work, switching tools, or asking another agent to conti
   - move required web Playwright lane from the current `~10.2s` watch edge to a safer `<10s` zone by reducing worker tail.
   - persist and surface **trend comparison** directly in Actions summary (not just one-run snapshots).
 - Changes in this pass:
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/web/e2e/ordinary-user-ci.spec.ts`
+    - `openApp()` now supports `includeRoutingPanel` option.
+    - only one generation lane blocks on routing panel readiness; other lanes measure core shell bootstrap to reduce duplicated panel wait cost and tail latency.
+    - route-entry test still asserts “模型路由观测” visibility to preserve UX/state coverage.
   - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/.github/workflows/ci.yml`
     - bumped `WEB_PLAYWRIGHT_WORKERS` from `3` to `4` in required `Web test (required)`.
     - added lightweight trend-cache lifecycle:
       - restore `web-playwright-trend-*` cache before web test,
       - pass `WEB_PLAYWRIGHT_TREND_FILE=/tmp/web-ci-trend/playwright-trend.json`,
       - save trend cache after run.
+    - trend cache scope uses `${{ github.head_ref || github.ref_name }}` so pull_request merge refs reuse branch trend history.
     - adds timing row for trend-cache restore into the existing CI step duration table.
   - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/web/scripts/run-playwright-ci.mjs`
     - added trend-state read/write (JSON) support for reporter/app-bootstrap metrics.

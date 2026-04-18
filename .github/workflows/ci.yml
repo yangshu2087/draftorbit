@@ -26,6 +26,7 @@ jobs:
       PLAYWRIGHT_BROWSERS_PATH: /home/runner/.cache/ms-playwright
       WEB_CI_STEP_TIMINGS_FILE: /tmp/web-ci-step-timings.tsv
       WEB_CI_TREND_DIR: /tmp/web-ci-trend
+      WEB_CI_TREND_SCOPE: ${{ github.head_ref || github.ref_name }}
 
     steps:
       - name: Checkout
@@ -77,9 +78,9 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ${{ env.WEB_CI_TREND_DIR }}
-          key: web-playwright-trend-${{ github.ref_name }}-${{ github.run_id }}
+          key: web-playwright-trend-${{ env.WEB_CI_TREND_SCOPE }}-${{ github.run_id }}
           restore-keys: |
-            web-playwright-trend-${{ github.ref_name }}-
+            web-playwright-trend-${{ env.WEB_CI_TREND_SCOPE }}-
             web-playwright-trend-
 
       - name: Record Web Playwright trend cache restore
@@ -174,7 +175,7 @@ jobs:
         uses: actions/cache/save@v5
         with:
           path: ${{ env.WEB_CI_TREND_DIR }}
-          key: web-playwright-trend-${{ github.ref_name }}-${{ github.run_id }}
+          key: web-playwright-trend-${{ env.WEB_CI_TREND_SCOPE }}-${{ github.run_id }}
 
       - name: Web build
         env:

@@ -536,15 +536,22 @@ async function seedSession(page: Page) {
   }, localToken);
 }
 
-async function openApp(page: Page) {
+async function openApp(page: Page, options?: { includeRoutingPanel?: boolean }) {
+  const includeRoutingPanel = options?.includeRoutingPanel === true;
   const bootstrapStart = Date.now();
   await seedSession(page);
   await page.goto('/app');
   await expect(page.getByRole('button', { name: /开始生成/u })).toBeVisible();
   await expect(page.getByText('未连接 X 账号 · 仍可先生成')).toBeVisible();
-  await expect(page.getByText('模型路由观测')).toBeVisible();
+  if (includeRoutingPanel) {
+    await expect(page.getByText('模型路由观测')).toBeVisible();
+  }
   const durationSeconds = ((Date.now() - bootstrapStart) / 1000).toFixed(2);
-  console.log(`[ci-perf] app bootstrap (includes /usage/summary panel) completed in ${durationSeconds}s`);
+  console.log(
+    includeRoutingPanel
+      ? `[ci-perf] app bootstrap (includes /usage/summary panel) completed in ${durationSeconds}s`
+      : `[ci-perf] app bootstrap (core shell) completed in ${durationSeconds}s`
+  );
 }
 
 type GenerationScenario = {
@@ -620,6 +627,7 @@ test('ordinary user can enter the app from home local CTA and verify safe connec
   await expect(page).toHaveURL(/\/app$/u);
   await expect(page.getByRole('button', { name: /开始生成/u })).toBeVisible();
   await expect(page.getByText('未连接 X 账号 · 仍可先生成')).toBeVisible();
+  await expect(page.getByText('模型路由观测')).toBeVisible();
 
   await page.goto('/connect?intent=connect_x_self');
   await expect(page).toHaveURL(/\/app\?nextAction=connect_x_self/u);
@@ -670,7 +678,7 @@ const generationScenariosRich: GenerationScenario[] = [
 ];
 
 test('app generation covers tweet and thread visual outputs with minimal page churn', async ({ page }) => {
-  await openApp(page);
+  await openApp(page, { includeRoutingPanel: true });
   for (const scenario of generationScenariosFast) {
     await test.step(scenario.name, async () => {
       await runGenerationScenario(page, scenario);
