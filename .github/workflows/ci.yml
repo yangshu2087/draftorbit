@@ -25,6 +25,7 @@ jobs:
     env:
       PLAYWRIGHT_BROWSERS_PATH: /home/runner/.cache/ms-playwright
       WEB_CI_STEP_TIMINGS_FILE: /tmp/web-ci-step-timings.tsv
+      WEB_CI_TREND_DIR: /tmp/web-ci-trend
 
     steps:
       - name: Checkout
@@ -67,6 +68,26 @@ jobs:
           end_seconds=$(date +%s)
           wall_seconds=$((end_seconds - PLAYWRIGHT_CACHE_RESTORE_START))
           printf "Restore Playwright Chromium cache\t%s\tcache-hit=%s\n" "$wall_seconds" "${PLAYWRIGHT_CACHE_HIT:-false}" >> "$WEB_CI_STEP_TIMINGS_FILE"
+
+      - name: Initialize Web Playwright trend cache dir
+        run: mkdir -p "$WEB_CI_TREND_DIR"
+
+      - name: Restore Web Playwright trend cache
+        id: web-playwright-trend-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ env.WEB_CI_TREND_DIR }}
+          key: web-playwright-trend-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            web-playwright-trend-${{ github.ref_name }}-
+            web-playwright-trend-
+
+      - name: Record Web Playwright trend cache restore
+        if: always()
+        env:
+          WEB_PLAYWRIGHT_TREND_CACHE_HIT: ${{ steps.web-playwright-trend-cache.outputs.cache-hit }}
+        run: |
+          printf "Restore Web Playwright trend cache\t0\tcache-hit=%s\n" "${WEB_PLAYWRIGHT_TREND_CACHE_HIT:-false}" >> "$WEB_CI_STEP_TIMINGS_FILE"
 
       - name: Record CI runtime and cache inputs
         env:
@@ -123,10 +144,12 @@ jobs:
           NEXT_PUBLIC_API_URL: /__api
           NEXT_PUBLIC_ENABLE_LOCAL_LOGIN: 'true'
           WEB_PLAYWRIGHT_PORT: 3300
-          WEB_PLAYWRIGHT_WORKERS: '3'
+          WEB_PLAYWRIGHT_WORKERS: '4'
           WEB_PLAYWRIGHT_REPORTER_TARGET_SECONDS: '10'
           WEB_PLAYWRIGHT_REPORTER_HARD_BUDGET_SECONDS: '12'
           WEB_PLAYWRIGHT_APP_BOOTSTRAP_TARGET_SECONDS: '2.5'
+          WEB_PLAYWRIGHT_TREND_FILE: /tmp/web-ci-trend/playwright-trend.json
+          WEB_PLAYWRIGHT_TREND_HISTORY_LIMIT: '12'
           WEB_PLAYWRIGHT_ENFORCE_BUDGET: '1'
         run: |
           start_seconds=$(date +%s)
@@ -145,6 +168,13 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           printf "Web test (required)\t%s\texit=%s\n" "$wall_seconds" "$status" >> "$WEB_CI_STEP_TIMINGS_FILE"
           exit "$status"
+
+      - name: Save Web Playwright trend cache
+        if: always()
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ env.WEB_CI_TREND_DIR }}
+          key: web-playwright-trend-${{ github.ref_name }}-${{ github.run_id }}
 
       - name: Web build
         env:

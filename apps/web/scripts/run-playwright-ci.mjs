@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 
 const isCi = process.env.CI === 'true';
 const port = Number(process.env.WEB_PLAYWRIGHT_PORT ?? 3300);
@@ -11,6 +12,8 @@ const hardBudgetSeconds = Number(
 );
 const appBootstrapTargetSeconds = Number(process.env.WEB_PLAYWRIGHT_APP_BOOTSTRAP_TARGET_SECONDS ?? 2.5);
 const enforceBudget = process.env.WEB_PLAYWRIGHT_ENFORCE_BUDGET === '1';
+const trendFile = process.env.WEB_PLAYWRIGHT_TREND_FILE;
+const trendHistoryLimit = Number(process.env.WEB_PLAYWRIGHT_TREND_HISTORY_LIMIT ?? 12);
 const warmupPaths = (process.env.WEB_PLAYWRIGHT_WARMUP_PATHS ?? '/,/app,/pricing,/connect?intent=connect_x_self,/queue?intent=confirm_publish')
   .split(',')
   .map((item) => item.trim())
@@ -93,6 +96,102 @@ function parsePerfDurations(output, regex) {
     .filter((value) => Number.isFinite(value));
 }
 
+function toFiniteNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function readTrendState(filePath) {
+  if (!filePath) return null;
+  try {
+    const raw = readFileSync(filePath, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeTrendState(filePath, state) {
+  if (!filePath || !state) return;
+  mkdirSync(dirname(filePath), { recursive: true });
+  writeFileSync(filePath, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+}
+
+function appendRecentSeries(previousValues, currentValue) {
+  const previous = Array.isArray(previousValues) ? previousValues.map((item) => toFiniteNumber(item)).filter((item) => item != null) : [];
+  const withCurrent = currentValue == null ? previous : [...previous, currentValue];
+  const keep = Number.isFinite(trendHistoryLimit) && trendHistoryLimit > 0 ? trendHistoryLimit : 12;
+  return withCurrent.slice(-keep);
+}
+
+function average(values) {
+  if (!values.length) return null;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function formatDelta(value) {
+  if (value == null) return 'n/a';
+  if (value === 0) return '0.00s';
+  return `${value > 0 ? '+' : ''}${value.toFixed(2)}s`;
+}
+
+function buildTrendSnapshot(previousState, reporterSeconds, appBootstrapMaxSeconds) {
+  const previousReporterSeconds = toFiniteNumber(previousState?.lastReporterSeconds);
+  const previousAppBootstrapMaxSeconds = toFiniteNumber(previousState?.lastAppBootstrapMaxSeconds);
+  const reporterDelta = previousReporterSeconds == null || reporterSeconds == null ? null : reporterSeconds - previousReporterSeconds;
+  const appBootstrapDelta =
+    previousAppBootstrapMaxSeconds == null || appBootstrapMaxSeconds == null
+      ? null
+      : appBootstrapMaxSeconds - previousAppBootstrapMaxSeconds;
+  const recentReporter = appendRecentSeries(previousState?.recentReporterSeconds, reporterSeconds);
+  const recentAppBootstrap = appendRecentSeries(previousState?.recentAppBootstrapMaxSeconds, appBootstrapMaxSeconds);
+  const reporterRollingAverage = average(recentReporter);
+  const appBootstrapRollingAverage = average(recentAppBootstrap);
+  const reporterStableUnderTarget = recentReporter.length ? recentReporter.every((value) => value <= targetSeconds) : null;
+  return {
+    previousReporterSeconds,
+    previousAppBootstrapMaxSeconds,
+    reporterDelta,
+    appBootstrapDelta,
+    reporterRollingAverage,
+    appBootstrapRollingAverage,
+    reporterStableUnderTarget,
+    recentReporterCount: recentReporter.length,
+    recentAppBootstrapCount: recentAppBootstrap.length
+  };
+}
+
+function buildNextTrendState(previousState, reporterSeconds, appBootstrapMaxSeconds) {
+  const previousRuns = Number(previousState?.totalRuns ?? 0);
+  const previousBestReporter = toFiniteNumber(previousState?.bestReporterSeconds);
+  const previousBestBootstrap = toFiniteNumber(previousState?.bestAppBootstrapMaxSeconds);
+  return {
+    schemaVersion: 1,
+    updatedAt: new Date().toISOString(),
+    runId: process.env.GITHUB_RUN_ID ?? null,
+    runAttempt: process.env.GITHUB_RUN_ATTEMPT ?? null,
+    totalRuns: Number.isFinite(previousRuns) ? previousRuns + 1 : 1,
+    lastReporterSeconds: reporterSeconds,
+    lastAppBootstrapMaxSeconds: appBootstrapMaxSeconds,
+    bestReporterSeconds:
+      reporterSeconds == null
+        ? previousBestReporter
+        : previousBestReporter == null
+          ? reporterSeconds
+          : Math.min(previousBestReporter, reporterSeconds),
+    bestAppBootstrapMaxSeconds:
+      appBootstrapMaxSeconds == null
+        ? previousBestBootstrap
+        : previousBestBootstrap == null
+          ? appBootstrapMaxSeconds
+          : Math.min(previousBestBootstrap, appBootstrapMaxSeconds),
+    recentReporterSeconds: appendRecentSeries(previousState?.recentReporterSeconds, reporterSeconds),
+    recentAppBootstrapMaxSeconds: appendRecentSeries(previousState?.recentAppBootstrapMaxSeconds, appBootstrapMaxSeconds)
+  };
+}
+
 function buildScenarioMetrics(output) {
   const matches = [...output.matchAll(/\[ci-perf\]\s+generation scenario\s+"([^"]+)"\s+completed in\s+(\d+(?:\.\d+)?)s/gu)];
   const parsed = matches
@@ -126,7 +225,9 @@ function writeSummary({
   appBootstrapAverageSeconds,
   appBootstrapMaxSeconds,
   appBootstrapTargetOk,
-  scenarioMetrics
+  scenarioMetrics,
+  trendSnapshot,
+  trendState
 }) {
   const summaryPath = process.env.GITHUB_STEP_SUMMARY;
   if (!summaryPath) return;
@@ -147,6 +248,13 @@ function writeSummary({
       'Generation slowest scenario',
       scenarioMetrics.slowest ? `${scenarioMetrics.slowest.name} (${scenarioMetrics.slowest.durationSeconds.toFixed(2)}s)` : 'not parsed'
     ],
+    ['Trend samples kept', String(trendSnapshot.recentReporterCount)],
+    ['Reporter vs previous run', formatDelta(trendSnapshot.reporterDelta)],
+    ['Reporter rolling avg', trendSnapshot.reporterRollingAverage == null ? 'n/a' : `${trendSnapshot.reporterRollingAverage.toFixed(2)}s`],
+    ['Reporter trend status', trendSnapshot.reporterStableUnderTarget == null ? 'watch' : trendSnapshot.reporterStableUnderTarget ? 'pass' : 'watch'],
+    ['App bootstrap max vs previous run', formatDelta(trendSnapshot.appBootstrapDelta)],
+    ['App bootstrap rolling avg', trendSnapshot.appBootstrapRollingAverage == null ? 'n/a' : `${trendSnapshot.appBootstrapRollingAverage.toFixed(2)}s`],
+    ['Trend total runs tracked', String(trendState?.totalRuns ?? 0)],
     ['Playwright exit code', String(commandCode)]
   ];
   const warmupRows = timings.map(([name, value]) => `| ${name} | ${value} |`).join('\n');
@@ -212,6 +320,10 @@ async function main() {
   const scenarioMetrics = buildScenarioMetrics(result.output);
   const targetOk = reporterSeconds != null && reporterSeconds <= targetSeconds;
   const budgetOk = reporterSeconds != null && reporterSeconds <= hardBudgetSeconds;
+  const previousTrendState = readTrendState(trendFile);
+  const trendSnapshot = buildTrendSnapshot(previousTrendState, reporterSeconds, appBootstrapMaxSeconds);
+  const trendState = buildNextTrendState(previousTrendState, reporterSeconds, appBootstrapMaxSeconds);
+  writeTrendState(trendFile, trendState);
   writeSummary({
     commandCode: result.code,
     reporterSeconds,
@@ -221,7 +333,9 @@ async function main() {
     appBootstrapAverageSeconds,
     appBootstrapMaxSeconds,
     appBootstrapTargetOk,
-    scenarioMetrics
+    scenarioMetrics,
+    trendSnapshot,
+    trendState
   });
 
   if (result.code !== 0) process.exit(result.code);

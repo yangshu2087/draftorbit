@@ -3,6 +3,39 @@
 Use this file to transfer execution state between Codex, Cursor, and other agents.
 Update it before pausing work, switching tools, or asking another agent to continue.
 
+## Current CI reporter-time <10 stabilization + trend summary pass (2026-04-18)
+
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability`
+- Branch: `codex/web-ci-panel-observability-8s`
+- Goal in this pass:
+  - move required web Playwright lane from the current `~10.2s` watch edge to a safer `<10s` zone by reducing worker tail.
+  - persist and surface **trend comparison** directly in Actions summary (not just one-run snapshots).
+- Changes in this pass:
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/.github/workflows/ci.yml`
+    - bumped `WEB_PLAYWRIGHT_WORKERS` from `3` to `4` in required `Web test (required)`.
+    - added lightweight trend-cache lifecycle:
+      - restore `web-playwright-trend-*` cache before web test,
+      - pass `WEB_PLAYWRIGHT_TREND_FILE=/tmp/web-ci-trend/playwright-trend.json`,
+      - save trend cache after run.
+    - adds timing row for trend-cache restore into the existing CI step duration table.
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/web/scripts/run-playwright-ci.mjs`
+    - added trend-state read/write (JSON) support for reporter/app-bootstrap metrics.
+    - computes and publishes trend rows in `$GITHUB_STEP_SUMMARY`:
+      - reporter vs previous run delta,
+      - reporter rolling average,
+      - reporter trend status (under target or watch),
+      - app-bootstrap max vs previous run delta,
+      - app-bootstrap rolling average,
+      - tracked run count.
+- Verification in this pass:
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web test` with CI env + `WEB_PLAYWRIGHT_WORKERS=4` ✅
+    - real Playwright browser run: `4 passed (2.8s)` then repeat `4 passed (3.0s)`.
+    - harness wall time: `5.30s` / `5.99s`.
+    - trend file verified:
+      - `/tmp/web-ci-trend/playwright-trend.json` with `totalRuns: 2`, `recentReporterSeconds: [2.8, 3]`.
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web typecheck` ✅
+  - `NEXT_PUBLIC_API_URL=http://127.0.0.1:4311 npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web build` ✅
+
 ## Current high-yield minimal upgrade package (2026-04-18)
 
 - Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability`
