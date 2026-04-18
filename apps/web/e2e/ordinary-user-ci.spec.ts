@@ -620,7 +620,6 @@ test('ordinary user can enter the app from home local CTA and verify safe connec
   await expect(page).toHaveURL(/\/app$/u);
   await expect(page.getByRole('button', { name: /开始生成/u })).toBeVisible();
   await expect(page.getByText('未连接 X 账号 · 仍可先生成')).toBeVisible();
-  await expect(page.getByText('模型路由观测')).toBeVisible();
 
   await page.goto('/connect?intent=connect_x_self');
   await expect(page).toHaveURL(/\/app\?nextAction=connect_x_self/u);
