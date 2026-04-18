@@ -3,6 +3,44 @@
 Use this file to transfer execution state between Codex, Cursor, and other agents.
 Update it before pausing work, switching tools, or asking another agent to continue.
 
+## Current built-in browser UAT-driven iteration pass (2026-04-18)
+
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability`
+- Branch: `codex/web-ci-perf-8s-stability`
+- Goal in this pass: execute a fresh ordinary-user full-flow acceptance from `/` to `/app` and route gates (`/queue` `/connect` `/pricing`), re-verify X-login entry, and directly fix blockers before local commit (no push).
+- Key runtime used:
+  - API `http://127.0.0.1:4311` with `X_CALLBACK_URL=http://127.0.0.1:3300/auth/callback`, `AUTH_MODE=self_host_no_login`.
+  - Web `http://127.0.0.1:3300` using `next build` + `next start` for stable UAT.
+  - `vendor/baoyu-skills` restored/pinned to `9977ff520c49ea0888d8d43d582973c6e8c1d55a` by `node scripts/ensure-baoyu-skills-runtime.mjs`.
+- Blocker found and fixed in this pass:
+  - Ordinary-user case `diagram-process-prompt` failed closed because tweet quality gate hard-failed `missing_scene` even for explicit diagram-intent prompts.
+  - Fix:
+    - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/api/src/modules/generate/content-quality-gate.ts`
+      - add diagram-intent detection from `visualPlan` + text/focus cues.
+      - keep tweet scene guard for normal tweet flows, but clear `missing_scene` when diagram intent is explicit.
+    - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/api/test/content-quality-gate.test.ts`
+      - add regression test `buildContentQualityGate allows diagram-intent tweet prompts without missing_scene hard fail`.
+- Browser/UAT evidence captured:
+  - Full ordinary-user sync rerun passed: `7/7` cases.
+    - tracked report: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/output/reports/uat-full/BAOYU-ORDINARY-USER-SYNC-2026-04-18_06-48-53.md`
+    - artifact root: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/output/playwright/ordinary-user-baoyu-sync-2026-04-18_06-48-53/`
+  - Real browser route/CTA pass from `/` to `/app` plus queue/connect/pricing gates:
+    - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/output/playwright/local-full-flow-2026-04-18-14-07-46/full-flow-report.json`
+  - X login entry verification after callback env wiring:
+    - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/output/playwright/x-login-uat-result-2026-04-18-14-07-09.json`
+    - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/output/playwright/x-login-entry-uat-2026-04-18-14-07-09.png`
+    - result: no `Missing required env: X_CALLBACK_URL`; redirect reaches `https://x.com/i/oauth2/authorize...`.
+- Verification commands run in this pass:
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web typecheck` ✅
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web test` ✅ (`23` node tests + `4` Playwright tests, reporter `3.0s`)
+  - `NEXT_PUBLIC_API_URL=http://127.0.0.1:4311 npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web build` ✅
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/api typecheck` ✅
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/api test` ✅ (`237/237`)
+- Safety guard remains unchanged:
+  - no real X post execution;
+  - no real payment execution;
+  - external-key absence continues to fail closed or mark evidence as local-only.
+
 
 ## Current Playwright reporter-time stabilization pass (2026-04-17)
 

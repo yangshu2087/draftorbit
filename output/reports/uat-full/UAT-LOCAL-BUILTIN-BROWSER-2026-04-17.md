@@ -70,3 +70,28 @@ Observed result:
 ### Notes
 - This pass validates **X 登录入口可拉起** and callback wiring presence in authorize URL.
 - Real X account authorization completion is intentionally out of scope in local safety policy.
+
+## Session 2026-04-18 07:08 PDT — built-in browser full-flow rerun + diagram gate fix
+
+### Scope
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability`
+- Objective: rerun ordinary-user full flow (`/` → `/app` → generation/export → `/queue`/`/connect`/`/pricing`) and verify X 登录入口 after `X_CALLBACK_URL` wiring, then directly fix blockers.
+- Runtime: API `http://127.0.0.1:4311` (with `X_CALLBACK_URL=http://127.0.0.1:3300/auth/callback`), Web `http://127.0.0.1:3300` (`next build` + `next start`).
+
+### Blocker found and direct fix
+
+| Item | Problem | Direct fix | Regression evidence |
+| --- | --- | --- | --- |
+| Diagram tweet intent in ordinary-user flow | `diagram-process-prompt` was blocked by `missing_scene` quality hard-fail, causing diagram visual asset generation to fail closed even when user explicitly requested a process diagram. | Updated `apps/api/src/modules/generate/content-quality-gate.ts`: detect diagram intent from `visualPlan`/focus/text cues and skip `missing_scene` hard-fail for tweet diagram intent. | Added test in `apps/api/test/content-quality-gate.test.ts`: `buildContentQualityGate allows diagram-intent tweet prompts without missing_scene hard fail`; API suite now passes with this regression covered. |
+
+### Built-in browser / visual verification results
+
+| Step | Action | Result | Evidence |
+| --- | --- | --- | --- |
+| 1 | Click **用 X 登录开始** on `/` | ✅ redirected to X OAuth authorize entry with callback present | `output/playwright/x-login-uat-result-2026-04-18-14-07-09.json` (`finalUrl` is `https://x.com/i/oauth2/authorize...redirect_uri=http%3A%2F%2F127.0.0.1%3A3300%2Fauth%2Fcallback`), screenshot `output/playwright/x-login-entry-uat-2026-04-18-14-07-09.png` |
+| 2 | Browser full-path check from `/` to `/app`, then `/queue` `/connect` `/pricing` | ✅ route entry/redirect/CTA visibility verified | `output/playwright/local-full-flow-2026-04-18-14-07-46/full-flow-report.json` and step screenshots `01-home.png`…`06-pricing.png` |
+| 3 | Ordinary-user full UAT matrix rerun (tweet/thread/article/diagram/URL source/latest fail-closed + route audit + export actions) | ✅ all pass (`7/7` cases, route audit `5/5`) | `output/reports/uat-full/BAOYU-ORDINARY-USER-SYNC-2026-04-18_06-48-53.md`, artifact root `output/playwright/ordinary-user-baoyu-sync-2026-04-18_06-48-53/` |
+
+### Notes
+- This pass keeps safety boundaries unchanged: no real post to X, no real payment execution, no dangerous login automation.
+- X 登录入口 verification only checks **authorize entry availability + callback wiring + no env-missing error**.
