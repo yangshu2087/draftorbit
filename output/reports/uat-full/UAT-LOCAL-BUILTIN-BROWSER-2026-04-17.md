@@ -95,3 +95,53 @@ Observed result:
 ### Notes
 - This pass keeps safety boundaries unchanged: no real post to X, no real payment execution, no dangerous login automation.
 - X 登录入口 verification only checks **authorize entry availability + callback wiring + no env-missing error**.
+
+## Session 2026-04-18 08:20 PDT — minimal API live smoke (/health + protected route)
+
+### Scope
+- Goal: 增加最小后端 live smoke，闭环验证“健康检查 + 鉴权保护路由”。
+- Environment: local API `http://127.0.0.1:4311`.
+- Policy: read-only smoke only; no schema/data migration; no publish/payment side effects.
+
+### API contract / permissions expectations (pre-check)
+- `GET /health`:
+  - Contract: public health endpoint, returns service liveness/readiness and dependency status.
+- `GET /usage/summary`:
+  - Contract: protected usage summary endpoint (requires `Authorization: Bearer <token>`).
+  - Permission semantics: missing token should return `401 UNAUTHORIZED`; valid token should return `200` workspace-scoped summary.
+
+### Step-by-step live smoke
+
+| Step | Command | Expected | Observed | Result |
+| --- | --- | --- | --- | --- |
+| 1 | `curl -i http://127.0.0.1:4311/health` | 200 + health payload | `HTTP/1.1 200 OK`; body: `{\"ok\":true,\"service\":\"draftorbit-api\",\"live\":true,\"ready\":true,\"dependencies\":{\"db\":true,\"redis\":true}}` | ✅ |
+| 2 | `curl -i http://127.0.0.1:4311/usage/summary` | 401 unauthorized when no token | `HTTP/1.1 401 Unauthorized`; body includes `{\"code\":\"UNAUTHORIZED\",\"message\":\"缺少 Authorization Header\"}` | ✅ |
+| 3 | `curl -X POST /auth/local/session` then `curl -i -H \"Authorization: Bearer <token>\" /usage/summary` | 200 with usage summary | `HTTP/1.1 200 OK`; body includes `workspaceId`, `counters`, `modelRouting` (including `profile`, `healthProbe`, `providerHealth`, `fallbackHotspots`) | ✅ |
+
+### Backend lane evidence summary
+- **API contract:** unchanged; smoke validated existing `/health` + `/usage/summary` behavior.
+- **Error semantics:** unauthorized request returns `401` + `UNAUTHORIZED` envelope (as designed).
+- **Permissions:** protected route correctly blocks missing header and allows valid Bearer token.
+- **Data consistency:** this smoke is read-only for business surfaces (`/health`, `/usage/summary`); only local session issuance used for auth bootstrap.
+- **Observability impact:** request ids observed in each response (`x-request-id`), and usage summary includes routing observability fields.
+
+## Session 2026-04-18 08:23 PDT — frontend visual evidence refresh (docs-only closure)
+
+### Scope
+- Purpose: add one fresh real-browser visual pass to close this audit chain together with the API smoke above.
+- No UI code changes; evidence-only run.
+
+### Visual verification (real browser)
+
+| Item | Check | Result | Evidence |
+| --- | --- | --- | --- |
+| Page load default state | Open `http://127.0.0.1:3300/`, verify title and initial render | ✅ pass | `title=DraftOrbit — 一句话生成可发的 X 内容` |
+| Responsive breakpoints | Capture 375 / 768 / 1024 / 1440 screenshots | ✅ pass | `375.png`, `768.png`, `1024.png`, `1440.png` |
+| Runtime/browser errors | Verify browser error log file | ✅ pass | `errors.txt` is empty |
+
+Artifact root:
+- `/var/folders/vp/w2775f6n3ts10l3gmfvk_p180000gn/T/draftorbit-ui-review.iFgXs3`
+
+State-coverage note:
+- This docs-only pass validates **default render + responsive visual integrity + error-free runtime**.
+- Hover/focus-visible/active/loading/disabled/success interactive state checks were not the target in this closure pass because no UI behavior changed.
