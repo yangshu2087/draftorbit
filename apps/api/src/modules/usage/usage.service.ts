@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { CreditDirection, PublishJobStatus } from '@draftorbit/db';
+import { ModelGatewayService } from '../../common/model-gateway.service';
 import { PrismaService } from '../../common/prisma.service';
 import { toSegmentError } from '../../common/segment-error';
 import { WorkspaceContextService } from '../../common/workspace-context.service';
@@ -18,11 +19,94 @@ function decimalToNumber(value: unknown): number {
   return 0;
 }
 
+export type RoutingHotspotMetric = {
+  eventType?: string | null;
+  modelUsed?: string | null;
+  fallbackDepth?: number | null;
+};
+
+export type RoutingFallbackHotspot = {
+  lane: string;
+  eventType: string;
+  provider: string;
+  totalCalls: number;
+  fallbackHits: number;
+  fallbackRate: number;
+};
+
+function normalizeRoutingProvider(modelUsed: string | null | undefined): string {
+  const normalized = String(modelUsed ?? '').trim().toLowerCase();
+  if (!normalized) return 'unknown';
+  if (normalized.startsWith('codex-local')) return 'codex-local';
+  if (normalized.startsWith('ollama/')) return 'ollama';
+  if (normalized.startsWith('gpt-')) return 'openai';
+  if (normalized.includes('/')) return 'openrouter';
+  return 'unknown';
+}
+
+function normalizeUsageEventType(eventType: string | null | undefined): string {
+  const raw = String(eventType ?? 'GENERATION').trim().toUpperCase();
+  if (!raw) return 'GENERATION';
+  return raw;
+}
+
+export function buildRoutingFallbackHotspots(
+  usageMetrics: RoutingHotspotMetric[],
+  limit = 5
+): RoutingFallbackHotspot[] {
+  const bucketMap = new Map<
+    string,
+    {
+      lane: string;
+      eventType: string;
+      provider: string;
+      totalCalls: number;
+      fallbackHits: number;
+    }
+  >();
+
+  for (const item of usageMetrics) {
+    const eventType = normalizeUsageEventType(item.eventType);
+    const provider = normalizeRoutingProvider(item.modelUsed);
+    const lane = `${eventType.toLowerCase()}:${provider}`;
+    const bucket = bucketMap.get(lane) ?? {
+      lane,
+      eventType,
+      provider,
+      totalCalls: 0,
+      fallbackHits: 0
+    };
+    bucket.totalCalls += 1;
+    if (Number(item.fallbackDepth ?? 0) > 0) bucket.fallbackHits += 1;
+    bucketMap.set(lane, bucket);
+  }
+
+  return [...bucketMap.values()]
+    .filter((bucket) => bucket.fallbackHits > 0)
+    .sort((a, b) => {
+      if (b.fallbackHits !== a.fallbackHits) return b.fallbackHits - a.fallbackHits;
+      const aRate = a.totalCalls > 0 ? a.fallbackHits / a.totalCalls : 0;
+      const bRate = b.totalCalls > 0 ? b.fallbackHits / b.totalCalls : 0;
+      if (bRate !== aRate) return bRate - aRate;
+      return a.lane.localeCompare(b.lane);
+    })
+    .slice(0, Math.max(1, limit))
+    .map((bucket) => ({
+      lane: bucket.lane,
+      eventType: bucket.eventType,
+      provider: bucket.provider,
+      totalCalls: bucket.totalCalls,
+      fallbackHits: bucket.fallbackHits,
+      fallbackRate: bucket.totalCalls > 0 ? bucket.fallbackHits / bucket.totalCalls : 0
+    }));
+}
+
 @Injectable()
 export class UsageService {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
-    @Inject(WorkspaceContextService) private readonly workspaceContext: WorkspaceContextService
+    @Inject(WorkspaceContextService) private readonly workspaceContext: WorkspaceContextService,
+    @Inject(ModelGatewayService) private readonly modelGateway: ModelGatewayService
   ) {}
 
   async summary(userId: string) {
@@ -61,6 +145,8 @@ export class UsageService {
       this.prisma.db.usageLog.findMany({
         where: { workspaceId, createdAt: { gte: monthStart } },
         select: {
+          eventType: true,
+          modelUsed: true,
           routingTier: true,
           fallbackDepth: true,
           requestCostUsd: true,
@@ -96,6 +182,8 @@ export class UsageService {
     const avgQualityScore = qualitySamples.length > 0
       ? qualitySamples.reduce((sum, value) => sum + value, 0) / qualitySamples.length
       : 0;
+    const fallbackHotspots = buildRoutingFallbackHotspots(usageMetrics, 5);
+    const routingHealth = this.modelGateway.getRoutingHealthSnapshot();
 
     const draftMap = new Map(draftStatusCounts.map((row) => [row.status, row._count._all]));
 
@@ -125,7 +213,11 @@ export class UsageService {
           qualityFallbackRate: totalModelCalls > 0 ? qualityFallbackHits / totalModelCalls : 0,
           avgRequestCostUsd,
           totalRequestCostUsd,
-          avgQualityScore
+          avgQualityScore,
+          profile: routingHealth.profile,
+          healthProbe: routingHealth.healthProbe,
+          providerHealth: routingHealth.providers,
+          fallbackHotspots
         } as any
       } as any
     });
@@ -161,7 +253,11 @@ export class UsageService {
         qualityFallbackRate: totalModelCalls > 0 ? qualityFallbackHits / totalModelCalls : 0,
         avgRequestCostUsd,
         totalRequestCostUsd,
-        avgQualityScore
+        avgQualityScore,
+        profile: routingHealth.profile,
+        healthProbe: routingHealth.healthProbe,
+        providerHealth: routingHealth.providers,
+        fallbackHotspots
       },
       latestLedgers,
       nextAction: guidance.nextAction,

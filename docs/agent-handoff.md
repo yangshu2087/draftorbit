@@ -41,6 +41,58 @@ Update it before pausing work, switching tools, or asking another agent to conti
   - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web test` ✅ (Playwright reporter ~8.15s)
   - `MODEL_GATEWAY_OBSERVABILITY_ENABLED=1 ... npx pnpm@10.23.0 report:model-routing` ✅
 
+## Current phase-2 integration (usage/ops observability surfaced in /app) (2026-04-18)
+
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability`
+- Branch: `codex/web-ci-perf-8s-stability`
+- Goal in this pass: continue “第2阶段” by exposing model-routing health and fallback hotspots in the ordinary-user `/app` flow without breaking local-default pass criteria.
+- Architecture choice in this pass:
+  - Chosen: **reuse existing `/usage/summary` contract** and enrich it with routing-health metadata from `ModelGatewayService`; then render in `/app`.
+  - Not chosen: add a new `/v3/ops` endpoint. Reason: higher contract/migration cost for little user value; `/usage/summary` already powers ops/usage lane and is guarded by auth/workspace context.
+  - Rollback path: remove `/app` usage-summary fetch + panel; existing generation flow remains unchanged.
+- Backend/API lane changes:
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/api/src/common/model-gateway.service.ts`
+    - added `getRoutingHealthSnapshot()` public accessor.
+    - returns profile + health-probe config + per-provider health summary for ops/usage consumption.
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/api/src/modules/usage/usage.service.ts`
+    - injects `ModelGatewayService`.
+    - exports `buildRoutingFallbackHotspots(...)`.
+    - `summary()` now enriches `modelRouting` with:
+      - `profile`
+      - `healthProbe`
+      - `providerHealth`
+      - `fallbackHotspots`
+    - keeps existing `fallbackRate/avgQualityScore` fields for guidance compatibility.
+  - API semantics unchanged:
+    - route still `GET /usage/summary` under AuthGuard.
+    - permissions and workspace scoping unchanged (`WorkspaceContextService` default workspace resolution).
+    - error envelope remains existing app-level behavior.
+- Regression coverage added/updated:
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/api/test/usage-routing-observability.test.ts`
+    - validates fallback-hotspot sorting/limit behavior.
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/api/test/model-gateway.test.ts`
+    - validates health snapshot shape for ops/usage panels.
+- Front-end/UX lane changes:
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/web/lib/queries.ts`
+    - adds `fetchUsageSummary()` and typed `UsageSummaryResponse`.
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/web/components/v3/operator-app.tsx`
+    - `/app` now loads usage summary as a non-blocking dependency.
+    - adds “模型路由观测” panel:
+      - counters (`totalCalls`, `fallbackRate`, `avgQualityScore`)
+      - provider health probe cards (healthy/cooling-down state)
+      - fallback hotspot list (lane + rate + hit count)
+    - if usage data fails, panel degrades gracefully and does not block generation.
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/web/e2e/ordinary-user-ci.spec.ts`
+    - CI mock now serves `/usage/summary`.
+    - adds regression assertion that `/app` renders “模型路由观测”.
+- Verification run in this pass:
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/api test -- test/model-gateway.test.ts test/usage-routing-observability.test.ts` ✅ (`244/244`)
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/api typecheck` ✅
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web typecheck` ✅
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web test` ✅
+    - real Playwright pass: `4 passed (6.9s)`, harness `7.33s`.
+  - `NEXT_PUBLIC_API_URL=http://127.0.0.1:4311 npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web build` ✅
+
 ## Current built-in browser UAT-driven iteration pass (2026-04-18)
 
 - Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability`

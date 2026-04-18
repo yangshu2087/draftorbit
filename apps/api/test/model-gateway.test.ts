@@ -7,6 +7,7 @@ import {
   applyModelGatewayHealthFallback,
   buildModelGatewayCandidatePool,
   isInvalidTestHighEvidenceModel,
+  ModelGatewayService,
   type ProviderHealthState,
   resolveModelRoutingProfile
 } from '../src/common/model-gateway.service';
@@ -221,6 +222,19 @@ test('health fallback keeps original pool when every candidate is cooling down',
   assert.equal(result.candidates.length, 1);
   assert.equal(result.candidates[0]?.provider, 'codex-local');
   assert.deepEqual(result.skippedProviders, ['codex-local']);
+});
+
+test('model gateway health snapshot exposes provider summaries for ops/usage panels', () => {
+  const gateway = new ModelGatewayService({} as any, {} as any);
+  const snapshot = gateway.getRoutingHealthSnapshot(1_760_000_000_000);
+  assert.equal(snapshot.at, new Date(1_760_000_000_000).toISOString());
+  assert.equal(snapshot.profile, resolveModelRoutingProfile());
+  assert.equal(snapshot.providers.length, 4);
+  assert.deepEqual(
+    snapshot.providers.map((item) => item.provider),
+    ['codex-local', 'openai', 'openrouter', 'ollama']
+  );
+  assert.equal(snapshot.healthProbe.windowMs > 0, true);
 });
 
 test('test_high evidence rejects free, mock and local models except explicitly allowed Codex local', () => {

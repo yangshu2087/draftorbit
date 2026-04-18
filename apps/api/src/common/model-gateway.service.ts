@@ -97,6 +97,20 @@ export type ProviderHealthSummary = {
   lastSuccessAt: string | null;
 };
 
+export type ModelGatewayHealthSnapshot = {
+  at: string;
+  profile: ModelRoutingProfile;
+  healthProbe: {
+    enabled: boolean;
+    windowMs: number;
+    minSamples: number;
+    failureRateThreshold: number;
+    consecutiveFailureThreshold: number;
+    cooldownMs: number;
+  };
+  providers: ProviderHealthSummary[];
+};
+
 export type ModelGatewayHealthFilterInput = {
   candidates: ModelGatewayCandidate[];
   healthStates: Partial<Record<ModelProviderKey, ProviderHealthState | undefined>>;
@@ -516,6 +530,22 @@ export class ModelGatewayService {
   private providerHealthSummary(nowMs = Date.now()): ProviderHealthSummary[] {
     const providers: ModelProviderKey[] = ['codex-local', 'openai', 'openrouter', 'ollama'];
     return providers.map((provider) => toProviderHealthSummary(provider, this.providerHealthStates[provider], this.healthConfig, nowMs));
+  }
+
+  getRoutingHealthSnapshot(nowMs = Date.now()): ModelGatewayHealthSnapshot {
+    return {
+      at: new Date(nowMs).toISOString(),
+      profile: this.profile,
+      healthProbe: {
+        enabled: this.healthConfig.enabled,
+        windowMs: this.healthConfig.windowMs,
+        minSamples: this.healthConfig.minSamples,
+        failureRateThreshold: this.healthConfig.failureRateThreshold,
+        consecutiveFailureThreshold: this.healthConfig.consecutiveFailureThreshold,
+        cooldownMs: this.healthConfig.cooldownMs
+      },
+      providers: this.providerHealthSummary(nowMs)
+    };
   }
 
   private updateProviderHealth(

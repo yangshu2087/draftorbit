@@ -61,6 +61,88 @@ const queue = {
   failed: []
 };
 
+const usageSummary = {
+  requestId: 'req_usage_ci',
+  workspaceId: 'workspace_ci',
+  periodStart: '2026-04-01T00:00:00.000Z',
+  counters: {
+    usageEvents: 68,
+    generations: 31,
+    publishJobs: 8,
+    replyJobs: 4
+  },
+  modelRouting: {
+    totalCalls: 31,
+    freeHitRate: 0.23,
+    fallbackRate: 0.19,
+    qualityFallbackRate: 0.42,
+    avgRequestCostUsd: 0.0012,
+    totalRequestCostUsd: 0.0372,
+    avgQualityScore: 84.5,
+    profile: 'local_quality',
+    healthProbe: {
+      enabled: true,
+      windowMs: 300000,
+      minSamples: 3,
+      failureRateThreshold: 0.6,
+      consecutiveFailureThreshold: 2,
+      cooldownMs: 45000
+    },
+    providerHealth: [
+      {
+        provider: 'codex-local',
+        sampleSize: 8,
+        failureRate: 0.125,
+        consecutiveFailures: 0,
+        healthy: true,
+        coolingDown: false,
+        cooldownUntilMs: null,
+        lastFailureAt: '2026-04-17T08:12:00.000Z',
+        lastSuccessAt: '2026-04-17T08:20:00.000Z'
+      },
+      {
+        provider: 'openai',
+        sampleSize: 6,
+        failureRate: 0,
+        consecutiveFailures: 0,
+        healthy: true,
+        coolingDown: false,
+        cooldownUntilMs: null,
+        lastFailureAt: null,
+        lastSuccessAt: '2026-04-17T08:20:00.000Z'
+      },
+      {
+        provider: 'openrouter',
+        sampleSize: 7,
+        failureRate: 0.28,
+        consecutiveFailures: 1,
+        healthy: true,
+        coolingDown: false,
+        cooldownUntilMs: null,
+        lastFailureAt: '2026-04-17T08:19:00.000Z',
+        lastSuccessAt: '2026-04-17T08:20:00.000Z'
+      },
+      {
+        provider: 'ollama',
+        sampleSize: 4,
+        failureRate: 0.25,
+        consecutiveFailures: 0,
+        healthy: true,
+        coolingDown: false,
+        cooldownUntilMs: null,
+        lastFailureAt: '2026-04-17T08:18:00.000Z',
+        lastSuccessAt: '2026-04-17T08:20:00.000Z'
+      }
+    ],
+    fallbackHotspots: [
+      { lane: 'generation:openrouter', eventType: 'GENERATION', provider: 'openrouter', totalCalls: 12, fallbackHits: 3, fallbackRate: 0.25 },
+      { lane: 'image:ollama', eventType: 'IMAGE', provider: 'ollama', totalCalls: 6, fallbackHits: 1, fallbackRate: 0.1667 }
+    ]
+  },
+  nextAction: 'monitor_usage',
+  blockingReason: null
+};
+
 const billingPlans = {
   currency: 'USD',
   trialDays: 3,
@@ -329,7 +411,7 @@ async function mockDraftOrbitApi(page: Page) {
     const url = new URL(request.url());
     const apiPath = url.pathname.startsWith(API_PREFIX) ? (url.pathname.slice(API_PREFIX.length) || '/') : url.pathname;
 
-    if (!apiPath.startsWith('/auth/') && !apiPath.startsWith('/v3/')) {
+    if (!apiPath.startsWith('/auth/') && !apiPath.startsWith('/v3/') && !apiPath.startsWith('/usage/')) {
       await route.continue();
       return;
     }
@@ -350,6 +432,10 @@ async function mockDraftOrbitApi(page: Page) {
     }
     if (apiPath === '/v3/profile') {
       await fulfillJson(route, profile);
+      return;
+    }
+    if (apiPath === '/usage/summary') {
+      await fulfillJson(route, usageSummary);
       return;
     }
     if (apiPath.startsWith('/v3/queue')) {
@@ -455,6 +541,7 @@ async function openApp(page: Page) {
   await page.goto('/app');
   await expect(page.getByRole('button', { name: /开始生成/u })).toBeVisible();
   await expect(page.getByText('未连接 X 账号 · 仍可先生成')).toBeVisible();
+  await expect(page.getByText('模型路由观测')).toBeVisible();
 }
 
 type GenerationScenario = {

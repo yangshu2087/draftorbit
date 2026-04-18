@@ -42,6 +42,61 @@ export type V3BootstrapResponse = {
   suggestedAction: string;
 };
 
+export type UsageProviderHealth = {
+  provider: 'codex-local' | 'openai' | 'openrouter' | 'ollama' | string;
+  sampleSize: number;
+  failureRate: number;
+  consecutiveFailures: number;
+  healthy: boolean;
+  coolingDown: boolean;
+  cooldownUntilMs: number | null;
+  lastFailureAt: string | null;
+  lastSuccessAt: string | null;
+};
+
+export type UsageFallbackHotspot = {
+  lane: string;
+  eventType: string;
+  provider: string;
+  totalCalls: number;
+  fallbackHits: number;
+  fallbackRate: number;
+};
+
+export type UsageSummaryResponse = {
+  requestId?: string;
+  workspaceId: string;
+  periodStart: string;
+  counters: {
+    usageEvents: number;
+    generations: number;
+    publishJobs: number;
+    replyJobs: number;
+  };
+  modelRouting: {
+    totalCalls: number;
+    freeHitRate: number;
+    fallbackRate: number;
+    qualityFallbackRate: number;
+    avgRequestCostUsd: number;
+    totalRequestCostUsd: number;
+    avgQualityScore: number;
+    profile?: string;
+    healthProbe?: {
+      enabled: boolean;
+      windowMs: number;
+      minSamples: number;
+      failureRateThreshold: number;
+      consecutiveFailureThreshold: number;
+      cooldownMs: number;
+    };
+    providerHealth?: UsageProviderHealth[];
+    fallbackHotspots?: UsageFallbackHotspot[];
+  };
+  nextAction?: string | null;
+  blockingReason?: string | null;
+};
+
 export type V3RunStartResponse = {
   requestId?: string;
   runId: string;
@@ -283,6 +338,10 @@ export async function finishXAccountOAuthBind(state: string, code: string) {
 
 export async function fetchBootstrap() {
   return apiFetch<V3BootstrapResponse>('/v3/session/bootstrap', { method: 'POST' });
+}
+
+export async function fetchUsageSummary() {
+  return apiFetch<UsageSummaryResponse>('/usage/summary');
 }
 
 export async function runChat(input: {
