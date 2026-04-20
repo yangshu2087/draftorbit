@@ -145,3 +145,61 @@ Artifact root:
 State-coverage note:
 - This docs-only pass validates **default render + responsive visual integrity + error-free runtime**.
 - Hover/focus-visible/active/loading/disabled/success interactive state checks were not the target in this closure pass because no UI behavior changed.
+
+## Session 2026-04-20 04:17 PDT — ordinary-user full-flow rerun + API smoke same-session closure
+
+### Scope
+- User requested full rerun of ordinary-user core journey:
+  - `/` → `/app` → generation/export
+  - `/queue` / `/connect` / `/pricing` route gates
+  - include tweet / thread / article / diagram / URL-source / latest fail-closed paths.
+- In the same pass, append backend/API smoke evidence (`/health` + protected `/usage/summary`) to close frontend/backend audit loop in one session.
+
+### Runtime (same-session)
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability`
+- API: `http://127.0.0.1:4311`
+- Web: `http://127.0.0.1:3300`
+- Routing/profile flags used for this rerun:
+  - `MODEL_ROUTING_PROFILE=local_quality`
+  - `MODEL_ROUTER_ENABLE_CODEX_LOCAL=1`
+  - `CODEX_LOCAL_ADAPTER_ENABLED=1`
+  - `CODEX_LOCAL_ALLOW_QUALITY_EVIDENCE=1`
+- baoyu runtime pin:
+  - `node scripts/ensure-baoyu-skills-runtime.mjs`
+  - commit: `9977ff520c49ea0888d8d43d582973c6e8c1d55a`
+
+### Front-end full-flow rerun result (ordinary-user)
+
+| Item | Result | Evidence |
+| --- | --- | --- |
+| Ordinary-user matrix (tweet/thread/article/diagram/URL-source/latest fail-closed) | ✅ `7/7` pass | `output/reports/uat-full/BAOYU-ORDINARY-USER-SYNC-2026-04-20_04-17-31.md` |
+| Route audit (`/`, `/app`, `/connect`, `/queue`, `/pricing`) | ✅ `5/5` pass | Same report, “Ordinary-user route audit” section |
+| Responsive screenshots per route/case | ✅ captured | `output/playwright/ordinary-user-baoyu-sync-2026-04-20_04-17-31/` |
+| Export / retry / safe publish-prep checks | ✅ pass in matrix cases | Same report case sections (`actionChecks`) |
+
+Evidence root:
+- `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/output/playwright/ordinary-user-baoyu-sync-2026-04-20_04-17-31`
+
+Tracked report:
+- `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/output/reports/uat-full/BAOYU-ORDINARY-USER-SYNC-2026-04-20_04-17-31.md`
+
+### Backend/API live smoke (same session)
+
+API contract and permission expectations:
+- `GET /health` should stay public and return readiness/dependency status.
+- `GET /usage/summary` should require Bearer token:
+  - no token → `401 UNAUTHORIZED`
+  - valid token → `200` workspace-scoped usage summary.
+
+| Step | Command | Expected | Observed | Result |
+| --- | --- | --- | --- | --- |
+| 1 | `curl http://127.0.0.1:4311/health` | `200` + health payload | `200`; `{\"ok\":true,\"service\":\"draftorbit-api\",\"live\":true,\"ready\":true,\"dependencies\":{\"db\":true,\"redis\":true}}` | ✅ |
+| 2 | `curl http://127.0.0.1:4311/usage/summary` | `401` unauthorized | `401`; `{\"code\":\"UNAUTHORIZED\",\"message\":\"缺少 Authorization Header\"...}` | ✅ |
+| 3 | `POST /auth/local/session` then `GET /usage/summary` with `Authorization: Bearer <token>` | `200` summary | `200`; payload includes `workspaceId`, `counters`, `modelRouting.profile=local_quality`, provider-health and fallback-hotspot aggregates | ✅ |
+
+### Backend lane closure notes
+- **API contract:** unchanged; this pass validates existing endpoints only.
+- **Error semantics:** unauthorized access returns `401` with `UNAUTHORIZED` envelope and requestId.
+- **Permissions:** protected route blocks missing auth and allows valid local session token.
+- **Data consistency:** read-only smoke on summary/health surfaces; no publish/payment side effects executed.
+- **Observability:** summary payload includes routing observability fields (`profile`, health/hotspot aggregates), matching current UI ops panel expectations.
