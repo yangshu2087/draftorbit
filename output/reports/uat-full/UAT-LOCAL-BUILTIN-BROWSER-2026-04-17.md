@@ -203,3 +203,89 @@ API contract and permission expectations:
 - **Permissions:** protected route blocks missing auth and allows valid local session token.
 - **Data consistency:** read-only smoke on summary/health surfaces; no publish/payment side effects executed.
 - **Observability:** summary payload includes routing observability fields (`profile`, health/hotspot aggregates), matching current UI ops panel expectations.
+
+## Session 2026-04-20 07:08 PDT — full ordinary-user rerun (`/` → `/app` → generation/export/queue/connect/pricing) + same-session API smoke
+
+### Scope
+- User-requested full ordinary-user rerun in the already opened local environment.
+- Journey covered in one pass:
+  - `/` landing entry
+  - `/app` generation flows: tweet / thread / article / diagram / URL-source / latest fail-closed
+  - export actions: markdown/html/bundle download + retry gate
+  - route gates: `/queue?intent=confirm_publish`, `/connect?intent=connect_x_self`, `/pricing`
+- Same-session backend closure: `GET /health` + protected `GET /usage/summary` unauthorized/authorized checks.
+
+### Runtime and recovery actions (same session)
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability`
+- API: `http://127.0.0.1:4311`
+- Web: `http://127.0.0.1:3300`
+- Routing flags for this rerun:
+  - `MODEL_ROUTING_PROFILE=local_quality`
+  - `MODEL_ROUTER_ENABLE_CODEX_LOCAL=1`
+  - `CODEX_LOCAL_ADAPTER_ENABLED=1`
+  - `CODEX_LOCAL_ALLOW_QUALITY_EVIDENCE=1`
+- baoyu runtime pin:
+  - `node scripts/ensure-baoyu-skills-runtime.mjs`
+  - commit: `9977ff520c49ea0888d8d43d582973c6e8c1d55a`
+- Iteration during rerun:
+  - First attempt hit Prisma pool exhaustion due multiple stale `@draftorbit/api dev` watchers from other worktrees.
+  - Cleaned stale API dev stacks and reran with a single API instance in this worktree + `local_quality` profile.
+  - Final rerun passed with full matrix `7/7`.
+
+### Frontend / user-journey verification result
+
+| Item | Result | Evidence |
+| --- | --- | --- |
+| Ordinary-user full matrix (tweet/thread/article/diagram/latest fail-closed/URL-source) | ✅ `7/7` pass | `output/reports/uat-full/BAOYU-ORDINARY-USER-SYNC-2026-04-20_06-53-27.md` |
+| Route audit (`/`, `/app`, `/connect`, `/queue`, `/pricing`) | ✅ `5/5` pass | Same tracked report, route-audit section |
+| Responsive screenshots (375/768/1024/1440) | ✅ captured for each audited route and case | `output/playwright/ordinary-user-baoyu-sync-2026-04-20_06-53-27/` |
+| Export/retry/safe-publish-prep actions | ✅ pass (`download-svg`, `download-markdown`, `download-html`, `download-bundle`, `copy-markdown`, `retry-ui`) | Same tracked report, per-case `actionChecks` |
+
+Tracked report:
+- `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/output/reports/uat-full/BAOYU-ORDINARY-USER-SYNC-2026-04-20_06-53-27.md`
+
+Artifact root:
+- `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/output/playwright/ordinary-user-baoyu-sync-2026-04-20_06-53-27`
+
+### Backend/API smoke (same session)
+
+Contract and permission expectations:
+- `GET /health`: public health endpoint; expect `200` + readiness payload.
+- `GET /usage/summary`: protected endpoint; expect `401` when missing token, `200` when authorized.
+
+| Step | Command | Expected | Observed | Result |
+| --- | --- | --- | --- | --- |
+| 1 | `curl /health` | `200` | `200`, `{"ok":true,"live":true,"ready":true,"dependencies":{"db":true,"redis":true}}` | ✅ |
+| 2 | `curl /usage/summary` (no token) | `401` unauthorized | `401`, `{"code":"UNAUTHORIZED","message":"缺少 Authorization Header"...}` | ✅ |
+| 3 | `POST /auth/local/session` then bearer `GET /usage/summary` | `200` summary | `200`, payload includes `workspaceId`, `counters`, `modelRouting` | ✅ |
+
+### Closure notes
+- This pass completed frontend route/state evidence and backend permission semantics in one continuous local session.
+- No real X posting, no real payment execution, and no dangerous login automation were performed.
+
+## Session 2026-04-20 07:22 PDT — realtime home-page screenshot evidence supplement
+
+### Scope
+- Append one fresh, same-day visual checkpoint to strengthen the UAT audit trail.
+- Target page: `/` (`http://127.0.0.1:3300`).
+
+### Visual verification
+
+| Item | Action | Result | Evidence |
+| --- | --- | --- | --- |
+| Home page live render | Playwright real browser screenshot (`Desktop Chrome`) | ✅ page loaded and screenshot captured | `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/output/playwright/manual-check/draftorbit-home-2026-04-20-routing-opt.png` |
+
+Command used:
+
+```bash
+cd /Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/web
+npm_config_cache=/tmp/draftorbit-npm-cache \
+npx playwright screenshot --device='Desktop Chrome' \
+  http://127.0.0.1:3300 \
+  /Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/output/playwright/manual-check/draftorbit-home-2026-04-20-routing-opt.png
+```
+
+Notes:
+- This supplement is evidence-only (no UI code changes).
+- It complements the full route/responsive matrix report at:
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/output/reports/uat-full/BAOYU-ORDINARY-USER-SYNC-2026-04-20_06-53-27.md`
