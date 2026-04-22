@@ -187,6 +187,40 @@ test('buildContentQualityGate allows grounded text and visual cues', () => {
   assert.equal(gate.hardFails.length, 0);
 });
 
+test('buildContentQualityGate allows diagram-intent tweet prompts without missing_scene hard fail', () => {
+  const text =
+    '把发布流程画成流程图：运营同学先写一句话，系统依次做来源核验、正文草拟、图文生成，最后由你手动确认是否发布。';
+  const visualPlan: VisualPlan = {
+    primaryAsset: 'diagram',
+    visualizablePoints: ['输入→来源→正文→图文→确认'],
+    keywords: ['流程图', '运营同学', '手动确认'],
+    items: [
+      {
+        kind: 'diagram',
+        priority: 'primary',
+        type: 'process-diagram',
+        layout: 'flow',
+        style: '蓝图流程图',
+        palette: 'draftorbit',
+        cue: '输入→来源→正文→图文→确认',
+        reason: '用户明确要求流程图'
+      }
+    ]
+  };
+
+  const gate = buildContentQualityGate({
+    format: 'tweet',
+    focus: 'DraftOrbit 发布流程图',
+    text,
+    qualitySignals: buildQualitySignalReport(text, 'tweet'),
+    visualPlan
+  });
+
+  assert.equal(gate.status, 'passed');
+  assert.equal(gate.safeToDisplay, true);
+  assert.equal(gate.hardFails.includes('missing_scene'), false);
+});
+
 test('buildContentQualityGate treats source failures as fail-closed recoverable states', () => {
   const text = `Hermes 这次更新值得写成一篇长文。
 

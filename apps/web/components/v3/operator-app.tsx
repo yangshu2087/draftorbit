@@ -26,6 +26,7 @@ import {
   connectObsidianVault,
   connectSelfX,
   connectTargetX,
+  fetchUsageSummary,
   fetchBootstrap,
   fetchProfile,
   fetchQueue,
@@ -40,6 +41,7 @@ import {
   type V3ProfileResponse,
   type V3QueueResponse,
   type V3RunResponse,
+  type UsageSummaryResponse,
   type V3VisualRequest,
   type VisualRequestAspect,
   type VisualRequestLayout,
@@ -150,6 +152,28 @@ function stageTone(status?: string) {
   return 'idle';
 }
 
+function formatPercent(value: number | null | undefined) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function formatRoutingProviderLabel(provider: string) {
+  if (provider === 'codex-local') return 'Codex 本机';
+  if (provider === 'openai') return 'OpenAI';
+  if (provider === 'openrouter') return 'OpenRouter';
+  if (provider === 'ollama') return 'Ollama';
+  return provider || 'unknown';
+}
+
+function formatUsageEventLabel(eventType: string) {
+  if (eventType === 'GENERATION') return '正文生成';
+  if (eventType === 'NATURALIZATION') return '文风润色';
+  if (eventType === 'IMAGE') return '图文生成';
+  if (eventType === 'REPLY') return '自动回复';
+  if (eventType === 'PUBLISH') return '发布流程';
+  return eventType || '未分类';
+}
+
 export default function OperatorApp() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -158,6 +182,7 @@ export default function OperatorApp() {
   const [boot, setBoot] = useState<V3BootstrapResponse | null>(null);
   const [profile, setProfile] = useState<V3ProfileResponse | null>(null);
   const [queue, setQueue] = useState<V3QueueResponse | null>(null);
+  const [usageSummary, setUsageSummary] = useState<UsageSummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState<UiError | null>(null);
   const [entryNotice, setEntryNotice] = useState<string | null>(null);
@@ -197,15 +222,17 @@ export default function OperatorApp() {
     setPageError(null);
 
     try {
-      const [bootPayload, profilePayload, queuePayload] = await Promise.all([
+      const [bootPayload, profilePayload, queuePayload, usagePayload] = await Promise.all([
         fetchBootstrap(),
         fetchProfile(),
-        fetchQueue(12)
+        fetchQueue(12),
+        fetchUsageSummary().catch(() => null)
       ]);
 
       setBoot(bootPayload);
       setProfile(profilePayload);
       setQueue(queuePayload);
+      setUsageSummary(usagePayload);
       setSelectedXAccountId((current) => current || bootPayload.defaultXAccount?.id || profilePayload.xAccounts[0]?.id || '');
     } catch (error) {
       setPageError(toUiError(error, '加载生成器失败，请稍后重试。'));
@@ -248,6 +275,17 @@ export default function OperatorApp() {
     () => formatOptions.find((item) => item.value === format) ?? formatOptions[0],
     [format]
   );
+  const routingProviderHealth = useMemo(
+    () => usageSummary?.modelRouting?.providerHealth ?? [],
+    [usageSummary?.modelRouting?.providerHealth]
+  );
+  const routingFallbackHotspots = useMemo(
+    () => usageSummary?.modelRouting?.fallbackHotspots ?? [],
+    [usageSummary?.modelRouting?.fallbackHotspots]
+  );
+  const routingProbe = usageSummary?.modelRouting?.healthProbe;
+  const routingProfile = usageSummary?.modelRouting?.profile ?? 'unknown';
+
   const visualRequest = useMemo<V3VisualRequest>(
     () => ({
       mode: visualMode,
@@ -715,6 +753,106 @@ export default function OperatorApp() {
             ) : null}
           </div>
         ) : null}
+
+        <article className="do-panel-soft p-4 sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">模型路由观测</p>
+              <p className="mt-1 text-sm text-slate-700">展示 provider 健康与 fallback 热点，不影响你继续生成。</p>
+            </div>
+            <span className="do-chip">profile: {routingProfile}</span>
+          </div>
+
+          {!usageSummary ? (
+            <p className="mt-3 rounded-xl border border-slate-900/10 bg-white px-3 py-3 text-sm text-slate-500">
+              暂时拿不到路由观测数据，生成流程仍可正常使用。
+            </p>
+          ) : (
+            <div className="mt-4 grid gap-4 lg:grid-cols-[1.35fr_0.85fr]">
+              <div className="space-y-3">
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <div className="rounded-xl border border-slate-900/10 bg-white px-3 py-3">
+                    <p className="text-xs text-slate-500">模型调用数</p>
+                    <p className="mt-1 text-lg font-semibold text-slate-950">{usageSummary.modelRouting.totalCalls ?? 0}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-900/10 bg-white px-3 py-3">
+                    <p className="text-xs text-slate-500">Fallback 比例</p>
+                    <p className="mt-1 text-lg font-semibold text-slate-950">{formatPercent(usageSummary.modelRouting.fallbackRate)}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-900/10 bg-white px-3 py-3">
+                    <p className="text-xs text-slate-500">平均质量分</p>
+                    <p className="mt-1 text-lg font-semibold text-slate-950">
+                      {Number.isFinite(usageSummary.modelRouting.avgQualityScore)
+                        ? usageSummary.modelRouting.avgQualityScore.toFixed(1)
+                        : '—'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-slate-900/10 bg-white p-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    Provider 健康探针 {routingProbe?.enabled ? '(enabled)' : '(disabled)'}
+                  </p>
+                  {routingProbe?.enabled ? (
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      window {(routingProbe.windowMs / 1000).toFixed(0)}s · cooldown {(routingProbe.cooldownMs / 1000).toFixed(0)}s
+                    </p>
+                  ) : null}
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {routingProviderHealth.map((item) => (
+                      <div
+                        key={item.provider}
+                        className={cn(
+                          'rounded-xl border px-3 py-2 text-xs',
+                          item.coolingDown
+                            ? 'border-amber-300 bg-amber-50 text-amber-800'
+                            : item.healthy
+                              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                              : 'border-rose-200 bg-rose-50 text-rose-800'
+                        )}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium">{formatRoutingProviderLabel(item.provider)}</span>
+                          {item.coolingDown ? <AlertTriangle className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                        </div>
+                        <p className="mt-1">
+                          failure {formatPercent(item.failureRate)} · samples {item.sampleSize}
+                        </p>
+                        <p className="mt-0.5">连续失败 {item.consecutiveFailures}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-900/10 bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Fallback 热点</p>
+                <p className="mt-1 text-[11px] text-slate-500">按 fallback 命中次数排序，优先看最常出问题的 lane。</p>
+                {routingFallbackHotspots.length ? (
+                  <ul className="mt-3 space-y-2">
+                    {routingFallbackHotspots.map((hotspot) => (
+                      <li key={hotspot.lane} className="rounded-lg border border-slate-900/10 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium">
+                            {formatUsageEventLabel(hotspot.eventType)} · {formatRoutingProviderLabel(hotspot.provider)}
+                          </span>
+                          <span>{formatPercent(hotspot.fallbackRate)}</span>
+                        </div>
+                        <p className="mt-1 text-slate-500">
+                          fallback {hotspot.fallbackHits} / {hotspot.totalCalls}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                    本周期还没有明显 fallback 热点。
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </article>
 
         <article className="do-panel p-6 sm:p-8">
           <div className="flex flex-wrap gap-2">

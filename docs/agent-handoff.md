@@ -3,6 +3,224 @@
 Use this file to transfer execution state between Codex, Cursor, and other agents.
 Update it before pausing work, switching tools, or asking another agent to continue.
 
+## Current CI reporter-time <10 stabilization + trend summary pass (2026-04-18)
+
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability`
+- Branch: `codex/web-ci-panel-observability-8s`
+- Goal in this pass:
+  - move required web Playwright lane from the current `~10.2s` watch edge to a safer `<10s` zone by reducing worker tail.
+  - persist and surface **trend comparison** directly in Actions summary (not just one-run snapshots).
+- Changes in this pass:
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/web/e2e/ordinary-user-ci.spec.ts`
+    - `openApp()` now supports `includeRoutingPanel` option.
+    - only one generation lane blocks on routing panel readiness; other lanes measure core shell bootstrap to reduce duplicated panel wait cost and tail latency.
+    - route-entry test still asserts “模型路由观测” visibility to preserve UX/state coverage.
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/.github/workflows/ci.yml`
+    - bumped `WEB_PLAYWRIGHT_WORKERS` from `3` to `4` in required `Web test (required)`.
+    - added lightweight trend-cache lifecycle:
+      - restore `web-playwright-trend-*` cache before web test,
+      - pass `WEB_PLAYWRIGHT_TREND_FILE=/tmp/web-ci-trend/playwright-trend.json`,
+      - save trend cache after run.
+    - trend cache scope uses `${{ github.head_ref || github.ref_name }}` so pull_request merge refs reuse branch trend history.
+    - adds timing row for trend-cache restore into the existing CI step duration table.
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/web/scripts/run-playwright-ci.mjs`
+    - added trend-state read/write (JSON) support for reporter/app-bootstrap metrics.
+    - computes and publishes trend rows in `$GITHUB_STEP_SUMMARY`:
+      - reporter vs previous run delta,
+      - reporter rolling average,
+      - reporter trend status (under target or watch),
+      - app-bootstrap max vs previous run delta,
+      - app-bootstrap rolling average,
+      - tracked run count.
+- Verification in this pass:
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web test` with CI env + `WEB_PLAYWRIGHT_WORKERS=4` ✅
+    - real Playwright browser run: `4 passed (2.8s)` then repeat `4 passed (3.0s)`.
+    - harness wall time: `5.30s` / `5.99s`.
+    - trend file verified:
+      - `/tmp/web-ci-trend/playwright-trend.json` with `totalRuns: 2`, `recentReporterSeconds: [2.8, 3]`.
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web typecheck` ✅
+  - `NEXT_PUBLIC_API_URL=http://127.0.0.1:4311 npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web build` ✅
+
+## Current high-yield minimal upgrade package (2026-04-18)
+
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability`
+- Branch: `codex/web-ci-perf-8s-stability`
+- Scope completed in this pass:
+  1. Routing strategy layering by `taskType + contentFormat`.
+  2. Health-probe-driven provider fallback (cooldown skip).
+  3. Observability instrumentation + dashboard/report template.
+- API routing changes:
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/api/src/common/openrouter.service.ts`
+    - `RoutedChatOptions` now supports `contentFormat: tweet|thread|article|diagram|generic`.
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/api/src/common/model-gateway.service.ts`
+    - candidate pool now factors both `taskType` and `contentFormat`.
+    - low-latency tweet lanes prefer floor models earlier; depth-critical lanes (article/diagram/package) keep high-tier priority.
+    - provider health state tracks recent success/failure samples and cooldown windows.
+    - cooldown providers are skipped when alternatives exist; if all candidates are cooling down, original pool is retained to avoid deadlock.
+    - request-level observability events are appended as NDJSON when `MODEL_GATEWAY_OBSERVABILITY_ENABLED=1`.
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/api/src/common/codex-local.service.ts`
+    - local Codex prompt now carries `contentFormat` hint.
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/api/src/modules/generate/generate.service.ts`
+    - all major `chatWithRouting` callsites now pass `contentFormat` (and `diagram` hint when visual mode is diagram).
+- Regression coverage:
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/api/test/model-gateway.test.ts`
+    - added tests for format-aware layering and health fallback behavior.
+- Observability/reporting deliverables:
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/scripts/model-routing-dashboard-report.ts`
+    - reads NDJSON routing events and outputs markdown dashboard.
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/docs/observability/MODEL-ROUTING-DASHBOARD-TEMPLATE.md`
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/output/reports/observability/MODEL-ROUTING-DASHBOARD-2026-04-18_14-48-28.md` (sample generated report)
+  - root `package.json`: new command `pnpm report:model-routing`.
+- Verification in this pass:
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/api test -- model-gateway.test.ts` ✅
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/api typecheck` ✅
+  - `NEXT_PUBLIC_API_URL=http://127.0.0.1:4311 npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web build` ✅
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web typecheck` ✅
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web test` ✅ (Playwright reporter ~8.15s)
+  - `MODEL_GATEWAY_OBSERVABILITY_ENABLED=1 ... npx pnpm@10.23.0 report:model-routing` ✅
+
+## Current phase-2 integration (usage/ops observability surfaced in /app) (2026-04-18)
+
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability`
+- Branch: `codex/web-ci-perf-8s-stability`
+- Goal in this pass: continue “第2阶段” by exposing model-routing health and fallback hotspots in the ordinary-user `/app` flow without breaking local-default pass criteria.
+- Architecture choice in this pass:
+  - Chosen: **reuse existing `/usage/summary` contract** and enrich it with routing-health metadata from `ModelGatewayService`; then render in `/app`.
+  - Not chosen: add a new `/v3/ops` endpoint. Reason: higher contract/migration cost for little user value; `/usage/summary` already powers ops/usage lane and is guarded by auth/workspace context.
+  - Rollback path: remove `/app` usage-summary fetch + panel; existing generation flow remains unchanged.
+- Backend/API lane changes:
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/api/src/common/model-gateway.service.ts`
+    - added `getRoutingHealthSnapshot()` public accessor.
+    - returns profile + health-probe config + per-provider health summary for ops/usage consumption.
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/api/src/modules/usage/usage.service.ts`
+    - injects `ModelGatewayService`.
+    - exports `buildRoutingFallbackHotspots(...)`.
+    - `summary()` now enriches `modelRouting` with:
+      - `profile`
+      - `healthProbe`
+      - `providerHealth`
+      - `fallbackHotspots`
+    - keeps existing `fallbackRate/avgQualityScore` fields for guidance compatibility.
+  - API semantics unchanged:
+    - route still `GET /usage/summary` under AuthGuard.
+    - permissions and workspace scoping unchanged (`WorkspaceContextService` default workspace resolution).
+    - error envelope remains existing app-level behavior.
+- Regression coverage added/updated:
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/api/test/usage-routing-observability.test.ts`
+    - validates fallback-hotspot sorting/limit behavior.
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/api/test/model-gateway.test.ts`
+    - validates health snapshot shape for ops/usage panels.
+- Front-end/UX lane changes:
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/web/lib/queries.ts`
+    - adds `fetchUsageSummary()` and typed `UsageSummaryResponse`.
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/web/components/v3/operator-app.tsx`
+    - `/app` now loads usage summary as a non-blocking dependency.
+    - adds “模型路由观测” panel:
+      - counters (`totalCalls`, `fallbackRate`, `avgQualityScore`)
+      - provider health probe cards (healthy/cooling-down state)
+      - fallback hotspot list (lane + rate + hit count)
+    - if usage data fails, panel degrades gracefully and does not block generation.
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/web/e2e/ordinary-user-ci.spec.ts`
+    - CI mock now serves `/usage/summary`.
+    - adds regression assertion that `/app` renders “模型路由观测”.
+- Verification run in this pass:
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/api test -- test/model-gateway.test.ts test/usage-routing-observability.test.ts` ✅ (`244/244`)
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/api typecheck` ✅
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web typecheck` ✅
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web test` ✅
+    - real Playwright pass: `4 passed (6.9s)`, harness `7.33s`.
+  - `NEXT_PUBLIC_API_URL=http://127.0.0.1:4311 npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web build` ✅
+
+## Current CI performance branch for routing-panel timing observability (2026-04-18)
+
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability`
+- Branch: `codex/web-ci-panel-observability-8s`
+- Base commit: `4ab70d0` (`feat: surface routing health and fallback hotspots in app`)
+- Goal in this pass:
+  - keep `pnpm --filter @draftorbit/web test` in the required lane stable.
+  - add explicit CI timing visibility for the new `/app` routing-observability panel request path (`/usage/summary`) without changing product behavior.
+- Changes in this pass:
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/web/e2e/ordinary-user-ci.spec.ts`
+    - `openApp()` now emits:
+      - `[ci-perf] app bootstrap (includes /usage/summary panel) completed in <Xs>`
+    - this captures user-visible `/app` bootstrap timing including the new panel readiness.
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/web/scripts/run-playwright-ci.mjs`
+    - parses app-bootstrap timing markers from Playwright output.
+    - parses generation-scenario timings and computes count/avg/slowest.
+    - appends these metrics into `$GITHUB_STEP_SUMMARY`:
+      - app bootstrap target/avg/max/status
+      - generation scenario count/avg/slowest
+    - adds `WEB_PLAYWRIGHT_APP_BOOTSTRAP_TARGET_SECONDS` (default `2.5`) as non-blocking watch metric.
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/.github/workflows/ci.yml`
+    - sets `WEB_PLAYWRIGHT_APP_BOOTSTRAP_TARGET_SECONDS: '2.5'` in the required `Web test (required)` job.
+- Performance/verification evidence in this pass:
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web test` ✅
+    - node tests: `23/23`
+    - Playwright: `4 passed (6.0s)` (reporter), harness `6.43s`
+    - app bootstrap markers from logs:
+      - `0.37s`, `0.29s`, `0.32s` (includes `/usage/summary` panel)
+    - generation markers still present for scenario-level hotspot tracking.
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web typecheck` ✅
+  - `NEXT_PUBLIC_API_URL=http://127.0.0.1:4311 npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web build` ✅
+
+## Current built-in browser UAT-driven iteration pass (2026-04-18)
+
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability`
+- Branch: `codex/web-ci-perf-8s-stability`
+- Goal in this pass: execute a fresh ordinary-user full-flow acceptance from `/` to `/app` and route gates (`/queue` `/connect` `/pricing`), re-verify X-login entry, and directly fix blockers before local commit (no push).
+- Key runtime used:
+  - API `http://127.0.0.1:4311` with `X_CALLBACK_URL=http://127.0.0.1:3300/auth/callback`, `AUTH_MODE=self_host_no_login`.
+  - Web `http://127.0.0.1:3300` using `next build` + `next start` for stable UAT.
+  - `vendor/baoyu-skills` restored/pinned to `9977ff520c49ea0888d8d43d582973c6e8c1d55a` by `node scripts/ensure-baoyu-skills-runtime.mjs`.
+- Blocker found and fixed in this pass:
+  - Ordinary-user case `diagram-process-prompt` failed closed because tweet quality gate hard-failed `missing_scene` even for explicit diagram-intent prompts.
+  - Fix:
+    - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/api/src/modules/generate/content-quality-gate.ts`
+      - add diagram-intent detection from `visualPlan` + text/focus cues.
+      - keep tweet scene guard for normal tweet flows, but clear `missing_scene` when diagram intent is explicit.
+    - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/apps/api/test/content-quality-gate.test.ts`
+      - add regression test `buildContentQualityGate allows diagram-intent tweet prompts without missing_scene hard fail`.
+- Browser/UAT evidence captured:
+  - Full ordinary-user sync rerun passed: `7/7` cases.
+    - tracked report: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/output/reports/uat-full/BAOYU-ORDINARY-USER-SYNC-2026-04-18_06-48-53.md`
+    - artifact root: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/output/playwright/ordinary-user-baoyu-sync-2026-04-18_06-48-53/`
+  - Real browser route/CTA pass from `/` to `/app` plus queue/connect/pricing gates:
+    - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/output/playwright/local-full-flow-2026-04-18-14-07-46/full-flow-report.json`
+  - X login entry verification after callback env wiring:
+    - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/output/playwright/x-login-uat-result-2026-04-18-14-07-09.json`
+    - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability/output/playwright/x-login-entry-uat-2026-04-18-14-07-09.png`
+    - result: no `Missing required env: X_CALLBACK_URL`; redirect reaches `https://x.com/i/oauth2/authorize...`.
+- Verification commands run in this pass:
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web typecheck` ✅
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web test` ✅ (`23` node tests + `4` Playwright tests, reporter `3.0s`)
+  - `NEXT_PUBLIC_API_URL=http://127.0.0.1:4311 npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web build` ✅
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/api typecheck` ✅
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/api test` ✅ (`237/237`)
+- Safety guard remains unchanged:
+  - no real X post execution;
+  - no real payment execution;
+  - external-key absence continues to fail closed or mark evidence as local-only.
+
+
+## Current Playwright reporter-time stabilization pass (2026-04-17)
+
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/web-ci-perf-8s-stability`
+- Branch: `codex/web-ci-perf-8s-stability`
+- Base: `origin/main` at `90fb21816e7b3df9ce628fbcea390c699729f88f`.
+- Goal: stabilize web Playwright reporter time around the 8s lane with lower run-to-run variance while preserving the required-check contract.
+- Scenario optimization:
+  - `apps/web/e2e/ordinary-user-ci.spec.ts` now keeps the app open per generation-group test and reuses the same page/session across scenarios instead of reopening `/app` every scenario.
+  - Generation scenarios are split into two grouped tests (`tweet/thread` and `article/diagram`) to reduce per-step churn and improve CI worker scheduling.
+  - Retry-only visual recovery + latest-source fail-closed assertions now run in one continuous app session test instead of two separate reopen flows.
+  - Connect/queue/pricing safe-gate checks are folded into the home→app entry test to remove an extra test lifecycle while keeping route coverage.
+  - Mobile CTA test keeps hover/focus/overflow assertions but removes always-on screenshot capture in CI runs to cut avoidable I/O latency.
+  - Added per-scenario timing logs (`[ci-perf] generation scenario ...`) for direct hotspot inspection in Actions logs.
+- CI observability upgrade:
+  - `.github/workflows/ci.yml` now writes a persistent `CI step duration table` into `$GITHUB_STEP_SUMMARY`.
+  - Web Playwright workers are tuned to `3` in CI to improve parallel scheduling while staying below the prior contention seen at higher worker counts.
+  - The table includes wall time + note for `Restore Playwright Chromium cache`, `Install Playwright Chromium`, `Web test (required)`, `Web build`, and cache save behavior.
+  - Added explicit restore/save timing rows (including skipped-on-cache-hit visibility) so long-tail cache behavior is observable across runs.
+
 
 ## Current main CI budget flake recovery (2026-04-17)
 

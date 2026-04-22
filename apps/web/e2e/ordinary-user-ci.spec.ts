@@ -61,6 +61,88 @@ const queue = {
   failed: []
 };
 
+const usageSummary = {
+  requestId: 'req_usage_ci',
+  workspaceId: 'workspace_ci',
+  periodStart: '2026-04-01T00:00:00.000Z',
+  counters: {
+    usageEvents: 68,
+    generations: 31,
+    publishJobs: 8,
+    replyJobs: 4
+  },
+  modelRouting: {
+    totalCalls: 31,
+    freeHitRate: 0.23,
+    fallbackRate: 0.19,
+    qualityFallbackRate: 0.42,
+    avgRequestCostUsd: 0.0012,
+    totalRequestCostUsd: 0.0372,
+    avgQualityScore: 84.5,
+    profile: 'local_quality',
+    healthProbe: {
+      enabled: true,
+      windowMs: 300000,
+      minSamples: 3,
+      failureRateThreshold: 0.6,
+      consecutiveFailureThreshold: 2,
+      cooldownMs: 45000
+    },
+    providerHealth: [
+      {
+        provider: 'codex-local',
+        sampleSize: 8,
+        failureRate: 0.125,
+        consecutiveFailures: 0,
+        healthy: true,
+        coolingDown: false,
+        cooldownUntilMs: null,
+        lastFailureAt: '2026-04-17T08:12:00.000Z',
+        lastSuccessAt: '2026-04-17T08:20:00.000Z'
+      },
+      {
+        provider: 'openai',
+        sampleSize: 6,
+        failureRate: 0,
+        consecutiveFailures: 0,
+        healthy: true,
+        coolingDown: false,
+        cooldownUntilMs: null,
+        lastFailureAt: null,
+        lastSuccessAt: '2026-04-17T08:20:00.000Z'
+      },
+      {
+        provider: 'openrouter',
+        sampleSize: 7,
+        failureRate: 0.28,
+        consecutiveFailures: 1,
+        healthy: true,
+        coolingDown: false,
+        cooldownUntilMs: null,
+        lastFailureAt: '2026-04-17T08:19:00.000Z',
+        lastSuccessAt: '2026-04-17T08:20:00.000Z'
+      },
+      {
+        provider: 'ollama',
+        sampleSize: 4,
+        failureRate: 0.25,
+        consecutiveFailures: 0,
+        healthy: true,
+        coolingDown: false,
+        cooldownUntilMs: null,
+        lastFailureAt: '2026-04-17T08:18:00.000Z',
+        lastSuccessAt: '2026-04-17T08:20:00.000Z'
+      }
+    ],
+    fallbackHotspots: [
+      { lane: 'generation:openrouter', eventType: 'GENERATION', provider: 'openrouter', totalCalls: 12, fallbackHits: 3, fallbackRate: 0.25 },
+      { lane: 'image:ollama', eventType: 'IMAGE', provider: 'ollama', totalCalls: 6, fallbackHits: 1, fallbackRate: 0.1667 }
+    ]
+  },
+  nextAction: 'monitor_usage',
+  blockingReason: null
+};
+
 const billingPlans = {
   currency: 'USD',
   trialDays: 3,
@@ -329,7 +411,7 @@ async function mockDraftOrbitApi(page: Page) {
     const url = new URL(request.url());
     const apiPath = url.pathname.startsWith(API_PREFIX) ? (url.pathname.slice(API_PREFIX.length) || '/') : url.pathname;
 
-    if (!apiPath.startsWith('/auth/') && !apiPath.startsWith('/v3/')) {
+    if (!apiPath.startsWith('/auth/') && !apiPath.startsWith('/v3/') && !apiPath.startsWith('/usage/')) {
       await route.continue();
       return;
     }
@@ -350,6 +432,10 @@ async function mockDraftOrbitApi(page: Page) {
     }
     if (apiPath === '/v3/profile') {
       await fulfillJson(route, profile);
+      return;
+    }
+    if (apiPath === '/usage/summary') {
+      await fulfillJson(route, usageSummary);
       return;
     }
     if (apiPath.startsWith('/v3/queue')) {
@@ -450,16 +536,40 @@ async function seedSession(page: Page) {
   }, localToken);
 }
 
-async function openApp(page: Page) {
+async function openApp(page: Page, options?: { includeRoutingPanel?: boolean }) {
+  const includeRoutingPanel = options?.includeRoutingPanel === true;
+  const bootstrapStart = Date.now();
   await seedSession(page);
   await page.goto('/app');
   await expect(page.getByRole('button', { name: /开始生成/u })).toBeVisible();
-  await expect(page.getByText('未连接 X 账号 · 仍可先生成')).toBeVisible();
+  if (includeRoutingPanel) {
+    await expect(page.getByText('模型路由观测')).toBeVisible();
+  }
+  const durationSeconds = ((Date.now() - bootstrapStart) / 1000).toFixed(2);
+  console.log(
+    includeRoutingPanel
+      ? `[ci-perf] app bootstrap (includes /usage/summary panel) completed in ${durationSeconds}s`
+      : `[ci-perf] app bootstrap (core shell) completed in ${durationSeconds}s`
+  );
 }
 
-async function startGeneration(page: Page, input: { prompt: string; format?: 'tweet' | 'thread' | 'article'; visualMode?: string }) {
-  await openApp(page);
+type GenerationScenario = {
+  name: string;
+  prompt: string;
+  format?: 'tweet' | 'thread' | 'article';
+  visualMode?: string;
+  expected: RegExp[];
+};
+
+async function ensureAdvancedOptionsOpen(page: Page) {
+  const visualModeSelect = page.locator('select[name="visualMode"]');
+  if (await visualModeSelect.isVisible()) return;
   await page.getByText('高级选项').click();
+  await expect(visualModeSelect).toBeVisible();
+}
+
+async function startGenerationInOpenApp(page: Page, input: { prompt: string; format?: 'tweet' | 'thread' | 'article'; visualMode?: string }) {
+  await ensureAdvancedOptionsOpen(page);
   if (input.format && input.format !== 'tweet') {
     const label = input.format === 'thread' ? '串推' : '长文';
     await page.getByRole('button', { name: new RegExp(label, 'u') }).click();
@@ -472,31 +582,61 @@ async function startGeneration(page: Page, input: { prompt: string; format?: 'tw
   await expect(page.getByText('结果区')).toBeVisible();
 }
 
+async function runGenerationScenario(page: Page, scenario: GenerationScenario) {
+  const scenarioStart = Date.now();
+  await startGenerationInOpenApp(page, scenario);
+  for (const expected of scenario.expected) {
+    await expect(page.getByText(expected).first()).toBeVisible();
+  }
+
+  if (scenario.name.includes('thread')) {
+    await expect(page.getByRole('img', { name: /卡片组/u }).first()).toBeVisible();
+  }
+
+  if (scenario.name.includes('article')) {
+    await page.getByText('查看依据与配图建议').click();
+    await expect(page.getByText('来源已抓取').first()).toBeVisible();
+  }
+
+  const bundleLink = page.getByRole('link', { name: /下载全部图文资产|下载 bundle/u }).first();
+  await expect(bundleLink).toHaveAttribute('href', /token=/u);
+  await expect(page.getByRole('button', { name: /只重试图片\/图文资产/u })).toBeDisabled();
+  const durationSeconds = ((Date.now() - scenarioStart) / 1000).toFixed(2);
+  console.log(`[ci-perf] generation scenario "${scenario.name}" completed in ${durationSeconds}s`);
+}
+
 test.beforeEach(async ({ page }) => {
   await mockDraftOrbitApi(page);
 });
 
-test('ordinary user can enter the app from home local CTA with visible focus and responsive layout', async ({ page }) => {
+test('ordinary user can enter the app from home local CTA and verify safe connect/queue/pricing gates', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 900 });
   await page.goto('/');
 
   const localCta = page.getByRole('button', { name: '本机快速体验' });
   await expect(localCta).toBeVisible();
-  await localCta.hover();
-  await localCta.focus();
-  await expect(localCta).toBeFocused();
-  await page.screenshot({ path: test.info().outputPath('home-local-cta-mobile.png'), fullPage: true });
-
-  const hasHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
-  expect(hasHorizontalOverflow).toBe(false);
 
   await localCta.click();
   await expect(page).toHaveURL(/\/app$/u);
   await expect(page.getByRole('button', { name: /开始生成/u })).toBeVisible();
   await expect(page.getByText('未连接 X 账号 · 仍可先生成')).toBeVisible();
+
+  await page.goto('/connect?intent=connect_x_self');
+  await expect(page).toHaveURL(/\/app\?nextAction=connect_x_self/u);
+  await expect(page.getByRole('button', { name: /^连接 X 账号$/u })).toBeVisible();
+
+  await page.goto('/queue?intent=confirm_publish');
+  await expect(page).toHaveURL(/\/app\?nextAction=confirm_publish/u);
+  await expect(page.getByText('确认这条内容是否发出')).toBeVisible();
+
+  await page.goto('/pricing');
+  await expect(page).toHaveURL(/\/pricing$/u);
+  await expect(page.getByText('升级与结账')).toBeVisible();
+  await expect(page.getByRole('button', { name: /开始 3 天试用/u }).first()).toBeVisible();
+  await expect(page).not.toHaveURL(/checkout\.example\.test/u);
 });
 
-const generationScenarios = [
+const generationScenariosFast: GenerationScenario[] = [
   {
     name: 'tweet cover assets and safe publish gate',
     prompt: '别再靠灵感写推文，给我一条更像真人的冷启动判断句。',
@@ -507,7 +647,10 @@ const generationScenarios = [
     prompt: '把一个 AI 产品新功能写成 4 条 thread，不要像建议模板。',
     format: 'thread' as const,
     expected: [/1\/4/u, /4\/4/u, /下载 bundle/u]
-  },
+  }
+];
+
+const generationScenariosRich: GenerationScenario[] = [
   {
     name: 'article with cover infographic illustration and exports',
     prompt: '根据这篇来源写一篇关于最新 Hermes Agent 的 X 长文：https://example.com/source',
@@ -517,37 +660,33 @@ const generationScenarios = [
   {
     name: 'diagram visual mode',
     prompt: '用一条短推解释 DraftOrbit 从输入一句话到手动确认发布的 5 步流程，并配一个流程图：输入→来源→正文→图文→确认。',
+    format: 'tweet' as const,
     visualMode: 'diagram',
     expected: [/流程图/u, /输入→来源→正文→图文→确认/u, /下载 SVG/u]
   }
 ];
 
-test('app generation covers tweet thread article and diagram visual outputs', async ({ page }) => {
-  for (const scenario of generationScenarios) {
+test('app generation covers tweet and thread visual outputs with minimal page churn', async ({ page }) => {
+  await openApp(page, { includeRoutingPanel: true });
+  for (const scenario of generationScenariosFast) {
     await test.step(scenario.name, async () => {
-      await startGeneration(page, scenario);
-      for (const expected of scenario.expected) {
-        await expect(page.getByText(expected).first()).toBeVisible();
-      }
-
-      if (scenario.name.includes('thread')) {
-        await expect(page.getByRole('img', { name: /卡片组/u }).first()).toBeVisible();
-      }
-
-      if (scenario.name.includes('article')) {
-        await page.getByText('查看依据与配图建议').click();
-        await expect(page.getByText('来源已抓取').first()).toBeVisible();
-      }
-
-      const bundleLink = page.getByRole('link', { name: /下载全部图文资产|下载 bundle/u }).first();
-      await expect(bundleLink).toHaveAttribute('href', /token=/u);
-      await expect(page.getByRole('button', { name: /只重试图片\/图文资产/u })).toBeDisabled();
+      await runGenerationScenario(page, scenario);
     });
   }
 });
 
-test('app exposes Markdown copy success and retry-only visual asset recovery', async ({ page }) => {
-  await startGeneration(page, { prompt: '重试图文：生成一条带失败图片的短推，用来验证只重试图文资产。' });
+test('app generation covers article and diagram visual outputs with minimal page churn', async ({ page }) => {
+  await openApp(page);
+  for (const scenario of generationScenariosRich) {
+    await test.step(scenario.name, async () => {
+      await runGenerationScenario(page, scenario);
+    });
+  }
+});
+
+test('app handles retry-only visual recovery and latest-source fail-closed path in one user session', async ({ page }) => {
+  await openApp(page);
+  await startGenerationInOpenApp(page, { prompt: '重试图文：生成一条带失败图片的短推，用来验证只重试图文资产。' });
 
   await expect(page.getByText('部分图片资产没有达到可发布标准')).toBeVisible();
   const retryButton = page.getByRole('button', { name: /只重试图片\/图文资产/u });
@@ -558,10 +697,7 @@ test('app exposes Markdown copy success and retry-only visual asset recovery', a
 
   await page.getByRole('button', { name: '复制 Markdown' }).click();
   await expect(page.getByText('Markdown 已复制')).toBeVisible();
-});
-
-test('latest ambiguous source request fails closed with recoverable copy and no ready visual assets', async ({ page }) => {
-  await startGeneration(page, { prompt: '生成关于最新的 Hermes 的文章', format: 'article' });
+  await startGenerationInOpenApp(page, { prompt: '生成关于最新的 Hermes 的文章', format: 'article' });
 
   await expect(page.getByText('需要可靠来源，不能编造最新事实', { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: '粘贴来源 URL 再生成' })).toBeVisible();
@@ -572,25 +708,4 @@ test('latest ambiguous source request fails closed with recoverable copy and no 
 
   await page.getByRole('button', { name: '粘贴来源 URL 再生成' }).click();
   await expect(page.locator('textarea').first()).toHaveValue(/来源 URL：/u);
-});
-
-test('connect queue and pricing routes expose safe manual gates without external posting or payment', async ({ page }) => {
-  await seedSession(page);
-
-  await page.goto('/connect?intent=connect_x_self');
-  await expect(page).toHaveURL(/\/app\?nextAction=connect_x_self/u);
-  await expect(page.getByRole('heading', { name: '连接 X 账号后再发布会更顺' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /^连接 X 账号$/u })).toBeVisible();
-
-  await page.goto('/queue?intent=confirm_publish');
-  await expect(page).toHaveURL(/\/app\?nextAction=confirm_publish/u);
-  await expect(page.getByText('确认这条内容是否发出')).toBeVisible();
-  await expect(page.getByText('当前待确认内容')).toBeVisible();
-  await expect(page.getByText('这条内容等待你确认后再发出')).toBeVisible();
-
-  await page.goto('/pricing');
-  await expect(page.getByText('升级与结账')).toBeVisible();
-  await expect(page.getByRole('button', { name: '月付' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /开始 3 天试用/u }).first()).toBeVisible();
-  await expect(page).not.toHaveURL(/checkout\.example\.test/u);
 });

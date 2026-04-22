@@ -51,6 +51,18 @@ function hasTweetScene(text: string): boolean {
   return /(比如|例如|周一|周三|第一条|第一屏|首页|用户|访客|上传|录音|会议纪要|贴一段|改成|before\/after|反例)/iu.test(text);
 }
 
+function isDiagramIntent(input: { focus?: string | null; text: string; visualPlan?: VisualPlan | null }): boolean {
+  if (input.visualPlan?.primaryAsset === 'diagram') return true;
+  if (input.visualPlan?.items.some((item) => item.kind === 'diagram')) return true;
+  const joined = [
+    input.focus ?? '',
+    input.text,
+    input.visualPlan?.primaryAsset ?? '',
+    ...(input.visualPlan?.items ?? []).flatMap((item) => [item.kind, item.type, item.layout, item.cue, item.reason])
+  ].join('\n');
+  return /(?:diagram|流程图|架构图|关系图|判断树|flow|mindmap|mind map|mermaid|输入→|->|→)/iu.test(joined);
+}
+
 function hasArticleEmptySection(text: string): boolean {
   const sections = text
     .split(/(?=^[一二三四五六七八九十]、)/gmu)
@@ -267,9 +279,18 @@ export function buildContentQualityGate(input: {
     }
   }
 
+  const diagramIntent = isDiagramIntent({
+    focus: input.focus,
+    text,
+    visualPlan: input.visualPlan
+  });
+
   if (input.format === 'tweet') {
     if (!hasTweetScene(text)) hardFails.add('missing_scene');
     if (/欢迎交流|欢迎留言讨论|评论区见|你怎么看[？?]?$/u.test(text)) hardFails.add('empty_close');
+    if (diagramIntent) {
+      hardFails.delete('missing_scene');
+    }
   }
 
   if (input.format === 'thread') {

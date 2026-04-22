@@ -13,6 +13,7 @@ import {
 import { PrismaService } from '../../common/prisma.service';
 import {
   type ChatMessage,
+  type RoutingContentFormat,
   type RoutedChatResult as OpenRouterRoutedChatResult,
   type RouterTaskType,
 } from '../../common/openrouter.service';
@@ -659,6 +660,11 @@ export class GenerateService {
     return 'tweet';
   }
 
+  private routingFormatHint(input: { format: ContentFormat; visualRequest?: VisualRequest | null }): RoutingContentFormat {
+    if (input.visualRequest?.mode === 'diagram') return 'diagram';
+    return input.format;
+  }
+
   private buildFastResearchPayload(context: ContentStrategyContext): ResearchStepPayload {
     const anchor = context.focus || extractTopKeywords(context.intent, 1)[0] || '内容表达';
     const exampleHook = context.highPerformingExamples[0]?.hook ?? context.hookPatterns[0] ?? null;
@@ -1141,12 +1147,14 @@ export class GenerateService {
     maxPrice?: PriceGuard;
     eventType: UsageEventType;
     taskType: RouterTaskType;
+    contentFormat?: RoutingContentFormat;
     promptMessages: ChatMessage[];
     validator: (value: unknown) => T | null;
     schemaHint: string;
   }): Promise<{ data: T; routed: RoutedChatResult; raw: string }> {
     const first = await this.modelGateway.chatWithRouting(params.promptMessages, {
       taskType: params.taskType,
+      contentFormat: params.contentFormat,
       trialMode: params.trialMode,
       maxPrice: params.maxPrice,
       temperature: 0.65
@@ -1176,6 +1184,7 @@ export class GenerateService {
 
     const retry = await this.modelGateway.chatWithRouting(retryMessages, {
       taskType: params.taskType,
+      contentFormat: params.contentFormat,
       trialMode: params.trialMode,
       forceHighTier: true,
       maxPrice: params.maxPrice,
@@ -1504,6 +1513,7 @@ export class GenerateService {
               maxPrice,
               eventType: UsageEventType.GENERATION,
               taskType: 'research',
+              contentFormat: this.routingFormatHint({ format: strategyContext.format, visualRequest }),
               schemaHint:
                 '{"researchPoints":["..."],"hookCandidates":["..."],"angleSummary":"..."}',
               validator: (value) => this.validateResearchStep(value),
@@ -1548,6 +1558,7 @@ export class GenerateService {
               maxPrice,
               eventType: UsageEventType.GENERATION,
               taskType: 'outline',
+              contentFormat: this.routingFormatHint({ format: strategyContext.format, visualRequest }),
               schemaHint: '{"title":"...","hook":"...","body":["..."],"cta":"..."}',
               validator: (value) => this.validateOutlineStep(value),
               promptMessages: [
@@ -1638,6 +1649,7 @@ export class GenerateService {
               maxPrice,
               eventType: UsageEventType.GENERATION,
               taskType: 'draft',
+              contentFormat: this.routingFormatHint({ format: strategyContext.format, visualRequest }),
               schemaHint: '{"primaryTweet":"...","thread":["..."]}',
               validator: (value) => this.validateDraftStep(value),
               promptMessages: draftMessages
@@ -1666,6 +1678,7 @@ export class GenerateService {
                 ],
                 {
                   taskType: 'draft',
+                  contentFormat: this.routingFormatHint({ format: strategyContext.format, visualRequest }),
                   trialMode,
                   maxPrice,
                   temperature: 0.6
@@ -1703,6 +1716,7 @@ export class GenerateService {
                   ],
                   {
                     taskType: 'draft',
+                    contentFormat: this.routingFormatHint({ format: strategyContext.format, visualRequest }),
                     trialMode,
                     forceHighTier: true,
                     maxPrice,
@@ -1759,6 +1773,7 @@ export class GenerateService {
               maxPrice,
               eventType: UsageEventType.NATURALIZATION,
               taskType: 'humanize',
+              contentFormat: this.routingFormatHint({ format: strategyContext.format, visualRequest }),
               schemaHint: '{"humanized":"...","aiTraceRisk":0.12}',
               validator: (value) => this.validateHumanizeStep(value),
               promptMessages: [
@@ -1841,6 +1856,7 @@ export class GenerateService {
               maxPrice,
               eventType: UsageEventType.IMAGE,
               taskType: 'media',
+              contentFormat: this.routingFormatHint({ format: strategyContext.format, visualRequest }),
               schemaHint:
                 '{"ideas":[{"title":"...","composition":"...","keywords":["..."]}],"searchKeywords":["..."]}',
               validator: (value) => this.validateMediaStep(value),
@@ -1904,6 +1920,7 @@ export class GenerateService {
               maxPrice,
               eventType: UsageEventType.GENERATION,
               taskType: 'package',
+              contentFormat: this.routingFormatHint({ format: strategyContext.format, visualRequest }),
               schemaHint: '{"tweet":"...","variants":[{"tone":"formal","text":"..."}]}',
               validator: (value) => {
                 if (!value || typeof value !== 'object') return null;
@@ -2062,6 +2079,7 @@ export class GenerateService {
                 ],
                 {
                   taskType: 'package',
+                  contentFormat: this.routingFormatHint({ format: strategyContext.format, visualRequest }),
                   trialMode,
                   forceHighTier: true,
                   maxPrice,
@@ -2191,6 +2209,7 @@ export class GenerateService {
                   ],
                   {
                     taskType: 'package',
+                    contentFormat: this.routingFormatHint({ format: strategyContext.format, visualRequest }),
                     trialMode,
                     forceHighTier: true,
                     maxPrice,
