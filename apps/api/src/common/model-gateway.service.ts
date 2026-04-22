@@ -37,6 +37,7 @@ export type ModelGatewayCandidatePoolInput = {
   openrouterHighModels: string[];
   openrouterFloorModels: string[];
   openrouterFreeModels: string[];
+  ollamaEnabled: boolean;
   ollamaModels: string[];
   codexLocalEnabled: boolean;
 };
@@ -56,7 +57,7 @@ const DEFAULT_OPENROUTER_FLOOR_MODELS = [
   'deepseek/deepseek-v3.2'
 ] as const;
 const DEFAULT_OPENROUTER_FREE_MODELS = ['openrouter/free'] as const;
-const DEFAULT_OLLAMA_TEXT_MODELS = ['qwen3.5:9b-fast', 'qwen3.5:9b'] as const;
+const DEFAULT_OLLAMA_TEXT_MODELS = ['qwen2.5:0.5b'] as const;
 const DEFAULT_OLLAMA_BASE_URL = 'http://127.0.0.1:11434';
 
 const QUALITY_CRITICAL_TASKS = new Set<RouterTaskType>(['hook', 'draft', 'humanize', 'package', 'generic']);
@@ -365,18 +366,18 @@ export function buildModelGatewayCandidatePool(input: ModelGatewayCandidatePoolI
       addModels(candidates, 'openai', input.openaiHighModels, highTier, input.openaiAvailable);
       addModels(candidates, 'openrouter', input.openrouterHighModels, highTier);
     }
-    addModels(candidates, 'ollama', input.ollamaModels, 'free_first');
+    addModels(candidates, 'ollama', input.ollamaModels, 'free_first', input.ollamaEnabled);
     addModels(candidates, 'openrouter', input.openrouterFreeModels, 'free_first');
     return dedupeCandidates(candidates);
   }
 
-  addModels(candidates, 'ollama', input.ollamaModels, 'free_first');
+  addModels(candidates, 'codex-local', ['codex-local'], highTier, input.codexLocalEnabled);
+  addModels(candidates, 'ollama', input.ollamaModels, 'free_first', input.ollamaEnabled);
   addModels(candidates, 'openrouter', input.openrouterFreeModels, 'free_first');
   addModels(candidates, 'openrouter', input.openrouterFloorModels, 'floor');
   addModels(candidates, 'openai', input.openaiFloorModels, 'floor', input.openaiAvailable);
   addModels(candidates, 'openrouter', input.openrouterHighModels, highTier);
   addModels(candidates, 'openai', input.openaiHighModels, highTier, input.openaiAvailable);
-  addModels(candidates, 'codex-local', ['codex-local'], highTier, input.codexLocalEnabled && !hints.prefersContext);
   return dedupeCandidates(candidates);
 }
 
@@ -483,6 +484,10 @@ export class ModelGatewayService {
     return parseModelList(process.env.OLLAMA_TEXT_MODELS, DEFAULT_OLLAMA_TEXT_MODELS);
   }
 
+  private get ollamaEnabled(): boolean {
+    return process.env.MODEL_ROUTER_ENABLE_OLLAMA === '1';
+  }
+
   private get codexLocalEnabled(): boolean {
     return process.env.MODEL_ROUTER_ENABLE_CODEX_LOCAL === '1';
   }
@@ -502,6 +507,7 @@ export class ModelGatewayService {
       openrouterHighModels: this.openrouterHighModels,
       openrouterFloorModels: this.openrouterFloorModels,
       openrouterFreeModels: this.openrouterFreeModels,
+      ollamaEnabled: this.ollamaEnabled,
       ollamaModels: this.ollamaModels,
       codexLocalEnabled: this.codexLocalEnabled
     });

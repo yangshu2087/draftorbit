@@ -34,6 +34,7 @@ test('test_high candidate pool prefers OpenAI high then OpenRouter high and excl
     openrouterHighModels: ['anthropic/claude-sonnet-4.6', 'qwen/qwen3-max'],
     openrouterFloorModels: ['deepseek/deepseek-v3.2'],
     openrouterFreeModels: ['openrouter/free'],
+    ollamaEnabled: false,
     ollamaModels: ['qwen3.5:9b-fast'],
     codexLocalEnabled: true
   });
@@ -53,7 +54,7 @@ test('test_high candidate pool prefers OpenAI high then OpenRouter high and excl
   assert.equal(candidates.some((item) => item.provider === 'codex-local'), false);
 });
 
-test('local_free candidate pool can use Ollama and OpenRouter free before paid models', () => {
+test('local_free candidate pool prefers codex-local and keeps ollama disabled by default', () => {
   const candidates = buildModelGatewayCandidatePool({
     profile: 'local_free',
     taskType: 'research',
@@ -63,14 +64,43 @@ test('local_free candidate pool can use Ollama and OpenRouter free before paid m
     openrouterHighModels: ['anthropic/claude-sonnet-4.6'],
     openrouterFloorModels: ['deepseek/deepseek-v3.2'],
     openrouterFreeModels: ['openrouter/free'],
+    ollamaEnabled: false,
     ollamaModels: ['qwen3.5:9b-fast'],
-    codexLocalEnabled: false
+    codexLocalEnabled: true
   });
 
   assert.deepEqual(
-    candidates.map((item) => `${item.provider}:${item.model}:${item.tier}`).slice(0, 3),
+    candidates.map((item) => `${item.provider}:${item.model}:${item.tier}`).slice(0, 4),
     [
-      'ollama:qwen3.5:9b-fast:free_first',
+      'codex-local:codex-local:quality_fallback',
+      'openrouter:openrouter/free:free_first',
+      'openrouter:deepseek/deepseek-v3.2:floor',
+      'openai:gpt-5.4-mini:floor'
+    ]
+  );
+  assert.equal(candidates.some((item) => item.provider === 'ollama'), false);
+});
+
+test('local_free candidate pool uses small-footprint ollama only when explicitly enabled', () => {
+  const candidates = buildModelGatewayCandidatePool({
+    profile: 'local_free',
+    taskType: 'research',
+    openaiAvailable: true,
+    openaiHighModels: ['gpt-5.4'],
+    openaiFloorModels: ['gpt-5.4-mini'],
+    openrouterHighModels: ['anthropic/claude-sonnet-4.6'],
+    openrouterFloorModels: ['deepseek/deepseek-v3.2'],
+    openrouterFreeModels: ['openrouter/free'],
+    ollamaEnabled: true,
+    ollamaModels: ['qwen2.5:0.5b'],
+    codexLocalEnabled: true
+  });
+
+  assert.deepEqual(
+    candidates.map((item) => `${item.provider}:${item.model}:${item.tier}`).slice(0, 4),
+    [
+      'codex-local:codex-local:quality_fallback',
+      'ollama:qwen2.5:0.5b:free_first',
       'openrouter:openrouter/free:free_first',
       'openrouter:deepseek/deepseek-v3.2:floor'
     ]
@@ -88,6 +118,7 @@ test('local_quality candidate pool prefers Codex local before paid and Ollama fa
     openrouterHighModels: ['anthropic/claude-sonnet-4.6'],
     openrouterFloorModels: ['deepseek/deepseek-v3.2'],
     openrouterFreeModels: ['openrouter/free'],
+    ollamaEnabled: true,
     ollamaModels: ['qwen3.5:9b'],
     codexLocalEnabled: true
   });
@@ -116,6 +147,7 @@ test('local_quality route layering prefers floor models first for tweet hook low
     openrouterHighModels: ['anthropic/claude-sonnet-4.6'],
     openrouterFloorModels: ['deepseek/deepseek-v3.2'],
     openrouterFreeModels: ['openrouter/free'],
+    ollamaEnabled: true,
     ollamaModels: ['qwen3.5:9b'],
     codexLocalEnabled: true
   });
@@ -143,6 +175,7 @@ test('local_quality route layering keeps high-tier first for article package lan
     openrouterHighModels: ['anthropic/claude-sonnet-4.6'],
     openrouterFloorModels: ['deepseek/deepseek-v3.2'],
     openrouterFreeModels: ['openrouter/free'],
+    ollamaEnabled: true,
     ollamaModels: ['qwen3.5:9b'],
     codexLocalEnabled: true
   });
