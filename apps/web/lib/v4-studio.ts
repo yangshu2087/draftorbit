@@ -6,6 +6,7 @@ import type {
   VisualRequestPalette,
   VisualRequestStyle
 } from './queries';
+import type { V3StreamEvent } from './sse-stream';
 
 export type V4StudioFormat = 'tweet' | 'thread' | 'article' | 'diagram' | 'social_pack';
 
@@ -65,6 +66,7 @@ export type V4StudioPreviewContract = {
   requestId?: string;
   runId?: string;
   status?: string;
+  visualAssetsBundleUrl?: string | null;
   textResult: { format: string; content: string; variants: unknown[] };
   visualAssets: Array<{
     id: string;
@@ -90,6 +92,7 @@ export type V4StudioPreviewContract = {
 export type V4PreviewView = {
   readyAssets: Array<V4StudioPreviewContract['visualAssets'][number] & { providerLabel: string; normalizedUrl?: string }>;
   failedAssets: Array<V4StudioPreviewContract['visualAssets'][number] & { providerLabel: string }>;
+  bundleUrl?: string;
   sourceCount: number;
   qualityCopy: string;
   publishCopy: string;
@@ -148,6 +151,53 @@ function normalizeAssetUrl(input?: string): string | undefined {
   return input;
 }
 
+
+export function shouldUseV4LocalPreviewFallback(input: V4StudioPreviewContract | null | undefined): boolean {
+  if (!input) return true;
+  const text = input.textResult?.content?.trim() ?? '';
+  const hasReadyAsset = input.visualAssets.some((asset) => asset.status === 'ready');
+  const status = String(input.status ?? '').toLowerCase();
+  return !text && !hasReadyAsset && (status === '' || status === 'running' || status === 'queued' || status === 'pending');
+}
+
+export function shouldHydrateV4StudioFromStream(event: Pick<V3StreamEvent, 'stage' | 'status' | 'summary'>): boolean {
+  const stage = String(event.stage ?? '').toLowerCase();
+  const status = String(event.status ?? '').toLowerCase();
+  const summary = String(event.summary ?? '').toLowerCase();
+
+  if (status !== 'done') return false;
+  if (stage === 'publish_prep' || stage === 'package' || stage === 'done' || stage === 'completed') return true;
+  return summary.includes('结果已准备好') || summary.includes('结果包已就绪') || summary.includes('result ready');
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function hydrateV4StudioRunUntilReady(
+  fetchRunDetail: (runId: string) => Promise<V4StudioPreviewContract>,
+  runId: string,
+  options?: { timeoutMs?: number; intervalsMs?: number[] }
+): Promise<V4StudioPreviewContract | null> {
+  const timeoutMs = options?.timeoutMs ?? 20_000;
+  const intervals = options?.intervalsMs ?? [0, 1_000, 2_000, 2_000, 3_000, 4_000, 4_000];
+  const startedAt = Date.now();
+  let lastDetail: V4StudioPreviewContract | null = null;
+
+  for (const delay of intervals) {
+    if (delay > 0) await wait(delay);
+    lastDetail = await fetchRunDetail(runId);
+    if (!shouldUseV4LocalPreviewFallback(lastDetail)) return lastDetail;
+    if (Date.now() - startedAt >= timeoutMs) break;
+  }
+
+  return lastDetail;
+}
+
+export function buildV4BundleDownloadUrl(input: V4StudioPreviewContract | null | undefined): string | undefined {
+  return normalizeAssetUrl(input?.visualAssetsBundleUrl ?? undefined);
+}
+
 export function buildV4StudioPreview(input: V4StudioPreviewContract): V4PreviewView {
   const readyAssets = input.visualAssets
     .filter((asset) => asset.status === 'ready')
@@ -159,17 +209,19 @@ export function buildV4StudioPreview(input: V4StudioPreviewContract): V4PreviewV
   const failedAssets = input.visualAssets
     .filter((asset) => asset.status === 'failed')
     .map((asset) => ({ ...asset, providerLabel: asset.provenanceLabel ?? getV4ProviderLabel(asset.provider) }));
-  const hasDownloadableAssets = readyAssets.some((asset) => Boolean(asset.normalizedUrl));
+  const bundleUrl = buildV4BundleDownloadUrl(input);
+  const hasDownloadableAssets = Boolean(bundleUrl) || readyAssets.some((asset) => Boolean(asset.normalizedUrl));
   return {
     readyAssets,
     failedAssets,
+    bundleUrl,
     sourceCount: input.sourceArtifacts.length,
     qualityCopy: input.qualityGate.safeToDisplay ? '质量门通过，可进入人工确认。' : '质量门未通过，DraftOrbit 已阻止展示或发布。',
     publishCopy: input.publishPreparation.canAutoPost
       ? '可发布，但仍建议人工确认。'
       : `${input.publishPreparation.label}：不会自动真实发帖。`,
     hasDownloadableAssets,
-    bundleActionCopy: hasDownloadableAssets ? '下载 bundle' : '登录后生成下载链接'
+    bundleActionCopy: bundleUrl ? '下载 bundle' : '真实 run 完成后可下载 bundle'
   };
 }
 

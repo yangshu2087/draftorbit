@@ -42,6 +42,16 @@
   - Regression: `apps/web/test/v4-studio.test.ts` includes signed-URL-gated bundle action coverage.
   - Browser-use recheck: `/v4` thread preview shows `Codex 本机 SVG`, `准备发布 / 手动确认`, and disabled `登录后生成下载链接`.
 
+- Stream hydration follow-up (2026-04-24):
+  - Goal: logged-in/self-host `/v4` generation listens to the real `/v3/chat/runs/:id/stream`, then replaces the local preview with completed real run assets.
+  - Architecture: client-side additive hydration over existing V3 stream/detail routes; fallback remains local preview + retryable polling/timeout, so V3 rollback stays intact.
+  - Backend/API: no new public route; uses protected `GET /v4/studio/runs/:id` and signed `/v3/chat/runs/:id/assets/*` / `assets.zip` routes. Ownership is still enforced by `AuthGuard`/V3 run lookup; signed download tokens are short-lived and scoped to `runId + assetId`.
+  - UX: local preview keeps bundle disabled until a real `visualAssetsBundleUrl` exists; completed run shows `下载 SVG`, `下载 MARKDOWN`, `下载 HTML`, enabled `下载 bundle`, provenance, and safe manual publish copy.
+  - Direct fix from browser UAT: a real run leaked the old `V4 Creator Studio request` prompt wrapper into tweet output. `buildV4Intent()` now uses user-facing natural instructions, and content anti-pattern tests catch V4 wrapper leakage.
+  - Browser-use UAT: run `d16c437b-2805-4f6d-a641-5e1f03beb8ec` completed in ~55s, `hasPromptLeak=false`, `hasRawErrorLeak=false`, screenshot `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/playwright/manual-check/v4-stream-hydration-2026-04-24.png`.
+  - API smoke: `/health` 200 ready; signed asset `01-cover` HEAD 200 `image/svg+xml` length `1614`; signed `assets.zip` HEAD 200 `application/zip` length `6610`.
+  - Report: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/reports/uat-full/V4-STREAM-HYDRATION-UAT-2026-04-24.md`.
+
 Use this file to transfer execution state between Codex, Cursor, and other agents.
 Update it before pausing work, switching tools, or asking another agent to continue.
 

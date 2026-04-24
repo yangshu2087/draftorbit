@@ -33,8 +33,8 @@ test('normalizeV4StudioRequest maps diagram/social pack into safe V3 visual gene
   assert.equal(diagram.v3.withImage, true);
   assert.equal(diagram.v3.visualRequest.mode, 'diagram');
   assert.equal(diagram.v3.visualRequest.exportHtml, true);
-  assert.match(diagram.v3.intent, /V4 Creator Studio/u);
-  assert.match(diagram.v3.intent, /format: diagram/u);
+  assert.doesNotMatch(diagram.v3.intent, /V4 Creator Studio|routing:|provider|Codex OAuth/u);
+  assert.match(diagram.v3.intent, /流程图|架构图/u);
 
   const social = normalizeV4StudioRequest({
     prompt: '把这次版本更新做成一套社交图文包',
@@ -88,6 +88,7 @@ test('buildV4PreviewFromV3Run returns V4 result preview contract with provenance
           cue: '具体卡片场景'
         }
       ],
+      visualAssetsBundleUrl: '/v3/chat/runs/run_test/assets.zip?token=signed-zip',
       sourceArtifacts: [],
       qualityGate: { status: 'passed', safeToDisplay: true, hardFails: [], judgeNotes: [] },
       usage: [{ model: 'CODEX_LOCAL', modelUsed: 'codex-local/quick', routingTier: 'high', costUsd: 0 }]
@@ -99,6 +100,7 @@ test('buildV4PreviewFromV3Run returns V4 result preview contract with provenance
   assert.equal(preview.textResult.format, 'thread');
   assert.equal(preview.visualAssets[0]?.provider, 'codex-local-svg');
   assert.equal(preview.visualAssets[0]?.provenanceLabel, 'Codex 本机 SVG');
+  assert.equal(preview.visualAssetsBundleUrl, '/v3/chat/runs/run_test/assets.zip?token=signed-zip');
   assert.equal(preview.qualityGate.safeToDisplay, true);
   assert.equal(preview.publishPreparation.mode, 'manual-confirm');
   assert.equal(preview.usageEvidence.primaryProvider, 'codex-local');

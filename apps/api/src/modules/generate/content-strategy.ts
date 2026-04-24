@@ -1400,7 +1400,7 @@ export function detectContentAntiPatterns(text: string, intentFocus = ''): strin
 
   if (/[[(]object Object[)\]]/i.test(normalized)) flags.add('object_leakage');
   if (/\(([a-z0-9]{6,8})\)/iu.test(normalized)) flags.add('random_suffix');
-  if (/(用户意图|输出形式|需要配图|自动完成|你是\s*(?:一个|一名|chatgpt|ai))/iu.test(normalized)) {
+  if (/(用户意图|输出形式|需要配图|自动完成|V4\s*Creator\s*Studio|你是\s*(?:一个|一名|chatgpt|ai))/iu.test(normalized)) {
     flags.add('prompt_leakage');
   }
   if (/(给我一条|更像真人|冷启动判断句)/u.test(normalized)) flags.add('prompt_leakage');

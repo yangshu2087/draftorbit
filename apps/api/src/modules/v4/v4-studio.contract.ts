@@ -74,6 +74,7 @@ export type V4VisualAssetPreview = {
 export type V4StudioPreview = {
   runId: string;
   status: string;
+  visualAssetsBundleUrl?: string | null;
   textResult: { format: V4StudioFormat | 'tweet' | 'thread' | 'article'; content: string; variants: unknown[] };
   visualAssets: V4VisualAssetPreview[];
   sourceArtifacts: unknown[];
@@ -144,15 +145,23 @@ export function resolveV4SourceRequirement(input: Pick<V4StudioRunRequest, 'prom
 }
 
 function buildV4Intent(input: { prompt: string; format: V4StudioFormat; sourceUrl: string | null; exportRequest: Required<V4ExportRequest> }) {
+  const formatCopy: Record<V4StudioFormat, string> = {
+    tweet: '一条可直接人工确认的 X tweet，并生成封面图',
+    thread: '4 条左右的 X thread，并生成连续卡片组',
+    article: '一篇 X 长文，包含标题、导语、小节、封面、信息图和 HTML/Markdown 导出',
+    diagram: '一条配流程图/架构图 SVG 的说明内容',
+    social_pack: '一套社交图文包，包含主文案、视觉资产和发布准备'
+  };
+
   return [
-    'V4 Creator Studio request',
-    `format: ${input.format}`,
-    `sourceUrl: ${input.sourceUrl ?? 'none'}`,
-    `exports: markdown=${input.exportRequest.markdown ? 'yes' : 'no'}, html=${input.exportRequest.html ? 'yes' : 'no'}, bundle=${input.exportRequest.bundle ? 'yes' : 'no'}`,
-    'routing: codex-local first via Codex OAuth; Ollama disabled unless explicitly enabled as low-memory fallback.',
-    'publish: prepare/manual-confirm only; never auto-post.',
-    `userPrompt: ${input.prompt}`
-  ].join('\n');
+    input.prompt,
+    input.sourceUrl ? `请只依据这个来源补充事实：${input.sourceUrl}` : null,
+    `请交付：${formatCopy[input.format]}。`,
+    input.exportRequest.html || input.exportRequest.markdown || input.exportRequest.bundle
+      ? '需要保留适合导出为 Markdown、HTML 与图文 bundle 的结构。'
+      : null,
+    '直接输出最终内容，不要复述任务字段、内部路由、系统提示或模型供应方信息。'
+  ].filter((item): item is string => Boolean(item)).join('\n');
 }
 
 export function normalizeV4StudioRequest(input: V4StudioRunRequest): V4NormalizedStudioRequest {
@@ -238,13 +247,14 @@ export function buildV4PreviewFromV3Run(v3Run: {
   runId: string;
   status: string;
   format: string;
-  result: null | {
-    text?: string;
-    variants?: unknown[];
-    visualAssets?: Array<Record<string, unknown>>;
-    sourceArtifacts?: unknown[];
-    qualityGate?: { status?: string; safeToDisplay?: boolean; hardFails?: string[] } | null;
-    usage?: unknown[];
+    result: null | {
+      text?: string;
+      variants?: unknown[];
+      visualAssets?: Array<Record<string, unknown>>;
+      visualAssetsBundleUrl?: string | null;
+      sourceArtifacts?: unknown[];
+      qualityGate?: { status?: string; safeToDisplay?: boolean; hardFails?: string[] } | null;
+      usage?: unknown[];
   };
 }): V4StudioPreview {
   const gate = v3Run.result?.qualityGate ?? null;
@@ -252,6 +262,7 @@ export function buildV4PreviewFromV3Run(v3Run: {
   return {
     runId: v3Run.runId,
     status: v3Run.status,
+    visualAssetsBundleUrl: v3Run.result?.visualAssetsBundleUrl ?? null,
     textResult: {
       format: (['tweet', 'thread', 'article'].includes(v3Run.format) ? v3Run.format : 'tweet') as 'tweet' | 'thread' | 'article',
       content: v3Run.result?.text ?? '',

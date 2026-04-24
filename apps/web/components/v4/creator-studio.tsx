@@ -13,7 +13,7 @@ import {
   ShieldCheck,
   Sparkles
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppError, getToken } from '../../lib/api';
 import {
   V4_FORMAT_OPTIONS,
@@ -23,11 +23,15 @@ import {
   fetchV4StudioRun,
   getV4ErrorCopy,
   getV4FormatOption,
+  hydrateV4StudioRunUntilReady,
   runV4Studio,
+  shouldHydrateV4StudioFromStream,
+  shouldUseV4LocalPreviewFallback,
   type V4StudioFormat,
   type V4StudioPreviewContract,
   type V4VisualControls
 } from '../../lib/v4-studio';
+import { fetchRunStream } from '../../lib/sse-stream';
 import type { VisualRequestAspect, VisualRequestLayout, VisualRequestPalette, VisualRequestStyle } from '../../lib/queries';
 import { Button } from '../ui/button';
 import { AppShell } from '../v3/shell';
@@ -39,6 +43,14 @@ const quickPrompts = [
   '根据 https://example.com/source 写一篇 X 长文，带封面、信息图和 HTML 导出。',
   '用流程图解释：输入→来源→正文→图文→手动确认发布。'
 ];
+
+const V4_STREAM_TIMEOUT_MS = 180_000;
+
+function isAbortLikeError(error: unknown) {
+  if (!error || typeof error !== 'object') return false;
+  const maybe = error as { name?: string; message?: string };
+  return maybe.name === 'AbortError' || maybe.message?.toLowerCase().includes('abort') === true;
+}
 
 const styles: Array<{ value: VisualRequestStyle; label: string }> = [
   { value: 'draftorbit', label: 'DraftOrbit' },
@@ -168,6 +180,7 @@ export default function CreatorStudio() {
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [preview, setPreview] = useState<V4StudioPreviewContract | null>(null);
   const [notice, setNotice] = useState('');
+  const hydrationSerialRef = useRef(0);
 
   useEffect(() => {
     void (async () => {
@@ -204,13 +217,54 @@ export default function CreatorStudio() {
         return;
       }
       const started = await runV4Studio(request);
-      setNotice(`V4 生成已排队：${started.runId}。正在读取结果预览…`);
+      const hydrationSerial = hydrationSerialRef.current + 1;
+      hydrationSerialRef.current = hydrationSerial;
+      const localPreview = mockPreviewForLocalShell(format, prompt);
+      setPreview(localPreview);
+      setNotice(`V4 生成已排队：${started.runId}。正在监听真实 run；你可以先检查和复制本地预览。`);
+
+      let streamSuggestedHydration = false;
+      const streamController = new AbortController();
+      const timeout = window.setTimeout(() => streamController.abort(), V4_STREAM_TIMEOUT_MS);
       try {
-        const detail = await fetchV4StudioRun(started.runId);
+        await fetchRunStream(
+          started.runId,
+          (event) => {
+            if (hydrationSerialRef.current !== hydrationSerial) return;
+            if (shouldHydrateV4StudioFromStream(event)) {
+              streamSuggestedHydration = true;
+              setNotice(`真实 run 已完成 ${event.label}，正在替换为 signed asset 结果…`);
+              return;
+            }
+            if (event.status === 'running') {
+              setNotice(`真实 run 进行中：${event.label}。本地预览可先复制，完成后会自动替换。`);
+            }
+          },
+          { signal: streamController.signal }
+        );
+      } catch (streamError) {
+        if (hydrationSerialRef.current !== hydrationSerial) return;
+        if (isAbortLikeError(streamError)) {
+          setNotice(`真实 run 超过 ${Math.round(V4_STREAM_TIMEOUT_MS / 1000)} 秒仍在生成；保留本地预览并继续尝试读取最新结果。`);
+        } else {
+          setNotice('真实 run stream 暂时中断；保留本地预览并尝试读取最新结果。');
+        }
+      } finally {
+        window.clearTimeout(timeout);
+      }
+
+      const detail = await hydrateV4StudioRunUntilReady(fetchV4StudioRun, started.runId, {
+        timeoutMs: streamSuggestedHydration ? 12_000 : 20_000,
+        intervalsMs: streamSuggestedHydration ? [0, 1_000, 2_000, 3_000] : [0, 1_500, 2_500, 4_000, 5_000]
+      });
+      if (hydrationSerialRef.current !== hydrationSerial) return;
+      if (detail && !shouldUseV4LocalPreviewFallback(detail)) {
         setPreview(detail);
-      } catch {
-        setPreview(mockPreviewForLocalShell(format, prompt));
-        setNotice(`V4 生成已排队：${started.runId}。结果仍在生成，先展示本地可审计预览。`);
+        setNotice(`真实 run 已完成：${started.runId}。已替换为真实 signed asset / bundle 结果。`);
+      }
+      if (!detail || shouldUseV4LocalPreviewFallback(detail)) {
+        setPreview((current) => current ?? localPreview);
+        setNotice(`V4 生成已排队：${started.runId}。真实 run 仍在生成，先保留本地可审计预览；稍后重新生成或刷新可读取 signed asset。`);
       }
     } catch (error) {
       const code = error instanceof AppError ? error.code : 'UNKNOWN_ERROR';
@@ -225,6 +279,16 @@ export default function CreatorStudio() {
     if (!text) return;
     await navigator.clipboard?.writeText(text).catch(() => undefined);
     setNotice('Markdown 已复制；仍需你手动确认后再发布。');
+  }
+
+  function openBundleDownload() {
+    const bundleUrl = previewView?.bundleUrl;
+    if (!bundleUrl) {
+      setNotice('真实 run 完成后才会生成 signed bundle 下载链接。');
+      return;
+    }
+    window.open(bundleUrl, '_blank', 'noopener,noreferrer');
+    setNotice('正在打开真实 bundle 下载链接；仍需你自行保存文件。');
   }
 
   return (
@@ -354,7 +418,7 @@ export default function CreatorStudio() {
                 <Copy className="mr-2 h-4 w-4" />
                 复制 Markdown
               </Button>
-              <Button variant="outline" disabled={!previewView?.hasDownloadableAssets}>
+              <Button variant="outline" disabled={!previewView?.bundleUrl} onClick={openBundleDownload}>
                 <Download className="mr-2 h-4 w-4" />
                 {previewView?.bundleActionCopy ?? '下载 bundle'}
               </Button>

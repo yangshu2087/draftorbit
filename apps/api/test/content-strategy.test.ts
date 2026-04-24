@@ -49,6 +49,15 @@ test('detectContentAntiPatterns catches the real browser prompt-leak regression'
   assert.ok(flags.includes('generic_scene_leakage'));
 });
 
+test('detectContentAntiPatterns catches V4 Creator Studio wrapper leakage', () => {
+  const flags = detectContentAntiPatterns(
+    'V4 Creator Studio request写不动，问题通常不在信息不够，而是第一句没先下判断。',
+    'AI 产品冷启动'
+  );
+
+  assert.ok(flags.includes('prompt_leakage'));
+});
+
 test('detectContentAntiPatterns catches repeated support lines that say readers still do not know the point', () => {
   const flags = detectContentAntiPatterns(
     '我见过最有效的解法，是把整个工作流做成固定节奏——周会前每个人都知道自己该先下判断、还是先补例子，效率直接起飞，读者看完还是不知道这段最想证明什么。',

@@ -780,7 +780,8 @@ test('V4 Creator Studio route supports Codex-first preview, export actions, and 
   await expect(page.getByText('Codex 本机 SVG').first()).toBeVisible();
   await expect(page.getByText(/准备发布 \/ 手动确认/u).first()).toBeVisible();
   await expect(page.getByRole('button', { name: /复制 Markdown/u })).toBeEnabled();
-  await expect(page.getByRole('button', { name: /下载 bundle/u })).toBeEnabled();
+  await expect(page.getByRole('button', { name: /下载 bundle/u })).toBeDisabled();
+  await expect(page.getByText('真实 run 完成后可下载 bundle').first()).toBeVisible();
 
   await page.locator('#v4-prompt').fill('生成关于最新 Hermes Agent 的文章');
   await page.getByRole('button', { name: /Article/u }).click();

@@ -2,11 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   V4_FORMAT_OPTIONS,
+  buildV4BundleDownloadUrl,
   buildV4StudioRunRequest,
   buildV4StudioPreview,
+  hydrateV4StudioRunUntilReady,
+  shouldHydrateV4StudioFromStream,
+  shouldUseV4LocalPreviewFallback,
   getV4ErrorCopy,
   getV4ProviderLabel
 } from '../lib/v4-studio';
+
+const expectedApiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
 test('V4 Studio exposes tweet/thread/article/diagram/social pack creator formats', () => {
   assert.deepEqual(V4_FORMAT_OPTIONS.map((item) => item.value), ['tweet', 'thread', 'article', 'diagram', 'social_pack']);
@@ -75,10 +81,11 @@ test('V4 preview only enables bundle download when a real signed asset URL exist
     usageEvidence: { primaryProvider: 'codex-local', model: 'codex-local/quick', fallbackDepth: 0 }
   });
   assert.equal(localPreview.hasDownloadableAssets, false);
-  assert.equal(localPreview.bundleActionCopy, '登录后生成下载链接');
+  assert.equal(localPreview.bundleActionCopy, '真实 run 完成后可下载 bundle');
 
   const runPreview = buildV4StudioPreview({
     textResult: { format: 'thread', content: '1/4 真实 run', variants: [] },
+    visualAssetsBundleUrl: '/v3/chat/runs/run/assets.zip?token=signed-zip',
     visualAssets: [
       { id: 'card', kind: 'cards', status: 'ready', provider: 'codex-local-svg', exportFormat: 'svg', signedAssetUrl: '/v3/chat/runs/run/assets/card?token=signed', provenanceLabel: 'Codex 本机 SVG' }
     ],
@@ -88,5 +95,84 @@ test('V4 preview only enables bundle download when a real signed asset URL exist
     usageEvidence: { primaryProvider: 'codex-local', model: 'codex-local/quick', fallbackDepth: 0 }
   });
   assert.equal(runPreview.hasDownloadableAssets, true);
+  assert.equal(runPreview.bundleUrl, `${expectedApiBaseUrl}/v3/chat/runs/run/assets.zip?token=signed-zip`);
   assert.equal(runPreview.bundleActionCopy, '下载 bundle');
+});
+
+
+test('V4 local preview fallback is used for queued runs without content or assets', () => {
+  assert.equal(
+    shouldUseV4LocalPreviewFallback({
+      runId: 'run_queued',
+      status: 'RUNNING',
+      textResult: { format: 'thread', content: '', variants: [] },
+      visualAssets: [],
+      sourceArtifacts: [],
+      qualityGate: { status: 'unknown', safeToDisplay: true, hardFails: [] },
+      publishPreparation: { mode: 'manual-confirm', label: '准备发布 / 手动确认', canAutoPost: false },
+      usageEvidence: { primaryProvider: 'unknown', model: null, fallbackDepth: 0 }
+    }),
+    true
+  );
+
+  assert.equal(
+    shouldUseV4LocalPreviewFallback({
+      runId: 'run_done',
+      status: 'DONE',
+      textResult: { format: 'thread', content: '1/4 可发布内容', variants: [] },
+      visualAssets: [],
+      sourceArtifacts: [],
+      qualityGate: { status: 'passed', safeToDisplay: true, hardFails: [] },
+      publishPreparation: { mode: 'manual-confirm', label: '准备发布 / 手动确认', canAutoPost: false },
+      usageEvidence: { primaryProvider: 'codex-local', model: 'codex-local/quick', fallbackDepth: 0 }
+    }),
+    false
+  );
+});
+
+test('V4 stream hydration gates on publish/package done events', () => {
+  assert.equal(shouldHydrateV4StudioFromStream({ stage: 'draft', status: 'done', summary: '草稿完成' }), false);
+  assert.equal(shouldHydrateV4StudioFromStream({ stage: 'publish_prep', status: 'done', summary: '结果已准备好' }), true);
+  assert.equal(shouldHydrateV4StudioFromStream({ stage: 'package', status: 'running', summary: '结果处理中' }), false);
+});
+
+test('V4 hydration polling returns real preview once text or ready assets exist', async () => {
+  let calls = 0;
+  const result = await hydrateV4StudioRunUntilReady(
+    async () => {
+      calls += 1;
+      if (calls < 3) {
+        return {
+          runId: 'run_hydrating',
+          status: 'RUNNING',
+          textResult: { format: 'thread', content: '', variants: [] },
+          visualAssets: [],
+          sourceArtifacts: [],
+          qualityGate: { status: 'unknown', safeToDisplay: true, hardFails: [] },
+          publishPreparation: { mode: 'manual-confirm', label: '准备发布 / 手动确认', canAutoPost: false },
+          usageEvidence: { primaryProvider: 'unknown', model: null, fallbackDepth: 0 }
+        };
+      }
+
+      return {
+        runId: 'run_hydrating',
+        status: 'DONE',
+        visualAssetsBundleUrl: '/v3/chat/runs/run_hydrating/assets.zip?token=signed',
+        textResult: { format: 'thread', content: '1/4 真实结果', variants: [] },
+        visualAssets: [
+          { id: 'card', kind: 'cards', status: 'ready', provider: 'codex-local-svg', exportFormat: 'svg', signedAssetUrl: '/v3/chat/runs/run_hydrating/assets/card?token=signed' }
+        ],
+        sourceArtifacts: [],
+        qualityGate: { status: 'passed', safeToDisplay: true, hardFails: [] },
+        publishPreparation: { mode: 'manual-confirm', label: '准备发布 / 手动确认', canAutoPost: false },
+        usageEvidence: { primaryProvider: 'codex-local', model: 'codex-local/quick', fallbackDepth: 0 }
+      };
+    },
+    'run_hydrating',
+    { intervalsMs: [0, 0, 0], timeoutMs: 50 }
+  );
+
+  assert.equal(calls, 3);
+  assert.equal(result?.textResult.content, '1/4 真实结果');
+  assert.equal(buildV4BundleDownloadUrl(result), `${expectedApiBaseUrl}/v3/chat/runs/run_hydrating/assets.zip?token=signed`);
 });

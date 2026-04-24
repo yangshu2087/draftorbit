@@ -10,7 +10,8 @@ export type V3StreamEvent = {
 
 export async function fetchRunStream(
   runId: string,
-  onEvent: (data: V3StreamEvent) => void
+  onEvent: (data: V3StreamEvent) => void,
+  options?: { signal?: AbortSignal }
 ): Promise<void> {
   const token = getToken();
   if (!token) throw new Error('未登录');
@@ -21,7 +22,8 @@ export async function fetchRunStream(
       Authorization: `Bearer ${token}`,
       Accept: 'text/event-stream'
     },
-    cache: 'no-store'
+    cache: 'no-store',
+    signal: options?.signal
   });
 
   if (!res.ok) {
