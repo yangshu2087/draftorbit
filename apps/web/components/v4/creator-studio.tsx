@@ -354,9 +354,9 @@ export default function CreatorStudio() {
                 <Copy className="mr-2 h-4 w-4" />
                 复制 Markdown
               </Button>
-              <Button variant="outline" disabled={!previewView?.readyAssets.length}>
+              <Button variant="outline" disabled={!previewView?.hasDownloadableAssets}>
                 <Download className="mr-2 h-4 w-4" />
-                下载 bundle
+                {previewView?.bundleActionCopy ?? '下载 bundle'}
               </Button>
               <Button variant="ghost" disabled>
                 <Send className="mr-2 h-4 w-4" />

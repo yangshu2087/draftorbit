@@ -62,3 +62,31 @@ test('V4 provider labels distinguish Codex OAuth from Ollama/local fallbacks', (
   assert.equal(getV4ProviderLabel('ollama-text'), '本地低内存模型');
   assert.equal(getV4ProviderLabel('template-svg'), '安全模板渲染');
 });
+
+test('V4 preview only enables bundle download when a real signed asset URL exists', () => {
+  const localPreview = buildV4StudioPreview({
+    textResult: { format: 'thread', content: '1/4 本地预览', variants: [] },
+    visualAssets: [
+      { id: 'local-card', kind: 'cards', status: 'ready', provider: 'codex-local-svg', exportFormat: 'svg', provenanceLabel: 'Codex 本机 SVG' }
+    ],
+    sourceArtifacts: [],
+    qualityGate: { status: 'passed', safeToDisplay: true, hardFails: [] },
+    publishPreparation: { mode: 'manual-confirm', label: '准备发布 / 手动确认', canAutoPost: false },
+    usageEvidence: { primaryProvider: 'codex-local', model: 'codex-local/quick', fallbackDepth: 0 }
+  });
+  assert.equal(localPreview.hasDownloadableAssets, false);
+  assert.equal(localPreview.bundleActionCopy, '登录后生成下载链接');
+
+  const runPreview = buildV4StudioPreview({
+    textResult: { format: 'thread', content: '1/4 真实 run', variants: [] },
+    visualAssets: [
+      { id: 'card', kind: 'cards', status: 'ready', provider: 'codex-local-svg', exportFormat: 'svg', signedAssetUrl: '/v3/chat/runs/run/assets/card?token=signed', provenanceLabel: 'Codex 本机 SVG' }
+    ],
+    sourceArtifacts: [],
+    qualityGate: { status: 'passed', safeToDisplay: true, hardFails: [] },
+    publishPreparation: { mode: 'manual-confirm', label: '准备发布 / 手动确认', canAutoPost: false },
+    usageEvidence: { primaryProvider: 'codex-local', model: 'codex-local/quick', fallbackDepth: 0 }
+  });
+  assert.equal(runPreview.hasDownloadableAssets, true);
+  assert.equal(runPreview.bundleActionCopy, '下载 bundle');
+});

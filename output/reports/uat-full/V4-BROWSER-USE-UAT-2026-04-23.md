@@ -38,3 +38,12 @@
 
 - This pass implements the first TDD slice: V4 route/API/preview contract plus Creator Studio shell.
 - Browser-use verification used the local UI preview path when no browser token/API run was available; Playwright CI mocks cover protected `/v4/studio/run` and `/v4/studio/runs/:id` response mapping.
+
+## Iteration addendum — local preview download gate (2026-04-24)
+
+- Tool: `browser-use` in-app browser against `http://127.0.0.1:3400/v4`.
+- Finding: local no-token preview showed ready Codex SVG metadata but also enabled `下载 bundle`; this was misleading because local UI preview assets do not yet have signed download URLs.
+- Fix: `buildV4StudioPreview()` now computes `hasDownloadableAssets` from real normalized signed URLs and exposes `bundleActionCopy`.
+- UX result: local preview shows disabled `登录后生成下载链接`; authenticated/mock run previews with signed URLs still show enabled `下载 bundle`.
+- Browser evidence after fix: thread preview generated, `Codex 本机 SVG` visible, `准备发布 / 手动确认` visible, and disabled `登录后生成下载链接` visible.
+- Regression: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/apps/web/test/v4-studio.test.ts` includes `V4 preview only enables bundle download when a real signed asset URL exists`.

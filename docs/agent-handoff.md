@@ -36,6 +36,11 @@
     - screenshot: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/playwright/manual-check/v4-browser-use-creator-studio-2026-04-23.png`
 - Report:
   - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/reports/uat-full/V4-BROWSER-USE-UAT-2026-04-23.md`
+- Follow-up browser-use iteration (2026-04-24):
+  - Finding: local no-token V4 preview enabled `下载 bundle` even though no signed asset URL existed yet.
+  - Fix: `buildV4StudioPreview()` now exposes `hasDownloadableAssets` + `bundleActionCopy`; local preview shows disabled `登录后生成下载链接`, authenticated/signed run keeps `下载 bundle`.
+  - Regression: `apps/web/test/v4-studio.test.ts` includes signed-URL-gated bundle action coverage.
+  - Browser-use recheck: `/v4` thread preview shows `Codex 本机 SVG`, `准备发布 / 手动确认`, and disabled `登录后生成下载链接`.
 
 Use this file to transfer execution state between Codex, Cursor, and other agents.
 Update it before pausing work, switching tools, or asking another agent to continue.

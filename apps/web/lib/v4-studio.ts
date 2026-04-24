@@ -93,6 +93,8 @@ export type V4PreviewView = {
   sourceCount: number;
   qualityCopy: string;
   publishCopy: string;
+  hasDownloadableAssets: boolean;
+  bundleActionCopy: string;
 };
 
 export function getV4FormatOption(format: V4StudioFormat): V4FormatOption {
@@ -157,6 +159,7 @@ export function buildV4StudioPreview(input: V4StudioPreviewContract): V4PreviewV
   const failedAssets = input.visualAssets
     .filter((asset) => asset.status === 'failed')
     .map((asset) => ({ ...asset, providerLabel: asset.provenanceLabel ?? getV4ProviderLabel(asset.provider) }));
+  const hasDownloadableAssets = readyAssets.some((asset) => Boolean(asset.normalizedUrl));
   return {
     readyAssets,
     failedAssets,
@@ -164,7 +167,9 @@ export function buildV4StudioPreview(input: V4StudioPreviewContract): V4PreviewV
     qualityCopy: input.qualityGate.safeToDisplay ? '质量门通过，可进入人工确认。' : '质量门未通过，DraftOrbit 已阻止展示或发布。',
     publishCopy: input.publishPreparation.canAutoPost
       ? '可发布，但仍建议人工确认。'
-      : `${input.publishPreparation.label}：不会自动真实发帖。`
+      : `${input.publishPreparation.label}：不会自动真实发帖。`,
+    hasDownloadableAssets,
+    bundleActionCopy: hasDownloadableAssets ? '下载 bundle' : '登录后生成下载链接'
   };
 }
 
