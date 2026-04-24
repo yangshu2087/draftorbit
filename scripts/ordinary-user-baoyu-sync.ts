@@ -1184,7 +1184,7 @@ function getBaoyuCommit(repoRoot: string): string {
       encoding: 'utf8'
     }).trim();
   } catch {
-    return '9977ff520c49';
+    return '8c17d77209b';
   }
 }
 

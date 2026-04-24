@@ -1,5 +1,42 @@
 # Agent Handoff
 
+
+## Current V4 Creator Studio TDD slice (2026-04-23)
+
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio`
+- Branch: `codex/draftorbit-v4-creator-studio`
+- Base: `origin/codex/web-ci-panel-observability-8s` at `02693e8`.
+- Goal in this pass: continue V4 rebuild with TDD by adding failing V4 route/API/preview tests first, then implementing `/v4` Creator Studio.
+- Architecture choice:
+  - Chosen: V4 is an additive wrapper and UI route (`/v4`) over the existing V3 generation/run asset pipeline.
+  - Tradeoff: lower migration risk and immediate rollback to `/app`/`/v3`; deeper V4-native orchestration can land later.
+  - Rollback: remove `/v4` route and `V4Module` import; V3 remains untouched.
+- Backend/API lane:
+  - New `GET /v4/studio/capabilities` public capability contract.
+  - New protected `POST /v4/studio/run` with `AuthGuard` + subscription check; normalizes V4 formats into safe V3 generation requests.
+  - New protected `GET /v4/studio/runs/:id` preview mapper; reuses workspace-scoped V3 run retrieval and signed asset semantics.
+  - Error semantics: latest/freshness prompts without URL fail closed with `424 SOURCE_REQUIRED` and `recoveryAction=add_source`.
+  - Data consistency: large artifacts stay under ignored artifact roots; V4 preview exposes metadata/provenance/checksum paths only.
+- Front-end/UX lane:
+  - New `/v4` Creator Studio with left input/source pane, center format/control/result preview, right provenance/parity pane.
+  - States covered: empty, loading, source-required warning/error, preview ready, export controls, disabled unsafe publish.
+  - Visual thesis: light-first creator workstation with calm SaaS hierarchy, border-first cards, one primary dark CTA, and explicit provenance.
+- baoyu/runtime:
+  - Runtime pin updated to GitHub main `8c17d77209b030a97d1746928ae348c99fefa775` (`chore: release v1.111.1`).
+  - `baoyu-image-gen` remains documented as deprecated alias in favor of `baoyu-imagine`.
+- Verification in this pass:
+  - `git ls-remote https://github.com/JimLiu/baoyu-skills.git refs/heads/main` => `8c17d77209b030a97d1746928ae348c99fefa775`.
+  - `node scripts/ensure-baoyu-skills-runtime.mjs` ✅
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/api test` ✅ (`250/250`)
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/api typecheck` ✅
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web typecheck` ✅
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web test` ✅ (`28` node tests + `5` Playwright tests)
+  - `NEXT_PUBLIC_API_URL=http://127.0.0.1:4311 npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web build` ✅
+  - browser-use in-app browser pass on `http://127.0.0.1:3400/v4` ✅
+    - screenshot: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/playwright/manual-check/v4-browser-use-creator-studio-2026-04-23.png`
+- Report:
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/reports/uat-full/V4-BROWSER-USE-UAT-2026-04-23.md`
+
 Use this file to transfer execution state between Codex, Cursor, and other agents.
 Update it before pausing work, switching tools, or asking another agent to continue.
 

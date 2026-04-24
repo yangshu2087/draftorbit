@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowRight, CheckCircle2, Sparkles } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Sparkles, WandSparkles } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '../ui/button';
 import { ErrorState } from '../ui/state-feedback';
@@ -65,27 +65,35 @@ export default function HomePage() {
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
             {allowLocalLogin ? (
-              <Button
-                size="lg"
-                variant="ghost"
-                disabled={loading !== null}
-                onClick={() => {
-                  void (async () => {
-                    setLoading('local');
-                    setPageError(null);
-                    try {
-                      const { token } = await createLocalSession();
-                      setToken(token);
-                      window.location.href = '/app';
-                    } catch (error) {
-                      setPageError(toUiError(error, '本地体验登录失败，请检查本地服务。'));
-                      setLoading(null);
-                    }
-                  })();
-                }}
-              >
-                {loading === 'local' ? '正在创建本地会话…' : '本机快速体验'}
-              </Button>
+              <>
+                <Button
+                  size="lg"
+                  variant="ghost"
+                  disabled={loading !== null}
+                  onClick={() => {
+                    void (async () => {
+                      setLoading('local');
+                      setPageError(null);
+                      try {
+                        const { token } = await createLocalSession();
+                        setToken(token);
+                        window.location.href = '/app';
+                      } catch (error) {
+                        setPageError(toUiError(error, '本地体验登录失败，请检查本地服务。'));
+                        setLoading(null);
+                      }
+                    })();
+                  }}
+                >
+                  {loading === 'local' ? '正在创建本地会话…' : '本机快速体验'}
+                </Button>
+                <Button asChild size="lg" variant="outline">
+                  <Link href="/v4">
+                    V4 图文工作台
+                    <WandSparkles className="ml-2 h-4 w-4" />
+                  </Link>
+                </Button>
+              </>
             ) : null}
           </>
         )}

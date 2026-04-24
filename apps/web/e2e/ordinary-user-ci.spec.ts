@@ -411,7 +411,7 @@ async function mockDraftOrbitApi(page: Page) {
     const url = new URL(request.url());
     const apiPath = url.pathname.startsWith(API_PREFIX) ? (url.pathname.slice(API_PREFIX.length) || '/') : url.pathname;
 
-    if (!apiPath.startsWith('/auth/') && !apiPath.startsWith('/v3/') && !apiPath.startsWith('/usage/')) {
+    if (!apiPath.startsWith('/auth/') && !apiPath.startsWith('/v3/') && !apiPath.startsWith('/v4/') && !apiPath.startsWith('/usage/')) {
       await route.continue();
       return;
     }
@@ -448,6 +448,58 @@ async function mockDraftOrbitApi(page: Page) {
     }
     if (apiPath === '/v3/billing/checkout') {
       await fulfillJson(route, { url: 'https://checkout.example.test/session' });
+      return;
+    }
+    if (apiPath === '/v4/studio/capabilities') {
+      await fulfillJson(route, {
+        version: 'v4-creator-studio',
+        defaultRouting: { primary: 'codex-local', oauth: 'Codex local adapter via codex exec', ollamaDefault: 'disabled', publishMode: 'manual-confirm' },
+        formats: ['tweet', 'thread', 'article', 'diagram', 'social_pack'],
+        skillMatrix: [
+          { skill: 'baoyu-imagine', productCapability: 'visual specs', usedByDraftOrbit: true },
+          { skill: 'baoyu-diagram', productCapability: 'diagram SVG', usedByDraftOrbit: true },
+          { skill: 'baoyu-post-to-x', productCapability: 'safe publish prep', usedByDraftOrbit: true, safeMode: 'manual-confirm' }
+        ],
+        exportFormats: ['markdown', 'html', 'bundle'],
+        safety: { latestFacts: 'source-required-fail-closed', xPosting: 'prepare/manual-confirm only' }
+      });
+      return;
+    }
+    if (apiPath === '/v4/studio/run' && request.method() === 'POST') {
+      runCounter += 1;
+      const body = request.postDataJSON() as { prompt: string; format: 'tweet' | 'thread' | 'article' | 'diagram' | 'social_pack'; visualRequest?: { mode?: string } };
+      const v3Format = body.format === 'article' ? 'article' : body.format === 'thread' || body.format === 'social_pack' ? 'thread' : 'tweet';
+      const runId = `run_v4_ci_${runCounter}`;
+      runs.set(runId, { runId, format: v3Format, kind: classifyRun(v3Format, body.prompt, body.visualRequest?.mode), intent: body.prompt });
+      await fulfillJson(route, {
+        requestId: `req_${runId}`,
+        runId,
+        stage: 'queued',
+        nextAction: 'watch_generation',
+        blockingReason: null,
+        streamUrl: `${API_PREFIX}/v3/chat/runs/${runId}/stream`,
+        studio: { version: 'v4-creator-studio', format: body.format, contract: { mode: 'codex-oauth-first' } },
+        publishPreparation: { mode: 'manual-confirm', label: '准备发布 / 手动确认', canAutoPost: false },
+        usageEvidence: { primaryProvider: 'codex-local' }
+      });
+      return;
+    }
+    const v4RunMatch = apiPath.match(/^\/v4\/studio\/runs\/([^/]+)$/u);
+    if (v4RunMatch) {
+      const runId = v4RunMatch[1];
+      const state = runs.get(runId) ?? { runId, format: 'tweet' as const, kind: 'tweet' as const, intent: '' };
+      const detail = makeRunDetail(state) as any;
+      await fulfillJson(route, {
+        requestId: `req_${runId}`,
+        runId,
+        status: 'DONE',
+        textResult: { format: state.kind === 'diagram' ? 'diagram' : detail.format, content: detail.result.text, variants: [] },
+        visualAssets: (detail.result.visualAssets ?? []).map((asset: any) => ({ ...asset, provenanceLabel: asset.provider === 'codex-local-svg' ? 'Codex 本机 SVG' : '安全模板渲染' })),
+        sourceArtifacts: detail.result.sourceArtifacts ?? [],
+        qualityGate: { status: 'passed', safeToDisplay: true, hardFails: [] },
+        publishPreparation: { mode: 'manual-confirm', label: '准备发布 / 手动确认', canAutoPost: false },
+        usageEvidence: { primaryProvider: 'codex-local', model: 'codex-local/quick', fallbackDepth: 0 }
+      });
       return;
     }
     if (apiPath === '/v3/connections/x-self') {
@@ -708,4 +760,31 @@ test('app handles retry-only visual recovery and latest-source fail-closed path 
 
   await page.getByRole('button', { name: '粘贴来源 URL 再生成' }).click();
   await expect(page.locator('textarea').first()).toHaveValue(/来源 URL：/u);
+});
+
+test('V4 Creator Studio route supports Codex-first preview, export actions, and safe gates', async ({ page }) => {
+  await seedSession(page);
+  await page.goto('/v4');
+
+  await expect(page.getByRole('heading', { name: /Codex OAuth 优先的图文创作工作台/u })).toBeVisible();
+  await expect(page.getByText('Codex OAuth first · Ollama off')).toBeVisible();
+  await expect(page.getByRole('link', { name: /查看队列/u })).toHaveAttribute('href', '/queue');
+  await expect(page.getByRole('link', { name: /连接 X/u })).toHaveAttribute('href', '/connect');
+  await expect(page.getByRole('link', { name: /查看套餐/u })).toHaveAttribute('href', '/pricing');
+
+  await page.getByRole('button', { name: /Diagram/u }).click();
+  await page.locator('#v4-prompt').fill('用流程图解释：输入→来源→正文→图文→手动确认发布。');
+  await page.getByRole('button', { name: /^生成 V4 图文包$/u }).click();
+
+  await expect(page.getByText(/V4 生成已排队/u)).toBeVisible();
+  await expect(page.getByText('Codex 本机 SVG').first()).toBeVisible();
+  await expect(page.getByText(/准备发布 \/ 手动确认/u).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: /复制 Markdown/u })).toBeEnabled();
+  await expect(page.getByRole('button', { name: /下载 bundle/u })).toBeEnabled();
+
+  await page.locator('#v4-prompt').fill('生成关于最新 Hermes Agent 的文章');
+  await page.getByRole('button', { name: /Article/u }).click();
+  await expect(page.getByText('最新事实需要来源')).toBeVisible();
+  await page.getByRole('button', { name: /^生成 V4 图文包$/u }).click();
+  await expect(page.getByText('需要来源后再生成').first()).toBeVisible();
 });

@@ -11,7 +11,7 @@ import type { VisualAssetKind } from './benchmarks/baoyu-visual-rules';
 import { normalizeVisualRequest, type VisualRequest } from './visual-request';
 import { renderDeterministicVisualAsset as renderTemplateVisualAsset } from './visual-card-render.service';
 
-export const BAOYU_SKILLS_COMMIT = '9977ff520c49ea0888d8d43d582973c6e8c1d55a';
+export const BAOYU_SKILLS_COMMIT = '8c17d77209b030a97d1746928ae348c99fefa775';
 
 export type BaoyuSkillName =
   | 'baoyu-url-to-markdown'

@@ -6,7 +6,7 @@ import path from 'node:path';
 const repoRoot = process.cwd();
 const runtimeDir = path.join(repoRoot, 'vendor', 'baoyu-skills');
 const remote = 'https://github.com/JimLiu/baoyu-skills.git';
-const commit = '9977ff520c49ea0888d8d43d582973c6e8c1d55a';
+const commit = '8c17d77209b030a97d1746928ae348c99fefa775';
 
 fs.mkdirSync(path.dirname(runtimeDir), { recursive: true });
 
