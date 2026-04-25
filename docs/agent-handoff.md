@@ -1,5 +1,26 @@
 # Agent Handoff
 
+## Web Playwright 8–10s recovery branch (2026-04-25)
+
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio`
+- Branch: `codex/web-playwright-8s-recovery`
+- Base commit: `3787824` (`feat: simplify creator UX and route quality generation through GPT-first pipeline`).
+- Goal: recover local Web Playwright harness from `13.92s` to the required `<10s` budget while keeping ordinary-user route/generation/V4 coverage.
+- Architecture/perf choice:
+  - Chosen: keep the single ordinary-user spec file and enable safe default Playwright parallelism from the harness (`WEB_PLAYWRIGHT_WORKERS=2`, `WEB_PLAYWRIGHT_FULLY_PARALLEL=1`) when callers do not override env.
+  - Tradeoff: avoids splitting coverage or dropping assertions; uses independent per-page mocks already present in `beforeEach`.
+  - Rollback: set `WEB_PLAYWRIGHT_FULLY_PARALLEL=0` or `WEB_PLAYWRIGHT_WORKERS=1` to restore serial local behavior.
+  - Risk: higher local CPU/browser concurrency; mitigated by conservative 2-worker default and env override.
+- Observability fix:
+  - `apps/web/scripts/run-playwright-ci.mjs` now reports workers/fully-parallel mode in Actions summary.
+  - App bootstrap parser now recognizes current labels: `keeps routing debug hidden` and `core shell`, so app bootstrap max can be observed again.
+- Verification:
+  - `WEB_PLAYWRIGHT_WORKERS=3 WEB_PLAYWRIGHT_FULLY_PARALLEL=1 ... run-playwright-ci.mjs` exploratory pass ✅ reporter `4.9s`, harness `5.47s`.
+  - `WEB_PLAYWRIGHT_WORKERS=2 WEB_PLAYWRIGHT_FULLY_PARALLEL=1 ... run-playwright-ci.mjs` exploratory pass ✅ reporter `4.5s`, harness `5.00s`.
+  - Final default `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web test` ✅ node tests `32/32`, Playwright `5/5`, reporter `5.9s`, harness `6.42s`.
+- UX/browser lane evidence:
+  - This performance branch does not change visible UI; it preserves the same browser-covered ordinary-user paths from the previous V4 GPT simplification pass: `/`, `/app`, `/v4`, generation, export, safe publish gate, latest fail-closed.
+
 ## GPT quality + simplified generator pass (2026-04-25)
 
 - Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio`

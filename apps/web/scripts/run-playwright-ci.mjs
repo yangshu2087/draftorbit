@@ -18,6 +18,8 @@ const warmupPaths = (process.env.WEB_PLAYWRIGHT_WARMUP_PATHS ?? '/,/app,/pricing
   .split(',')
   .map((item) => item.trim())
   .filter(Boolean);
+const defaultPlaywrightWorkers = process.env.WEB_PLAYWRIGHT_WORKERS ?? (isCi ? '4' : '2');
+const defaultFullyParallel = process.env.WEB_PLAYWRIGHT_FULLY_PARALLEL ?? '1';
 
 const timings = [];
 const startedAt = Date.now();
@@ -220,6 +222,8 @@ function writeSummary({
   commandCode,
   reporterSeconds,
   playwrightWallSeconds,
+  playwrightWorkers,
+  fullyParallel,
   targetOk,
   budgetOk,
   appBootstrapAverageSeconds,
@@ -234,6 +238,8 @@ function writeSummary({
   const rows = [
     ['Next/web warmup + Playwright wall time', `${playwrightWallSeconds.toFixed(2)}s`],
     ['Playwright reporter time', reporterSeconds == null ? 'not parsed' : `${reporterSeconds.toFixed(2)}s`],
+    ['Playwright workers', playwrightWorkers],
+    ['Playwright fully parallel', fullyParallel],
     ['Reporter target', `${targetSeconds.toFixed(2)}s`],
     ['Reporter hard budget', `${hardBudgetSeconds.toFixed(2)}s`],
     ['Target status', targetOk ? 'pass' : 'watch'],
@@ -282,7 +288,9 @@ async function main() {
     ...process.env,
     NEXT_TELEMETRY_DISABLED: process.env.NEXT_TELEMETRY_DISABLED ?? '1',
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ?? '/__api',
-    NEXT_PUBLIC_ENABLE_LOCAL_LOGIN: process.env.NEXT_PUBLIC_ENABLE_LOCAL_LOGIN ?? 'true'
+    NEXT_PUBLIC_ENABLE_LOCAL_LOGIN: process.env.NEXT_PUBLIC_ENABLE_LOCAL_LOGIN ?? 'true',
+    WEB_PLAYWRIGHT_WORKERS: defaultPlaywrightWorkers,
+    WEB_PLAYWRIGHT_FULLY_PARALLEL: defaultFullyParallel
   };
 
   if (isCi || process.env.WEB_PLAYWRIGHT_MANAGE_SERVER === '1') {
@@ -308,7 +316,7 @@ async function main() {
   const reporterSeconds = parseReporterSeconds(result.output);
   const appBootstrapDurations = parsePerfDurations(
     result.output,
-    /\[ci-perf\]\s+app bootstrap\s+\(includes \/usage\/summary panel\)\s+completed in\s+(\d+(?:\.\d+)?)s/gu
+    /\[ci-perf\]\s+app bootstrap\s+\((?:includes \/usage\/summary panel|keeps routing debug hidden|core shell)\)\s+completed in\s+(\d+(?:\.\d+)?)s/gu
   );
   const appBootstrapAverageSeconds = appBootstrapDurations.length
     ? appBootstrapDurations.reduce((sum, value) => sum + value, 0) / appBootstrapDurations.length
@@ -328,6 +336,8 @@ async function main() {
     commandCode: result.code,
     reporterSeconds,
     playwrightWallSeconds,
+    playwrightWorkers: env.WEB_PLAYWRIGHT_WORKERS,
+    fullyParallel: env.WEB_PLAYWRIGHT_FULLY_PARALLEL,
     targetOk,
     budgetOk,
     appBootstrapAverageSeconds,
