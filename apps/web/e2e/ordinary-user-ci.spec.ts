@@ -665,6 +665,13 @@ test('ordinary user can enter the app from home local CTA and verify safe connec
   await page.setViewportSize({ width: 375, height: 900 });
   await page.goto('/');
 
+  await expect(page.getByRole('heading', { name: '登录您的账户' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /使用 X 登录，免费试用/u })).toBeVisible();
+  await expect(page.getByText('风格学习')).toBeVisible();
+  await expect(page.getByText('推理生成')).toBeVisible();
+  await expect(page.getByText('发布执行')).toBeVisible();
+  await expect(page.getByRole('link', { name: /V4 图文工作台/u })).toHaveAttribute('href', '/v4');
+
   const localCta = page.getByRole('button', { name: '本机快速体验' });
   await expect(localCta).toBeVisible();
 
