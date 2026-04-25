@@ -221,6 +221,12 @@ test('HomePage ordinary auth CTAs expose X and local testing but not Google logi
 
   assert.match(source, /startXOAuth/u);
   assert.match(source, /createLocalSession/u);
+  assert.match(source, /登录您的账户/u);
+  assert.match(source, /使用 X 登录，免费试用/u);
+  assert.match(source, /新用户可直接免费试用/u);
+  assert.match(source, /风格学习/u);
+  assert.match(source, /推理生成/u);
+  assert.match(source, /发布执行/u);
   assert.doesNotMatch(source, /startGoogleOAuth/u);
   assert.doesNotMatch(source, /Google 登录/u);
   assert.doesNotMatch(source, /google-login/u);

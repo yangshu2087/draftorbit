@@ -1,5 +1,32 @@
 # Agent Handoff
 
+## Simple login home polish (2026-04-25)
+
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio`
+- Branch: `codex/simple-login-home-polish`
+- Goal: restore the user-preferred minimal unauthenticated homepage: centered login title, one high-priority black X login CTA, lightweight free-trial hint, and three concise capability cards.
+- Product/UX lane:
+  - Unauthenticated `/` now focuses on one decision: `登录您的账户` → `使用 X 登录，免费试用`.
+  - Secondary entries remain available but visually de-emphasized: `本机快速体验` and `V4 图文工作台`.
+  - Capability cards match the requested simple mental model: `风格学习`, `推理生成`, `发布执行`.
+  - Signed-in copy switches to `已登录，可进入生成器` and avoids showing the unauthenticated CTA stack.
+- Frontend/UI lane:
+  - Owner path: `apps/web/components/v3/home-page.tsx`.
+  - Reused existing `AppShell`, `Button`, `ErrorState`, Tailwind tokens, light radial SaaS background, white cards, border-first hover/focus states.
+  - States covered: unauthenticated, signed-in, X-login loading, local-session loading, recoverable page error, hover/focus-visible, disabled CTA.
+- Backend/API lane:
+  - No public API contract changes. Existing calls remain `startXOAuth()` and `createLocalSession()`.
+  - Existing error semantics preserved via `toUiError(...)`; OAuth final authorization, publishing, and payment actions are not automated.
+  - Permissions/data consistency unchanged: no tokens/secrets persisted by this UI change; no backend storage shape changed.
+  - Regression coverage updated in web unit/source tests and Playwright ordinary-user path.
+- Verification in this pass:
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web typecheck` ✅
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web test` ✅ (`32/32` node tests, `5/5` Playwright; harness `11.74s`)
+  - `NEXT_PUBLIC_API_URL=http://127.0.0.1:4311 npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web build` ✅ (`14/14` pages)
+  - Browser-use in-app browser check on `http://127.0.0.1:3400/` ✅: login title, X CTA, trial copy, local/V4 secondary links, three cards visible; console errors `0`.
+  - Browser-use screenshot: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/playwright/manual-check/simple-login-home-2026-04-25.png`.
+  - Responsive Playwright screenshots/checks for `375`, `768`, `1024`, `1440`: no horizontal overflow, main CTA visible, cards visible; files under `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/playwright/manual-check/simple-login-home-responsive-2026-04-25/`.
+
 ## Web Playwright 8–10s recovery branch (2026-04-25)
 
 - Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio`
