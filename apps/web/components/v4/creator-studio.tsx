@@ -122,7 +122,7 @@ function mockPreviewForLocalShell(format: V4StudioFormat, prompt: string): V4Stu
     tweet: '真正稳定的创作者，不是每天都有灵感，而是把输入、判断、图文和确认变成固定流程。',
     thread: '1/4 先讲真实场景。\n\n2/4 再给判断。\n\n3/4 用卡片把结构固定下来。\n\n4/4 最后由你手动确认是否发布。',
     article: '标题：AI 内容最大的问题不是缺模型\n\n导语：真正的问题是缺少从来源到图文资产的稳定工作流。\n\n一、先锁定来源\n二、再生成判断\n三、最后导出可发布图文包',
-    diagram: '输入一句话 → 来源校验 → Codex 生成正文和视觉规格 → 本地 SVG 渲染 → 手动确认发布。',
+    diagram: '输入一句话 → 来源校验 → 生成正文和视觉规格 → SVG 渲染 → 手动确认发布。',
     social_pack: '这套图文包包含：主文案、封面图、卡片组、HTML/Markdown 导出，以及 X 发布准备。'
   };
   const visualKind = option.visualMode === 'article_illustration' ? 'cover' : option.visualMode;
@@ -142,7 +142,7 @@ function mockPreviewForLocalShell(format: V4StudioFormat, prompt: string): V4Stu
         checksum: `sha256-${format}-preview`,
         signedAssetUrl: '',
         cue: prompt.slice(0, 72) || option.description,
-        provenanceLabel: 'Codex 本机 SVG'
+        provenanceLabel: 'SVG 图文资产'
       },
       {
         id: `${format}-html`,
@@ -154,13 +154,13 @@ function mockPreviewForLocalShell(format: V4StudioFormat, prompt: string): V4Stu
         checksum: `sha256-${format}-html`,
         signedAssetUrl: '',
         cue: 'HTML/Markdown 导出包',
-        provenanceLabel: '安全模板渲染'
+        provenanceLabel: 'HTML 导出资产'
       }
     ],
     sourceArtifacts: prompt.includes('http') ? [{ kind: 'url', status: 'ready' }] : [],
     qualityGate: { status: 'passed', safeToDisplay: true, hardFails: [] },
     publishPreparation: { mode: 'manual-confirm', label: '准备发布 / 手动确认', canAutoPost: false },
-    usageEvidence: { primaryProvider: 'codex-local', model: 'codex-local/best-available', fallbackDepth: 0 }
+    usageEvidence: { primaryProvider: 'background', model: 'best-available', fallbackDepth: 0 }
   };
 }
 
@@ -213,7 +213,7 @@ export default function CreatorStudio() {
       }
       if (!getToken()) {
         setPreview(mockPreviewForLocalShell(format, prompt));
-        setNotice('本地 UI 预览已生成；登录后会调用 /v4/studio/run 并写入真实 run。');
+        setNotice('已生成本地预览；登录后会写入真实任务并生成可下载导出包。');
         return;
       }
       const started = await runV4Studio(request);
@@ -221,7 +221,7 @@ export default function CreatorStudio() {
       hydrationSerialRef.current = hydrationSerial;
       const localPreview = mockPreviewForLocalShell(format, prompt);
       setPreview(localPreview);
-      setNotice(`V4 生成已排队：${started.runId}。正在监听真实 run；你可以先检查和复制本地预览。`);
+      setNotice(`生成任务已开始：${started.runId}。后台会继续整理正文、图文资产和导出包。`);
 
       let streamSuggestedHydration = false;
       const streamController = new AbortController();
@@ -233,11 +233,11 @@ export default function CreatorStudio() {
             if (hydrationSerialRef.current !== hydrationSerial) return;
             if (shouldHydrateV4StudioFromStream(event)) {
               streamSuggestedHydration = true;
-              setNotice(`真实 run 已完成 ${event.label}，正在替换为 signed asset 结果…`);
+              setNotice(`后台已完成 ${event.label}，正在更新成品预览…`);
               return;
             }
             if (event.status === 'running') {
-              setNotice(`真实 run 进行中：${event.label}。本地预览可先复制，完成后会自动替换。`);
+              setNotice(`后台处理中：${event.label}。预览可先检查，完成后会自动更新。`);
             }
           },
           { signal: streamController.signal }
@@ -245,9 +245,9 @@ export default function CreatorStudio() {
       } catch (streamError) {
         if (hydrationSerialRef.current !== hydrationSerial) return;
         if (isAbortLikeError(streamError)) {
-          setNotice(`真实 run 超过 ${Math.round(V4_STREAM_TIMEOUT_MS / 1000)} 秒仍在生成；保留本地预览并继续尝试读取最新结果。`);
+          setNotice(`生成超过 ${Math.round(V4_STREAM_TIMEOUT_MS / 1000)} 秒仍在处理；保留当前预览并继续尝试读取最新结果。`);
         } else {
-          setNotice('真实 run stream 暂时中断；保留本地预览并尝试读取最新结果。');
+          setNotice('生成进度暂时中断；保留当前预览并尝试读取最新结果。');
         }
       } finally {
         window.clearTimeout(timeout);
@@ -260,11 +260,11 @@ export default function CreatorStudio() {
       if (hydrationSerialRef.current !== hydrationSerial) return;
       if (detail && !shouldUseV4LocalPreviewFallback(detail)) {
         setPreview(detail);
-        setNotice(`真实 run 已完成：${started.runId}。已替换为真实 signed asset / bundle 结果。`);
+        setNotice(`生成已完成：${started.runId}。已更新为可下载的正式结果。`);
       }
       if (!detail || shouldUseV4LocalPreviewFallback(detail)) {
         setPreview((current) => current ?? localPreview);
-        setNotice(`V4 生成已排队：${started.runId}。真实 run 仍在生成，先保留本地可审计预览；稍后重新生成或刷新可读取 signed asset。`);
+        setNotice(`生成任务仍在后台处理：${started.runId}。先保留当前预览，稍后刷新可读取正式导出包。`);
       }
     } catch (error) {
       const code = error instanceof AppError ? error.code : 'UNKNOWN_ERROR';
@@ -284,18 +284,18 @@ export default function CreatorStudio() {
   function openBundleDownload() {
     const bundleUrl = previewView?.bundleUrl;
     if (!bundleUrl) {
-      setNotice('真实 run 完成后才会生成 signed bundle 下载链接。');
+      setNotice('结果完成后才会生成下载链接。');
       return;
     }
     window.open(bundleUrl, '_blank', 'noopener,noreferrer');
-    setNotice('正在打开真实 bundle 下载链接；仍需你自行保存文件。');
+    setNotice('正在打开导出包下载链接；仍需你自行保存文件。');
   }
 
   return (
     <AppShell
       eyebrow="V4 Creator Studio"
-      title="Codex OAuth 优先的图文创作工作台"
-      description="从一句话、URL 或最新事实需求开始，生成 tweet/thread/article/diagram/social pack，并输出可审计 SVG、Markdown、HTML 与发布准备。"
+      title="一句话生成可发布的图文包"
+      description="从一句话、URL 或最新事实需求开始，生成 tweet/thread/article/diagram/social pack，并输出 SVG、Markdown、HTML 与发布准备。"
       actions={
         <>
           <Button asChild variant="outline">
@@ -355,11 +355,11 @@ export default function CreatorStudio() {
           <section className="do-panel p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Format + taskType routing</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">交付形态</p>
                 <h2 className="mt-2 text-2xl font-semibold text-slate-950">选择要交付的图文包</h2>
               </div>
               <span className="inline-flex w-fit items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                Codex OAuth first · Ollama off
+                后台自动完成策略、正文和图文资产
               </span>
             </div>
 
@@ -420,7 +420,7 @@ export default function CreatorStudio() {
               </Button>
               <Button variant="outline" disabled={!previewView?.bundleUrl} onClick={openBundleDownload}>
                 <Download className="mr-2 h-4 w-4" />
-                {previewView?.bundleActionCopy ?? '下载 bundle'}
+                {previewView?.bundleActionCopy ?? '下载导出包'}
               </Button>
               <Button variant="ghost" disabled>
                 <Send className="mr-2 h-4 w-4" />
@@ -435,7 +435,7 @@ export default function CreatorStudio() {
                 <AlertTriangle className="mt-0.5 h-4 w-4" />
                 <div>
                   <p className="font-semibold">最新事实需要来源</p>
-                  <p className="mt-1 leading-6">请粘贴来源 URL，或配置搜索 provider。DraftOrbit 不会编造最新信息。</p>
+                  <p className="mt-1 leading-6">请粘贴来源 URL，或配置搜索源。DraftOrbit 不会编造最新信息。</p>
                 </div>
               </div>
             </section>
@@ -456,11 +456,11 @@ export default function CreatorStudio() {
           <section className="do-panel p-5" aria-label="V4 结果预览">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Preview</p>
-                <h2 className="mt-2 text-2xl font-semibold text-slate-950">正文 + 视觉资产 + 导出包</h2>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Preview</p>
+            <h2 className="mt-2 text-2xl font-semibold text-slate-950">正文 + 视觉资产 + 导出包</h2>
               </div>
               <span className="rounded-full border border-slate-900/10 bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                {selectedFormat.baoyuSkill}
+                {selectedFormat.label}
               </span>
             </div>
 
@@ -479,7 +479,7 @@ export default function CreatorStudio() {
                 <div className="space-y-3">
                   <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
                     <div className="flex items-center gap-2 font-semibold"><ShieldCheck className="h-4 w-4" />{previewView?.qualityCopy}</div>
-                    <p className="mt-2 text-xs leading-5">Provider：{preview.usageEvidence.primaryProvider} · {preview.usageEvidence.model ?? 'codex-local/best-available'}</p>
+                    <p className="mt-2 text-xs leading-5">结果会先由你确认；不会自动真实发帖或扣款。</p>
                   </div>
                   <div className="rounded-2xl border border-slate-900/10 bg-white p-4 text-sm text-slate-700">
                     <p className="font-semibold text-slate-950">发布安全</p>
@@ -493,15 +493,15 @@ export default function CreatorStudio() {
 
         <aside className="space-y-5">
           <section className="do-panel-soft p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Provenance</p>
-            <h2 className="mt-2 text-xl font-semibold text-slate-950">资产来源与质量门</h2>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Assets</p>
+            <h2 className="mt-2 text-xl font-semibold text-slate-950">成品资产与下载</h2>
             <div className="mt-4 space-y-3">
               {(previewView?.readyAssets ?? []).map((asset) => (
                 <div key={asset.id} className="rounded-2xl border border-slate-900/10 bg-white p-4 text-sm">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-semibold text-slate-950">{assetKindLabel(asset.kind)}</p>
-                      <p className="mt-1 text-xs text-slate-500">{asset.providerLabel} · {asset.skill ?? 'baoyu-imagine'}</p>
+                      <p className="mt-1 text-xs text-slate-500">{asset.providerLabel}</p>
                     </div>
                     <CheckCircle2 className="h-4 w-4 text-emerald-600" />
                   </div>
@@ -509,7 +509,7 @@ export default function CreatorStudio() {
                   {asset.normalizedUrl ? (
                     <a className="mt-3 inline-flex text-xs font-semibold text-slate-950 underline-offset-4 hover:underline" href={asset.normalizedUrl}>下载 {asset.exportFormat?.toUpperCase() ?? 'SVG'}</a>
                   ) : (
-                    <p className="mt-3 text-xs font-semibold text-slate-500">本地预览资产，真实 run 会生成签名下载链接</p>
+                    <p className="mt-3 text-xs font-semibold text-slate-500">预览资产，正式完成后会生成下载链接</p>
                   )}
                 </div>
               ))}
@@ -521,20 +521,20 @@ export default function CreatorStudio() {
                 </div>
               ))}
               {!previewView?.readyAssets.length && !previewView?.failedAssets.length ? (
-                <p className="rounded-2xl border border-slate-900/10 bg-white p-4 text-sm leading-6 text-slate-500">生成后会展示 assetUrl、checksum、prompt/spec 路径和 provider provenance。</p>
+                <p className="rounded-2xl border border-slate-900/10 bg-white p-4 text-sm leading-6 text-slate-500">生成后会展示封面、卡片、信息图、流程图和导出包。</p>
               ) : null}
             </div>
           </section>
 
           <section className="do-panel p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">baoyu parity</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Capabilities</p>
             <h2 className="mt-2 text-xl font-semibold text-slate-950">图文能力覆盖</h2>
             <ul className="mt-4 space-y-2 text-sm text-slate-600">
-              {['baoyu-imagine', 'cover/cards/infographic', 'article illustrator', 'diagram', 'markdown-to-html', 'safe post-to-x'].map((item) => (
+              {['封面 / 卡片组 / 信息图', '文章配图', '流程图 / 架构图', 'Markdown / HTML 导出', '准备发布 / 手动确认'].map((item) => (
                 <li key={item} className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-600" />{item}</li>
               ))}
             </ul>
-            <p className="mt-4 text-xs leading-5 text-slate-500">已启用 {capabilityCount ?? '本地'} 项产品相关能力；`baoyu-image-gen` 仅作为 deprecated 对标项。</p>
+            <p className="mt-4 text-xs leading-5 text-slate-500">已启用 {capabilityCount ?? '本地'} 项产品相关能力；危险登录、自动发帖和真实支付不会在本地自动执行。</p>
           </section>
         </aside>
       </section>

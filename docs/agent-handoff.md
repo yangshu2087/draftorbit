@@ -1,5 +1,41 @@
 # Agent Handoff
 
+## GPT quality + simplified generator pass (2026-04-25)
+
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio`
+- Branch: `codex/draftorbit-v4-creator-studio`
+- Goal: keep the current homepage direction, simplify ordinary-user generation UI, and move model routing / quality / visual planning details into the backend pipeline.
+- Product/UX lane:
+  - `/app` is now the ordinary creation path: one prompt, short/thread/article chips, one generate CTA, staged progress copy, result, export, and manual confirmation.
+  - `/v4` remains a creator-studio/new-workbench path, but ordinary copy no longer emphasizes `Codex OAuth`, provider names, fallback routing, or raw quality scores.
+  - Direct UAT fix: raw numeric quality details (`质量 76.57`, `hook 84`, etc.) were removed from ordinary UI and replaced with qualitative chips.
+- Architecture lane:
+  - Chosen: preserve V3/V4 contracts and hide internals at the presentation layer while upgrading routing + visual-spec pipeline behind existing routes.
+  - Tradeoff: fastest safe UX improvement without changing external API shape; deeper V4-native orchestration can continue later.
+  - Rollback: set `NEXT_PUBLIC_SHOW_MODEL_ROUTING_PANEL=1` for debug visibility, set `GENERATE_GPT_VISUAL_SPEC_ENABLED=0` to disable GPT visual-spec planning, or revert `OPENAI_TEXT_*` env defaults; V3 `/app` and `/v3/*` routes remain intact.
+  - Risk: OpenAI model availability/cost varies by account; defaults are config-driven and Codex local remains no-key fallback, Ollama remains opt-in low-memory fallback only.
+- Backend/API lane:
+  - Official model docs checked: OpenAI API model catalog and OpenAI Academy latest-model resource list GPT-5.4 API IDs (`gpt-5.4`, `gpt-5.4-pro`) and GPT-5.3 API ID (`gpt-5.3-chat-latest`); API docs also list specialized GPT Image 2.
+  - `local_quality` routing is now GPT-first when OpenAI is configured; Codex local is fallback; Ollama is not a default quality candidate.
+  - Visual planning can ask the model for strict JSON visual specs, then safely falls back to heuristic SVG/HTML/Markdown rendering.
+  - Error semantics preserved: latest/no-source fail-closed (`SOURCE_REQUIRED`), quality-blocked content not displayed, raw provider stderr/prompt wrappers hidden.
+  - Signed asset/bundle permissions unchanged; browser UAT verified a tokenized `assets.zip` URL returned `200 application/zip` without storing the token.
+- Verification in this pass:
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/api test` ✅ (`253/253`)
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/api typecheck` ✅
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web typecheck` ✅
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web test` ✅ (`32/32` node tests, `5/5` Playwright, harness `13.92s`)
+  - `NEXT_PUBLIC_API_URL=http://127.0.0.1:4311 npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web build` ✅ (`14/14` static pages)
+- Browser-use UAT evidence:
+  - `/` homepage screenshot: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/playwright/manual-check/v4-gpt-simplification-home-2026-04-25.png`
+  - `/app` empty state screenshot: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/playwright/manual-check/v4-gpt-simplification-app-empty-2026-04-25.png`
+  - `/app` result/export screenshots: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/playwright/manual-check/v4-gpt-simplification-app-result-visible-2026-04-25.png`, `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/playwright/manual-check/v4-gpt-simplification-app-export-visible-2026-04-25.png`
+  - Quality-number removal screenshot: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/playwright/manual-check/v4-gpt-simplification-no-quality-score-2026-04-25.png`
+  - `/v4` simplified page / diagram / latest fail-closed screenshots: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/playwright/manual-check/v4-gpt-simplification-v4-page-2026-04-25.png`, `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/playwright/manual-check/v4-gpt-simplification-v4-diagram-result-2026-04-25.png`, `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/playwright/manual-check/v4-gpt-simplification-latest-fail-closed-2026-04-25.png`
+  - Browser console errors: `0`.
+- Report: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/reports/uat-full/V4-GPT-QUALITY-SIMPLIFICATION-UAT-2026-04-25.md`
+
+
 
 ## Current V4 Creator Studio TDD slice (2026-04-23)
 

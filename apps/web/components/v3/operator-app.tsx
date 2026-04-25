@@ -128,6 +128,8 @@ const stageOrder = [
   { key: 'publish_prep', title: '发布前检查' }
 ] as const;
 
+const SHOW_ROUTING_DEBUG_PANEL = process.env.NEXT_PUBLIC_SHOW_MODEL_ROUTING_PANEL === '1';
+
 const sourceReadyStageSummary: Record<string, string> = {
   research: '已抓取并清洗来源',
   strategy: '已基于来源整理结构',
@@ -226,7 +228,7 @@ export default function OperatorApp() {
         fetchBootstrap(),
         fetchProfile(),
         fetchQueue(12),
-        fetchUsageSummary().catch(() => null)
+        SHOW_ROUTING_DEBUG_PANEL ? fetchUsageSummary().catch(() => null) : Promise.resolve(null)
       ]);
 
       setBoot(bootPayload);
@@ -754,6 +756,7 @@ export default function OperatorApp() {
           </div>
         ) : null}
 
+        {SHOW_ROUTING_DEBUG_PANEL ? (
         <article className="do-panel-soft p-4 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -853,12 +856,41 @@ export default function OperatorApp() {
             </div>
           )}
         </article>
+        ) : null}
 
         <article className="do-panel p-6 sm:p-8">
-          <div className="flex flex-wrap gap-2">
-            <span className="do-chip">{selectedAccount?.handle ? `当前账号 @${selectedAccount.handle}` : '未连接 X 账号 · 仍可先生成'}</span>
-            <span className="do-chip">{safeMode ? '默认先确认' : '直接发已开启'}</span>
-            <span className="do-chip">待确认 {queue?.review.length ?? 0}</span>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">创作目标</p>
+              <h2 className="mt-2 text-2xl font-semibold text-slate-950">写一句话，后台完成策略、正文和图文资产</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-500">普通用户只需要选择交付形态；来源校验、内容策略、视觉规划和发布前检查都在后台处理。</p>
+            </div>
+            <div className="flex flex-wrap gap-2 sm:justify-end">
+              <span className="do-chip">{selectedAccount?.handle ? `当前账号 @${selectedAccount.handle}` : '未连接 X 账号 · 仍可先生成'}</span>
+              <span className="do-chip">{safeMode ? '默认先确认' : '直接发已开启'}</span>
+              <span className="do-chip">待确认 {queue?.review.length ?? 0}</span>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-2 sm:grid-cols-3">
+            {formatOptions.map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                className={cn(
+                  'rounded-2xl border px-4 py-3 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500/30',
+                  format === item.value
+                    ? 'border-slate-950 bg-slate-950 text-white shadow-sm'
+                    : 'border-slate-900/10 bg-white text-slate-700 hover:border-slate-900/20 hover:bg-slate-50'
+                )}
+                onClick={() => setFormat(item.value)}
+              >
+                <span className="block font-semibold">{item.label}</span>
+                <span className={cn('mt-1 block text-xs leading-5', format === item.value ? 'text-slate-300' : 'text-slate-500')}>
+                  {item.description}
+                </span>
+              </button>
+            ))}
           </div>
 
           <div className="mt-5 flex flex-wrap gap-2">
@@ -884,31 +916,7 @@ export default function OperatorApp() {
 
           <details className="mt-4 rounded-2xl border border-slate-900/10 bg-slate-50 p-4" open={advancedOpen} onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}>
             <summary className="cursor-pointer list-none text-sm font-medium text-slate-900">高级选项</summary>
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <div className="rounded-2xl border border-slate-900/10 bg-white p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">输出形态</p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                  {formatOptions.map((item) => (
-                    <button
-                      key={item.value}
-                      type="button"
-                      className={cn(
-                        'rounded-2xl border px-3 py-3 text-left text-sm transition',
-                        format === item.value
-                          ? 'border-slate-950 bg-slate-950 text-white'
-                          : 'border-slate-900/10 bg-white text-slate-700 hover:border-slate-900/20'
-                      )}
-                      onClick={() => setFormat(item.value)}
-                    >
-                      <span className="block font-medium">{item.label}</span>
-                      <span className={cn('mt-1 block text-xs leading-5', format === item.value ? 'text-slate-300' : 'text-slate-500')}>
-                        {item.description}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
+            <div className="mt-4 grid gap-4">
               <div className="grid gap-4">
                 <label className="rounded-2xl border border-slate-900/10 bg-white p-4 text-sm text-slate-700">
                   <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">配图</span>
@@ -923,15 +931,15 @@ export default function OperatorApp() {
 
                 <div className="rounded-2xl border border-slate-900/10 bg-white p-4 text-sm text-slate-700">
                   <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">图文能力</span>
-                      <p className="mt-2 font-medium text-slate-900">封面、卡片、信息图、diagram 与导出包</p>
-                      <p className="mt-1 text-xs leading-5 text-slate-500">
-                        默认使用 Codex 本机 SVG / 模板渲染；不需要外部图片 key 也能产出可审计资产。
-                      </p>
-                    </div>
+	                    <div>
+	                      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">图文能力</span>
+	                      <p className="mt-2 font-medium text-slate-900">封面、卡片、信息图、diagram 与导出包</p>
+	                      <p className="mt-1 text-xs leading-5 text-slate-500">
+	                        后台根据最终正文生成视觉规格，再渲染成可复制、下载和人工确认的资产。
+	                      </p>
+	                    </div>
                     <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-700">
-                      baoyu parity
+                      图文包
                     </span>
                   </div>
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -1103,12 +1111,18 @@ export default function OperatorApp() {
             )
           ) : (
             <div className="mt-5 space-y-5">
-              <div className="grid gap-3 md:grid-cols-[160px_1fr]">
+              <div className="grid gap-3 md:grid-cols-[minmax(0,0.85fr)_1.15fr]">
                 <div className="rounded-2xl border border-slate-900/10 bg-slate-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">质量分</p>
-                  <p className="mt-2 text-3xl font-semibold text-slate-950">{runDetail.result.qualityScore ?? '—'}</p>
-                  <p className={cn('mt-2 text-xs', qualityGateFailed ? 'font-medium text-red-600' : 'text-slate-500')}>
-                    {qualityLabel(runDetail.result.qualityScore, qualityGateFailed)}
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">当前状态</p>
+                  <p className="mt-2 text-lg font-semibold text-slate-950">
+                    {qualityGateFailed ? '需要处理后再交付' : '已生成，可人工确认'}
+                  </p>
+                  <p className={cn('mt-2 text-sm leading-6', qualityGateFailed ? 'font-medium text-red-600' : 'text-slate-500')}>
+                    {qualityGateFailed
+                      ? sourceFailureView
+                        ? '缺少可靠来源，DraftOrbit 已停止展示坏稿。'
+                        : '这版未达到可发布标准，请重试或补充更具体的目标。'
+                      : '后台已完成来源检查、正文整理、图文资产和导出包准备。'}
                   </p>
                 </div>
                 <div className="rounded-2xl border border-slate-900/10 bg-slate-50 p-4">
@@ -1319,14 +1333,6 @@ export default function OperatorApp() {
                             <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] text-emerald-700">
                               已生成
                             </span>
-                            <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-1 text-[11px] text-sky-700">
-                              {asset.providerLabel}
-                            </span>
-                            {asset.skill ? (
-                              <span className="rounded-full border border-slate-900/10 bg-slate-50 px-2 py-1 text-[11px] text-slate-500">
-                                {asset.skill}
-                              </span>
-                            ) : null}
                           </div>
                           {asset.assetUrl ? (
                             <a
@@ -1348,8 +1354,6 @@ export default function OperatorApp() {
                           {asset.reason ? <p className="text-xs leading-5 text-slate-500">{asset.reason}</p> : null}
                           <div className="flex flex-wrap gap-2 pt-1 text-[11px] text-slate-400">
                             {asset.width && asset.height ? <span>{asset.width}×{asset.height}</span> : null}
-                            {asset.checksum ? <span>sha256 {asset.checksum.slice(0, 10)}…</span> : null}
-                            {asset.specPath ? <span className="break-all">spec {asset.specPath}</span> : null}
                           </div>
                         </div>
                       </article>
@@ -1358,7 +1362,7 @@ export default function OperatorApp() {
                 ) : (
                   <div className="mt-4 rounded-2xl border border-dashed border-slate-900/15 bg-slate-50 p-4 text-sm leading-6 text-slate-500">
                     {qualityGateFailed
-                      ? '质量门未通过，图文资产不会展示，避免把坏稿当成可发布成品。'
+                      ? '这版未达到可发布标准，图文资产不会展示，避免把坏稿当成成品。'
                       : withImage
                         ? '图片还没有 ready。若生成失败，文字仍会保留，你可以再来一版。'
                         : '本次没有请求配图，因此只展示轻量视觉规划。'}
@@ -1376,7 +1380,7 @@ export default function OperatorApp() {
                         <Button asChild variant="outline" size="sm">
                           <a href={visualAssetsZipUrl} download>
                             <Download className="mr-2 h-4 w-4" />
-                            下载 bundle
+                            下载导出包
                           </a>
                         </Button>
                       ) : null}
@@ -1384,14 +1388,11 @@ export default function OperatorApp() {
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
                       {readyExportAssetCards.map((asset) => (
                         <div key={asset.id ?? asset.label} className="rounded-xl border border-slate-900/10 bg-white p-3">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="rounded-full border border-slate-900/10 bg-slate-50 px-2 py-1 text-[11px] text-slate-600">
-                              {asset.label}
-                            </span>
-                            <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-1 text-[11px] text-sky-700">
-                              {asset.providerLabel}
-                            </span>
-                          </div>
+	                          <div className="flex flex-wrap items-center gap-2">
+	                            <span className="rounded-full border border-slate-900/10 bg-slate-50 px-2 py-1 text-[11px] text-slate-600">
+	                              {asset.label}
+	                            </span>
+	                          </div>
                           <p className="mt-2 text-sm font-medium text-slate-900">{asset.reason ?? asset.cue}</p>
                           <div className="mt-3 flex flex-wrap gap-2">
                             {asset.assetUrl ? (
@@ -1538,7 +1539,7 @@ export default function OperatorApp() {
                     ) : (
                       <div className="mt-3 flex flex-wrap gap-2">
                         {qualityGateFailed ? (
-                          <span className="text-xs text-slate-500">质量门未通过，图文建议暂不展示，避免继续污染主题。</span>
+                          <span className="text-xs text-slate-500">这版未达到可发布标准，图文建议暂不展示，避免继续污染主题。</span>
                         ) : visualAnchorTags.length ? visualAnchorTags.map((keyword) => (
                           <span key={keyword} className="max-w-full break-words rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs text-emerald-700">{keyword}</span>
                         )) : <span className="text-xs text-slate-500">本次没有请求配图，或暂不需要配图建议。</span>}
@@ -1566,7 +1567,7 @@ export default function OperatorApp() {
                     </div>
                   </div>
                 ) : null}
-                {qualityGateFailed && (qualityGateHardFails.length || visualHardFails.length || qualityGateNotes.length || runDetail.result.routing) ? (
+                {SHOW_ROUTING_DEBUG_PANEL && qualityGateFailed && (qualityGateHardFails.length || visualHardFails.length || qualityGateNotes.length || runDetail.result.routing) ? (
                   <div className="mt-4 border-t border-slate-900/10 pt-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">技术细节</p>
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -1600,7 +1601,7 @@ export default function OperatorApp() {
               <details className="rounded-2xl border border-slate-900/10 bg-white p-4">
                 <summary className="cursor-pointer list-none text-sm font-medium text-slate-900">查看原始文本 / 复制模式</summary>
                 <pre className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-700">
-                  {qualityGateFailed ? '质量门未通过：坏稿已被后端拦截，原始文本不会展示。' : cleanedResultText}
+                  {qualityGateFailed ? '这版未达到可发布标准，坏稿已被后台拦截，原始文本不会展示。' : cleanedResultText}
                 </pre>
               </details>
 
@@ -1622,7 +1623,7 @@ export default function OperatorApp() {
                   }}
                 >
                   <Copy className="mr-2 h-4 w-4" />
-                  {qualityGateFailed ? '质量未通过，不能复制' : runDetail.format === 'article' ? '复制长文' : '复制文本'}
+                  {qualityGateFailed ? '未达标，不能复制' : runDetail.format === 'article' ? '复制长文' : '复制文本'}
                 </Button>
                 <Button
                   disabled={qualityGateFailed || busyAction === 'queue-result' || (!selectedAccount && runDetail.format !== 'article')}
@@ -1642,7 +1643,7 @@ export default function OperatorApp() {
                     <Send className="mr-2 h-4 w-4" />
                   )}
                   {qualityGateFailed
-                    ? '质量未通过，不能发布'
+                    ? '未达标，不能发布'
                     : runDetail.format === 'article'
                       ? '复制到 X 文章编辑器'
                       : !selectedAccount

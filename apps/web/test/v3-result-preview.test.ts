@@ -79,7 +79,8 @@ test('buildPrimaryResultHighlights surfaces the strongest quality signals for th
   });
 
   assert.equal(highlights.length, 3);
-  assert.match(highlights[0] ?? '', /(hook|证据感|具体性)/u);
+  assert.match(highlights[0] ?? '', /(开头有抓手|证据更清楚|场景更具体)/u);
+  assert.ok(highlights.every((item) => !/\d/u.test(item)), 'ordinary users should not see raw quality scores');
 });
 
 test('visual asset helpers prefer human-readable visual anchors over noisy keyword piles', () => {

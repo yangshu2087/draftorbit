@@ -76,7 +76,7 @@ function applyVisualRequestRules(input: {
 
 function isUnsafeCue(text = ''): boolean {
   const normalized = text.replace(/\s+/g, ' ').trim();
-  return !normalized || isPromptWrapperInstruction(normalized);
+  return !normalized || isPromptWrapperInstruction(normalized) || /V4 Creator Studio request|userPrompt|system prompt|provider stderr/iu.test(normalized);
 }
 
 function cleanVisualCue(text = ''): string {
@@ -85,6 +85,35 @@ function cleanVisualCue(text = ''): string {
     .replace(/(?:^|\n)\s*\*{1,3}\s*\d+\/\d+\s*\*{1,3}\s*/gu, ' ')
     .replace(/\s+/gu, ' ')
     .trim();
+}
+
+const VISUAL_ASSET_KINDS: VisualAssetKind[] = ['cover', 'cards', 'infographic', 'illustration', 'diagram'];
+
+function isVisualAssetKind(value: unknown): value is VisualAssetKind {
+  return typeof value === 'string' && VISUAL_ASSET_KINDS.includes(value as VisualAssetKind);
+}
+
+function normalizeStringArray(value: unknown, limit: number): string[] {
+  const source = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split(/[,\n|]+/u)
+      : [];
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const item of source) {
+    const text = cleanVisualCue(String(item ?? ''));
+    if (!text || isUnsafeCue(text) || seen.has(text)) continue;
+    seen.add(text);
+    normalized.push(text);
+    if (normalized.length >= limit) break;
+  }
+  return normalized;
+}
+
+function safeSpecText(value: unknown, fallback: string): string {
+  const text = cleanVisualCue(String(value ?? ''));
+  return text && !isUnsafeCue(text) ? text : fallback;
 }
 
 function isLowValueVisualKeyword(text = ''): boolean {
@@ -99,6 +128,47 @@ function hasConcreteVisualSignal(text = ''): boolean {
 
 @Injectable()
 export class VisualPlanningService {
+  buildPlanFromSpec(input: {
+    format: ContentFormat;
+    focus: string;
+    text: string;
+    spec: unknown;
+    outline?: { title?: string | null; hook?: string | null; body?: string[] | null } | null;
+    visualRequest?: VisualRequest | null;
+  }): VisualPlan {
+    const fallback = this.buildPlan(input);
+    if (!input.spec || typeof input.spec !== 'object') return fallback;
+    const data = input.spec as Record<string, unknown>;
+    const requested = normalizeVisualRequest(input.visualRequest, input.format);
+    const visualizablePoints = normalizeStringArray(data.visualizablePoints, input.format === 'article' ? 4 : 3);
+    const keywords = normalizeStringArray(data.keywords, 8);
+    const rawItems = Array.isArray(data.items) ? data.items.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object')) : [];
+    const items = fallback.items.map((baseItem, index) => {
+      const byKind = rawItems.find((item) => item.kind === baseItem.kind);
+      const raw = byKind ?? rawItems[index] ?? {};
+      const kind = isVisualAssetKind(raw.kind) ? raw.kind : baseItem.kind;
+      const cue = safeSpecText(raw.cue ?? raw.title ?? visualizablePoints[index], baseItem.cue);
+      const reason = safeSpecText(raw.reason ?? raw.rationale, baseItem.reason);
+      return {
+        ...baseItem,
+        kind,
+        type: safeSpecText(raw.type, baseItem.type),
+        layout: requested.layout === 'auto' ? safeSpecText(raw.layout, baseItem.layout) : requested.layout,
+        style: requested.style === 'draftorbit' ? safeSpecText(raw.style, baseItem.style) : requested.style,
+        palette: requested.palette === 'auto' ? safeSpecText(raw.palette, baseItem.palette) : requested.palette,
+        cue,
+        reason
+      };
+    });
+
+    return {
+      primaryAsset: isVisualAssetKind(data.primaryAsset) ? data.primaryAsset : items[0]?.kind ?? fallback.primaryAsset,
+      visualizablePoints: visualizablePoints.length ? visualizablePoints : fallback.visualizablePoints,
+      keywords: keywords.length ? keywords : fallback.keywords,
+      items
+    };
+  }
+
   buildPlan(input: {
     format: ContentFormat;
     focus: string;

@@ -29,7 +29,7 @@ test('test_high candidate pool prefers OpenAI high then OpenRouter high and excl
     profile: 'test_high',
     taskType: 'draft',
     openaiAvailable: true,
-    openaiHighModels: ['gpt-5.4'],
+    openaiHighModels: ['gpt-5.5'],
     openaiFloorModels: ['gpt-5.4-mini'],
     openrouterHighModels: ['anthropic/claude-sonnet-4.6', 'qwen/qwen3-max'],
     openrouterFloorModels: ['deepseek/deepseek-v3.2'],
@@ -42,7 +42,7 @@ test('test_high candidate pool prefers OpenAI high then OpenRouter high and excl
   assert.deepEqual(
     candidates.map((item) => `${item.provider}:${item.model}:${item.tier}`).slice(0, 5),
     [
-      'openai:gpt-5.4:quality_fallback',
+      'openai:gpt-5.5:quality_fallback',
       'openrouter:anthropic/claude-sonnet-4.6:quality_fallback',
       'openrouter:qwen/qwen3-max:quality_fallback',
       'openai:gpt-5.4-mini:floor',
@@ -59,7 +59,7 @@ test('local_free candidate pool prefers codex-local and keeps ollama disabled by
     profile: 'local_free',
     taskType: 'research',
     openaiAvailable: true,
-    openaiHighModels: ['gpt-5.4'],
+    openaiHighModels: ['gpt-5.5'],
     openaiFloorModels: ['gpt-5.4-mini'],
     openrouterHighModels: ['anthropic/claude-sonnet-4.6'],
     openrouterFloorModels: ['deepseek/deepseek-v3.2'],
@@ -86,7 +86,7 @@ test('local_free candidate pool uses small-footprint ollama only when explicitly
     profile: 'local_free',
     taskType: 'research',
     openaiAvailable: true,
-    openaiHighModels: ['gpt-5.4'],
+    openaiHighModels: ['gpt-5.5'],
     openaiFloorModels: ['gpt-5.4-mini'],
     openrouterHighModels: ['anthropic/claude-sonnet-4.6'],
     openrouterFloorModels: ['deepseek/deepseek-v3.2'],
@@ -108,12 +108,12 @@ test('local_free candidate pool uses small-footprint ollama only when explicitly
 });
 
 
-test('local_quality candidate pool prefers Codex local before paid and Ollama fallbacks', () => {
+test('local_quality candidate pool prefers OpenAI GPT high before Codex and keeps Ollama last', () => {
   const candidates = buildModelGatewayCandidatePool({
     profile: 'local_quality',
     taskType: 'draft',
     openaiAvailable: true,
-    openaiHighModels: ['gpt-5.4'],
+    openaiHighModels: ['gpt-5.5'],
     openaiFloorModels: ['gpt-5.4-mini'],
     openrouterHighModels: ['anthropic/claude-sonnet-4.6'],
     openrouterFloorModels: ['deepseek/deepseek-v3.2'],
@@ -126,8 +126,8 @@ test('local_quality candidate pool prefers Codex local before paid and Ollama fa
   assert.deepEqual(
     candidates.map((item) => `${item.provider}:${item.model}:${item.tier}`).slice(0, 5),
     [
+      'openai:gpt-5.5:quality_fallback',
       'codex-local:codex-local:quality_fallback',
-      'openai:gpt-5.4:quality_fallback',
       'openrouter:anthropic/claude-sonnet-4.6:quality_fallback',
       'openai:gpt-5.4-mini:floor',
       'openrouter:deepseek/deepseek-v3.2:floor'
@@ -136,13 +136,13 @@ test('local_quality candidate pool prefers Codex local before paid and Ollama fa
   assert.equal(candidates.at(-2)?.provider, 'ollama');
 });
 
-test('local_quality route layering prefers floor models first for tweet hook low-latency lane', () => {
+test('local_quality route layering keeps GPT high first for tweet hook quality lane', () => {
   const candidates = buildModelGatewayCandidatePool({
     profile: 'local_quality',
     taskType: 'hook',
     contentFormat: 'tweet',
     openaiAvailable: true,
-    openaiHighModels: ['gpt-5.4'],
+    openaiHighModels: ['gpt-5.5'],
     openaiFloorModels: ['gpt-5.4-mini'],
     openrouterHighModels: ['anthropic/claude-sonnet-4.6'],
     openrouterFloorModels: ['deepseek/deepseek-v3.2'],
@@ -155,11 +155,11 @@ test('local_quality route layering prefers floor models first for tweet hook low
   assert.deepEqual(
     candidates.map((item) => `${item.provider}:${item.model}:${item.tier}`).slice(0, 5),
     [
+      'openai:gpt-5.5:quality_fallback',
       'codex-local:codex-local:quality_fallback',
+      'openrouter:anthropic/claude-sonnet-4.6:quality_fallback',
       'openai:gpt-5.4-mini:floor',
-      'openrouter:deepseek/deepseek-v3.2:floor',
-      'openai:gpt-5.4:quality_fallback',
-      'openrouter:anthropic/claude-sonnet-4.6:quality_fallback'
+      'openrouter:deepseek/deepseek-v3.2:floor'
     ]
   );
 });
@@ -170,7 +170,7 @@ test('local_quality route layering keeps high-tier first for article package lan
     taskType: 'package',
     contentFormat: 'article',
     openaiAvailable: true,
-    openaiHighModels: ['gpt-5.4'],
+    openaiHighModels: ['gpt-5.5'],
     openaiFloorModels: ['gpt-5.4-mini'],
     openrouterHighModels: ['anthropic/claude-sonnet-4.6'],
     openrouterFloorModels: ['deepseek/deepseek-v3.2'],
@@ -183,8 +183,8 @@ test('local_quality route layering keeps high-tier first for article package lan
   assert.deepEqual(
     candidates.map((item) => `${item.provider}:${item.model}:${item.tier}`).slice(0, 5),
     [
+      'openai:gpt-5.5:quality_fallback',
       'codex-local:codex-local:quality_fallback',
-      'openai:gpt-5.4:quality_fallback',
       'openrouter:anthropic/claude-sonnet-4.6:quality_fallback',
       'openai:gpt-5.4-mini:floor',
       'openrouter:deepseek/deepseek-v3.2:floor'
@@ -192,10 +192,37 @@ test('local_quality route layering keeps high-tier first for article package lan
   );
 });
 
+test('local_quality falls back to Codex local first when no OpenAI key is configured', () => {
+  const candidates = buildModelGatewayCandidatePool({
+    profile: 'local_quality',
+    taskType: 'draft',
+    contentFormat: 'article',
+    openaiAvailable: false,
+    openaiHighModels: ['gpt-5.5'],
+    openaiFloorModels: ['gpt-5.4-mini'],
+    openrouterHighModels: ['anthropic/claude-sonnet-4.6'],
+    openrouterFloorModels: ['deepseek/deepseek-v3.2'],
+    openrouterFreeModels: ['openrouter/free'],
+    ollamaEnabled: true,
+    ollamaModels: ['qwen2.5:0.5b'],
+    codexLocalEnabled: true
+  });
+
+  assert.deepEqual(
+    candidates.map((item) => `${item.provider}:${item.model}:${item.tier}`).slice(0, 4),
+    [
+      'codex-local:codex-local:quality_fallback',
+      'openrouter:anthropic/claude-sonnet-4.6:quality_fallback',
+      'openrouter:deepseek/deepseek-v3.2:floor',
+      'ollama:qwen2.5:0.5b:free_first'
+    ]
+  );
+});
+
 test('health fallback skips providers that are in cooldown when alternatives exist', () => {
   const candidates = [
     { provider: 'codex-local' as const, model: 'codex-local', tier: 'quality_fallback' as const },
-    { provider: 'openai' as const, model: 'gpt-5.4', tier: 'quality_fallback' as const },
+    { provider: 'openai' as const, model: 'gpt-5.5', tier: 'quality_fallback' as const },
     { provider: 'openrouter' as const, model: 'anthropic/claude-sonnet-4.6', tier: 'quality_fallback' as const }
   ];
   const now = Date.now();
@@ -280,7 +307,7 @@ test('test_high evidence rejects free, mock and local models except explicitly a
   assert.equal(isInvalidTestHighEvidenceModel({ modelUsed: 'draftorbit/heuristic', provider: 'openrouter' }), true);
   process.env.CODEX_LOCAL_ALLOW_QUALITY_EVIDENCE = '1';
   assert.equal(isInvalidTestHighEvidenceModel({ modelUsed: 'codex-local/quick', provider: 'codex-local' }), false);
-  assert.equal(isInvalidTestHighEvidenceModel({ modelUsed: 'gpt-5.4', provider: 'openai' }), false);
+  assert.equal(isInvalidTestHighEvidenceModel({ modelUsed: 'gpt-5.5', provider: 'openai' }), false);
   assert.equal(isInvalidTestHighEvidenceModel({ modelUsed: 'anthropic/claude-sonnet-4.6', provider: 'openrouter' }), false);
   if (previous === undefined) delete process.env.CODEX_LOCAL_ALLOW_QUALITY_EVIDENCE;
   else process.env.CODEX_LOCAL_ALLOW_QUALITY_EVIDENCE = previous;

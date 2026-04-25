@@ -339,7 +339,7 @@ function makeRunDetail(state: RunState, overrideReadyAsset = false) {
       visualPlan: {
         primaryAsset: primaryKind,
         visualizablePoints: ['把输入到确认做成一条可见链路', '不把失败图当成成品'],
-        keywords: ['DraftOrbit', 'baoyu parity', 'Codex 本机 SVG'],
+        keywords: ['DraftOrbit', '图文包', 'SVG 图文资产'],
         items: [
           {
             kind: primaryKind,
@@ -494,7 +494,7 @@ async function mockDraftOrbitApi(page: Page) {
         runId,
         status: 'DONE',
         textResult: { format: state.kind === 'diagram' ? 'diagram' : detail.format, content: detail.result.text, variants: [] },
-        visualAssets: (detail.result.visualAssets ?? []).map((asset: any) => ({ ...asset, provenanceLabel: asset.provider === 'codex-local-svg' ? 'Codex 本机 SVG' : '安全模板渲染' })),
+        visualAssets: (detail.result.visualAssets ?? []).map((asset: any) => ({ ...asset, provenanceLabel: asset.provider === 'codex-local-svg' ? 'SVG 图文资产' : '导出资产' })),
         sourceArtifacts: detail.result.sourceArtifacts ?? [],
         qualityGate: { status: 'passed', safeToDisplay: true, hardFails: [] },
         publishPreparation: { mode: 'manual-confirm', label: '准备发布 / 手动确认', canAutoPost: false },
@@ -588,19 +588,19 @@ async function seedSession(page: Page) {
   }, localToken);
 }
 
-async function openApp(page: Page, options?: { includeRoutingPanel?: boolean }) {
-  const includeRoutingPanel = options?.includeRoutingPanel === true;
+async function openApp(page: Page, options?: { assertRoutingPanelHidden?: boolean }) {
+  const assertRoutingPanelHidden = options?.assertRoutingPanelHidden === true;
   const bootstrapStart = Date.now();
   await seedSession(page);
   await page.goto('/app');
   await expect(page.getByRole('button', { name: /开始生成/u })).toBeVisible();
-  if (includeRoutingPanel) {
-    await expect(page.getByText('模型路由观测')).toBeVisible();
+  if (assertRoutingPanelHidden) {
+    await expect(page.getByText('模型路由观测')).toHaveCount(0);
   }
   const durationSeconds = ((Date.now() - bootstrapStart) / 1000).toFixed(2);
   console.log(
-    includeRoutingPanel
-      ? `[ci-perf] app bootstrap (includes /usage/summary panel) completed in ${durationSeconds}s`
+    assertRoutingPanelHidden
+      ? `[ci-perf] app bootstrap (keeps routing debug hidden) completed in ${durationSeconds}s`
       : `[ci-perf] app bootstrap (core shell) completed in ${durationSeconds}s`
   );
 }
@@ -650,7 +650,7 @@ async function runGenerationScenario(page: Page, scenario: GenerationScenario) {
     await expect(page.getByText('来源已抓取').first()).toBeVisible();
   }
 
-  const bundleLink = page.getByRole('link', { name: /下载全部图文资产|下载 bundle/u }).first();
+  const bundleLink = page.getByRole('link', { name: /下载全部图文资产|下载导出包/u }).first();
   await expect(bundleLink).toHaveAttribute('href', /token=/u);
   await expect(page.getByRole('button', { name: /只重试图片\/图文资产/u })).toBeDisabled();
   const durationSeconds = ((Date.now() - scenarioStart) / 1000).toFixed(2);
@@ -692,13 +692,13 @@ const generationScenariosFast: GenerationScenario[] = [
   {
     name: 'tweet cover assets and safe publish gate',
     prompt: '别再靠灵感写推文，给我一条更像真人的冷启动判断句。',
-    expected: [/生成结果/u, /封面图/u, /Codex 本机 SVG/u, /下载全部图文资产/u, /连接 X 后才能发布/u]
+    expected: [/生成结果/u, /封面图/u, /下载全部图文资产/u, /连接 X 后才能发布/u]
   },
   {
     name: 'thread card series',
     prompt: '把一个 AI 产品新功能写成 4 条 thread，不要像建议模板。',
     format: 'thread' as const,
-    expected: [/1\/4/u, /4\/4/u, /下载 bundle/u]
+    expected: [/1\/4/u, /4\/4/u, /下载导出包/u]
   }
 ];
 
@@ -719,7 +719,7 @@ const generationScenariosRich: GenerationScenario[] = [
 ];
 
 test('app generation covers tweet and thread visual outputs with minimal page churn', async ({ page }) => {
-  await openApp(page, { includeRoutingPanel: true });
+  await openApp(page, { assertRoutingPanelHidden: true });
   for (const scenario of generationScenariosFast) {
     await test.step(scenario.name, async () => {
       await runGenerationScenario(page, scenario);
@@ -754,20 +754,20 @@ test('app handles retry-only visual recovery and latest-source fail-closed path 
   await expect(page.getByText('需要可靠来源，不能编造最新事实', { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: '粘贴来源 URL 再生成' })).toBeVisible();
   await expect(page.getByRole('button', { name: '改成非最新主题再生成' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '质量未通过，不能发布' })).toBeDisabled();
-  await expect(page.getByText('质量门未通过，图文资产不会展示')).toBeVisible();
+  await expect(page.getByRole('button', { name: '未达标，不能发布' })).toBeDisabled();
+  await expect(page.getByText('这版未达到可发布标准，图文资产不会展示')).toBeVisible();
   await expect(page.getByText('可以直接进入确认')).toHaveCount(0);
 
   await page.getByRole('button', { name: '粘贴来源 URL 再生成' }).click();
   await expect(page.locator('textarea').first()).toHaveValue(/来源 URL：/u);
 });
 
-test('V4 Creator Studio route supports Codex-first preview, export actions, and safe gates', async ({ page }) => {
+test('V4 Creator Studio route supports simplified preview, export actions, and safe gates', async ({ page }) => {
   await seedSession(page);
   await page.goto('/v4');
 
-  await expect(page.getByRole('heading', { name: /Codex OAuth 优先的图文创作工作台/u })).toBeVisible();
-  await expect(page.getByText('Codex OAuth first · Ollama off')).toBeVisible();
+  await expect(page.getByRole('heading', { name: /一句话生成可发布的图文包/u })).toBeVisible();
+  await expect(page.getByText('后台自动完成策略、正文和图文资产')).toBeVisible();
   await expect(page.getByRole('link', { name: /查看队列/u })).toHaveAttribute('href', '/queue');
   await expect(page.getByRole('link', { name: /连接 X/u })).toHaveAttribute('href', '/connect');
   await expect(page.getByRole('link', { name: /查看套餐/u })).toHaveAttribute('href', '/pricing');
@@ -776,12 +776,12 @@ test('V4 Creator Studio route supports Codex-first preview, export actions, and 
   await page.locator('#v4-prompt').fill('用流程图解释：输入→来源→正文→图文→手动确认发布。');
   await page.getByRole('button', { name: /^生成 V4 图文包$/u }).click();
 
-  await expect(page.getByText(/V4 生成已排队/u)).toBeVisible();
-  await expect(page.getByText('Codex 本机 SVG').first()).toBeVisible();
+  await expect(page.getByText(/生成任务已开始|生成已完成|生成任务仍在后台处理/u)).toBeVisible();
+  await expect(page.getByText('SVG 图文资产').first()).toBeVisible();
   await expect(page.getByText(/准备发布 \/ 手动确认/u).first()).toBeVisible();
   await expect(page.getByRole('button', { name: /复制 Markdown/u })).toBeEnabled();
-  await expect(page.getByRole('button', { name: /下载 bundle/u })).toBeDisabled();
-  await expect(page.getByText('真实 run 完成后可下载 bundle').first()).toBeVisible();
+  await expect(page.getByRole('button', { name: /结果完成后可下载导出包|下载导出包/u })).toBeDisabled();
+  await expect(page.getByText('结果完成后可下载导出包').first()).toBeVisible();
 
   await page.locator('#v4-prompt').fill('生成关于最新 Hermes Agent 的文章');
   await page.getByRole('button', { name: /Article/u }).click();

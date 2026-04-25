@@ -140,7 +140,7 @@ export function resolveV4SourceRequirement(input: Pick<V4StudioRunRequest, 'prom
     code: 'SOURCE_REQUIRED',
     statusCode: 424,
     recoveryAction: 'add_source',
-    message: '涉及最新事实但没有可靠来源。请粘贴 URL 或配置搜索 provider，DraftOrbit 不会编造最新信息。'
+    message: '涉及最新事实但没有可靠来源。请粘贴 URL 或配置搜索源，DraftOrbit 不会编造最新信息。'
   };
 }
 
@@ -209,15 +209,15 @@ export function normalizeV4StudioRequest(input: V4StudioRunRequest): V4Normalize
 export function v4ProviderLabel(provider?: string | null): string {
   switch (provider) {
     case 'codex-local-svg':
-      return 'Codex 本机 SVG';
+      return 'SVG 图文资产';
     case 'template-svg':
-      return '安全模板渲染';
+      return '导出资产';
     case 'baoyu-imagine':
-      return 'baoyu provider';
+      return '图文资产';
     case 'ollama-text':
-      return '本地低内存模型';
+      return '本地草稿资产';
     default:
-      return provider || '本地资产';
+      return provider ? '图文资产' : '本地资产';
   }
 }
 

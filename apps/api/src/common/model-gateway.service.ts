@@ -42,8 +42,8 @@ export type ModelGatewayCandidatePoolInput = {
   codexLocalEnabled: boolean;
 };
 
-const DEFAULT_OPENAI_HIGH_MODELS = ['gpt-5.4'] as const;
-const DEFAULT_OPENAI_FLOOR_MODELS = ['gpt-5.4-mini'] as const;
+const DEFAULT_OPENAI_HIGH_MODELS = ['gpt-5.5', 'gpt-5.4-pro', 'gpt-5.4'] as const;
+const DEFAULT_OPENAI_FLOOR_MODELS = ['gpt-5.4-mini', 'gpt-5.3-chat-latest'] as const;
 const DEFAULT_OPENROUTER_HIGH_MODELS = [
   'anthropic/claude-sonnet-4.6',
   'google/gemini-3.1-pro-preview',
@@ -349,22 +349,27 @@ export function buildModelGatewayCandidatePool(input: ModelGatewayCandidatePoolI
   }
 
   if (input.profile === 'local_quality') {
-    addModels(candidates, 'codex-local', ['codex-local'], highTier, input.codexLocalEnabled);
-    if (hints.prefersLowLatency && !hints.prefersDepthByFormat) {
+    // Local quality mode is now GPT-quality first when an OpenAI key is present.
+    // Codex local remains the no-key OAuth adapter fallback, and Ollama is strictly
+    // opt-in / last-mile low-memory fallback so it cannot silently become quality evidence.
+    if (prefersQualityOrDepth || hints.prefersLowLatency) {
+      addModels(candidates, 'openai', input.openaiHighModels, highTier, input.openaiAvailable);
+      addModels(candidates, 'codex-local', ['codex-local'], highTier, input.codexLocalEnabled);
+      addModels(candidates, 'openrouter', input.openrouterHighModels, highTier);
       addModels(candidates, 'openai', input.openaiFloorModels, 'floor', input.openaiAvailable);
       addModels(candidates, 'openrouter', input.openrouterFloorModels, 'floor');
+    } else if (hints.prefersContext) {
       addModels(candidates, 'openai', input.openaiHighModels, highTier, input.openaiAvailable);
-      addModels(candidates, 'openrouter', input.openrouterHighModels, highTier);
-    } else if (prefersQualityOrDepth) {
-      addModels(candidates, 'openai', input.openaiHighModels, highTier, input.openaiAvailable);
-      addModels(candidates, 'openrouter', input.openrouterHighModels, highTier);
       addModels(candidates, 'openai', input.openaiFloorModels, 'floor', input.openaiAvailable);
+      addModels(candidates, 'codex-local', ['codex-local'], highTier, input.codexLocalEnabled);
+      addModels(candidates, 'openrouter', input.openrouterHighModels, highTier);
       addModels(candidates, 'openrouter', input.openrouterFloorModels, 'floor');
     } else {
-      addModels(candidates, 'openai', input.openaiFloorModels, 'floor', input.openaiAvailable);
-      addModels(candidates, 'openrouter', input.openrouterFloorModels, 'floor');
       addModels(candidates, 'openai', input.openaiHighModels, highTier, input.openaiAvailable);
+      addModels(candidates, 'codex-local', ['codex-local'], highTier, input.codexLocalEnabled);
+      addModels(candidates, 'openai', input.openaiFloorModels, 'floor', input.openaiAvailable);
       addModels(candidates, 'openrouter', input.openrouterHighModels, highTier);
+      addModels(candidates, 'openrouter', input.openrouterFloorModels, 'floor');
     }
     addModels(candidates, 'ollama', input.ollamaModels, 'free_first', input.ollamaEnabled);
     addModels(candidates, 'openrouter', input.openrouterFreeModels, 'free_first');

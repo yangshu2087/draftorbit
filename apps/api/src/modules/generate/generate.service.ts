@@ -665,6 +665,92 @@ export class GenerateService {
     return input.format;
   }
 
+  private get gptVisualSpecEnabled(): boolean {
+    return process.env.GENERATE_GPT_VISUAL_SPEC_ENABLED !== '0';
+  }
+
+  private async buildBackgroundVisualPlan(params: {
+    userId: string;
+    workspaceId: string | null;
+    generationId: string;
+    trialMode: boolean;
+    maxPrice?: PriceGuard;
+    format: ContentFormat;
+    focus: string;
+    text: string;
+    outline: OutlineStepPayload | null;
+    visualRequest?: VisualRequest | null;
+    contextLines: string[];
+  }): Promise<VisualPlan> {
+    const fallbackPlan = this.visualPlanning.buildPlan({
+      format: params.format,
+      focus: params.focus,
+      text: params.text,
+      outline: params.outline
+        ? { title: params.outline.title, hook: params.outline.hook, body: params.outline.body }
+        : null,
+      visualRequest: params.visualRequest
+    });
+
+    if (!this.gptVisualSpecEnabled || this.routingProfile === 'local_free') return fallbackPlan;
+
+    try {
+      const routed = await this.modelGateway.chatWithRouting(
+        [
+          {
+            role: 'system',
+            content:
+              '你是 DraftOrbit 的图文视觉规格总监。只输出严格 JSON；不要输出 prompt、链路说明、provider、模型名或 stderr。视觉规格必须服务于最终正文，适合渲染成 SVG/HTML/Markdown。'
+          },
+          {
+            role: 'user',
+            content: [
+              ...params.contextLines,
+              `体裁：${params.format}`,
+              `主题：${params.focus}`,
+              `最终正文：${params.text}`,
+              '输出 JSON schema：{"primaryAsset":"cover|cards|infographic|illustration|diagram","visualizablePoints":["具体可画场景"],"keywords":["短关键词"],"items":[{"kind":"cover|cards|infographic|illustration|diagram","type":"...","layout":"...","style":"...","palette":"...","cue":"一句具体画面","reason":"为什么这张图服务正文"}]}',
+              '要求：tweet 用 cover；thread 用 cards；article 至少 cover/infographic/illustration；diagram 意图必须给 diagram。cue 不得包含 userPrompt、V4 Creator Studio request、系统提示或模型错误。'
+            ].join('\n')
+          }
+        ],
+        {
+          taskType: 'media',
+          contentFormat: this.routingFormatHint({ format: params.format, visualRequest: params.visualRequest }),
+          trialMode: params.trialMode,
+          forceHighTier: true,
+          maxPrice: params.maxPrice,
+          temperature: 0.35,
+          maxTokens: 900
+        }
+      );
+
+      await this.recordUsage({
+        userId: params.userId,
+        workspaceId: params.workspaceId,
+        generationId: params.generationId,
+        eventType: UsageEventType.IMAGE,
+        routed,
+        trialMode: params.trialMode
+      });
+
+      return this.parseJson(routed.content, (value) =>
+        this.visualPlanning.buildPlanFromSpec({
+          format: params.format,
+          focus: params.focus,
+          text: params.text,
+          spec: value,
+          outline: params.outline
+            ? { title: params.outline.title, hook: params.outline.hook, body: params.outline.body }
+            : null,
+          visualRequest: params.visualRequest
+        })
+      ) ?? fallbackPlan;
+    } catch {
+      return fallbackPlan;
+    }
+  }
+
   private buildFastResearchPayload(context: ContentStrategyContext): ResearchStepPayload {
     const anchor = context.focus || extractTopKeywords(context.intent, 1)[0] || '内容表达';
     const exampleHook = context.highPerformingExamples[0]?.hook ?? context.hookPatterns[0] ?? null;
@@ -2163,7 +2249,19 @@ export class GenerateService {
               visualRequest
             });
 
-          let finalVisualPlan = rebuildFinalVisualPlan();
+          let finalVisualPlan = await this.buildBackgroundVisualPlan({
+            userId,
+            workspaceId: gen.workspaceId,
+            generationId,
+            trialMode,
+            maxPrice,
+            format: strategyContext.format,
+            focus: strategyContext.focus,
+            text: finalTweet,
+            outline: outlinePayload,
+            visualRequest,
+            contextLines: [strategyPromptContext, benchmarkPromptContext, sourcePromptContext].filter(Boolean)
+          });
           let qualityGate = buildContentQualityGate({
             format: strategyContext.format,
             focus: strategyContext.focus,

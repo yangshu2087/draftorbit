@@ -54,7 +54,7 @@ test('resolveV4SourceRequirement fails closed for latest/freshness prompts witho
     code: 'SOURCE_REQUIRED',
     statusCode: 424,
     recoveryAction: 'add_source',
-    message: '涉及最新事实但没有可靠来源。请粘贴 URL 或配置搜索 provider，DraftOrbit 不会编造最新信息。'
+    message: '涉及最新事实但没有可靠来源。请粘贴 URL 或配置搜索源，DraftOrbit 不会编造最新信息。'
   });
 
   assert.equal(resolveV4SourceRequirement({
@@ -99,7 +99,7 @@ test('buildV4PreviewFromV3Run returns V4 result preview contract with provenance
 
   assert.equal(preview.textResult.format, 'thread');
   assert.equal(preview.visualAssets[0]?.provider, 'codex-local-svg');
-  assert.equal(preview.visualAssets[0]?.provenanceLabel, 'Codex 本机 SVG');
+  assert.equal(preview.visualAssets[0]?.provenanceLabel, 'SVG 图文资产');
   assert.equal(preview.visualAssetsBundleUrl, '/v3/chat/runs/run_test/assets.zip?token=signed-zip');
   assert.equal(preview.qualityGate.safeToDisplay, true);
   assert.equal(preview.publishPreparation.mode, 'manual-confirm');

@@ -123,15 +123,15 @@ export function formatVisualAssetLabel(kind: string): string {
 export function formatVisualProviderLabel(provider?: string | null): string {
   switch (provider) {
     case 'codex-local-svg':
-      return 'Codex 本机 SVG';
+      return 'SVG 图文资产';
     case 'template-svg':
-      return '模板渲染';
+      return '导出资产';
     case 'baoyu-imagine':
-      return 'baoyu provider';
+      return '图文资产';
     case 'ollama-text':
-      return '本地模型文本';
+      return '本地草稿资产';
     default:
-      return provider || '本地资产';
+      return provider ? '图文资产' : '本地资产';
   }
 }
 
@@ -338,18 +338,18 @@ export function buildArticlePreview(text: string): ArticlePreview {
 export function buildPrimaryResultHighlights(result: V3RunResponse['result']): string[] {
   if (!result?.qualitySignals) return [];
   const entries = [
-    ['hook', result.qualitySignals.hookStrength],
-    ['具体性', result.qualitySignals.specificity],
-    ['证据感', result.qualitySignals.evidenceDensity],
-    ['人话感', result.qualitySignals.humanLikeness],
-    ['可视化', result.qualitySignals.visualizability]
+    ['开头有抓手', result.qualitySignals.hookStrength],
+    ['场景更具体', result.qualitySignals.specificity],
+    ['证据更清楚', result.qualitySignals.evidenceDensity],
+    ['表达更自然', result.qualitySignals.humanLikeness],
+    ['适合配图', result.qualitySignals.visualizability]
   ] as const;
 
   return entries
     .filter(([, score]) => typeof score === 'number')
     .sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
     .slice(0, 3)
-    .map(([label, score]) => `${label} ${Math.round(score ?? 0)}`);
+    .map(([label]) => label);
 }
 
 export function getResultPreviewMode(format: V3Format): 'tweet' | 'thread' | 'article' {

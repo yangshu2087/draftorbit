@@ -132,15 +132,15 @@ export function buildV4StudioRunRequest(input: {
 export function getV4ProviderLabel(provider?: string | null): string {
   switch (provider) {
     case 'codex-local-svg':
-      return 'Codex 本机 SVG';
+      return 'SVG 图文资产';
     case 'template-svg':
-      return '安全模板渲染';
+      return '导出资产';
     case 'baoyu-imagine':
-      return 'baoyu provider';
+      return '图文资产';
     case 'ollama-text':
-      return '本地低内存模型';
+      return '本地草稿资产';
     default:
-      return provider || '本地资产';
+      return provider ? '图文资产' : '本地资产';
   }
 }
 
@@ -216,12 +216,12 @@ export function buildV4StudioPreview(input: V4StudioPreviewContract): V4PreviewV
     failedAssets,
     bundleUrl,
     sourceCount: input.sourceArtifacts.length,
-    qualityCopy: input.qualityGate.safeToDisplay ? '质量门通过，可进入人工确认。' : '质量门未通过，DraftOrbit 已阻止展示或发布。',
+    qualityCopy: input.qualityGate.safeToDisplay ? '已通过发布前检查，可进入人工确认。' : '这版未达到可发布标准，DraftOrbit 已阻止展示或发布。',
     publishCopy: input.publishPreparation.canAutoPost
       ? '可发布，但仍建议人工确认。'
       : `${input.publishPreparation.label}：不会自动真实发帖。`,
     hasDownloadableAssets,
-    bundleActionCopy: bundleUrl ? '下载 bundle' : '真实 run 完成后可下载 bundle'
+    bundleActionCopy: bundleUrl ? '下载导出包' : '结果完成后可下载导出包'
   };
 }
 
@@ -229,7 +229,7 @@ export function getV4ErrorCopy(code?: string) {
   if (code === 'SOURCE_REQUIRED') {
     return {
       title: '需要来源后再生成',
-      description: '这类最新事实不能靠模型猜。请粘贴 URL，或先配置搜索 provider。',
+      description: '这类最新事实不能靠模型猜。请粘贴 URL，或先配置搜索源。',
       primaryAction: '粘贴来源 URL',
       tone: 'warning' as const
     };
@@ -244,7 +244,7 @@ export function getV4ErrorCopy(code?: string) {
   }
   return {
     title: '生成没有完成',
-    description: '请稍后重试；如果是 provider 不可用，系统会保留本地默认通过路径。',
+    description: '请稍后重试；如果暂时没有可用模型，系统会明确停止而不是给出占位结果。',
     primaryAction: '重试',
     tone: 'danger' as const
   };

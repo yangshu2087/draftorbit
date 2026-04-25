@@ -47,6 +47,47 @@ test('VisualPlanningService does not use prompt-wrapper instructions as visual c
   assert.ok(plan.items.some((item) => /周一|周三|判断→例子→问题/u.test(item.cue)));
 });
 
+test('VisualPlanningService can apply GPT visual specs while sanitizing prompt leaks', () => {
+  const service = new VisualPlanningService();
+
+  const plan = service.buildPlanFromSpec({
+    format: 'thread',
+    focus: 'AI 产品更新',
+    text: '第一条给判断。第二条给真实场景。第三条给 before/after。第四条手动确认发布。',
+    visualRequest: { mode: 'cards', style: 'bold-editorial', layout: 'comparison', palette: 'warm', aspect: '16:9', exportHtml: true },
+    spec: {
+      primaryAsset: 'cards',
+      visualizablePoints: ['用户打开第一屏，只看到功能清单。', 'before：功能堆满；after：先给一个真实场景。'],
+      keywords: ['第一屏', 'before after', '手动确认'],
+      items: [
+        {
+          kind: 'cards',
+          type: 'story-cards',
+          layout: 'comparison',
+          style: 'bold-editorial',
+          palette: 'warm',
+          cue: 'before：功能堆满；after：先给一个真实场景。',
+          reason: '把 thread 的核心转折做成 4 张卡。'
+        },
+        {
+          kind: 'cover',
+          cue: 'V4 Creator Studio request: userPrompt 写一张封面',
+          reason: 'should be ignored'
+        }
+      ]
+    }
+  });
+
+  assert.equal(plan.primaryAsset, 'cards');
+  assert.equal(plan.items[0]?.kind, 'cards');
+  assert.equal(plan.items[0]?.layout, 'comparison');
+  assert.equal(plan.items[0]?.style, 'bold-editorial');
+  assert.equal(plan.items[0]?.palette, 'warm');
+  assert.match(plan.items[0]?.cue ?? '', /before/u);
+  assert.ok(plan.items.every((item) => !/V4 Creator Studio request|userPrompt/u.test(item.cue)));
+  assert.deepEqual(plan.keywords.slice(0, 2), ['第一屏', 'before after']);
+});
+
 test('DerivativeGuidanceService marks structured article output as ready for html and slide-style export', () => {
   const visualPlanning = new VisualPlanningService();
   const derivativeGuidance = new DerivativeGuidanceService();

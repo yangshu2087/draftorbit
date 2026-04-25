@@ -13,7 +13,9 @@ const EXACT_COPY_MAP: Record<string, string> = {
 };
 
 function normalizeSingleLine(input: string): string {
-  const trimmed = input.trim();
+  const trimmed = input
+    .replace(/\s*·\s*质量\s*\d+(?:\.\d+)?/gu, '')
+    .trim();
   if (!trimmed) return '';
 
   if (EXACT_COPY_MAP[trimmed]) {

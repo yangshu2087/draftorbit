@@ -17,8 +17,8 @@ export class V4Service {
     return {
       version: 'v4-creator-studio',
       defaultRouting: {
-        primary: 'codex-local',
-        oauth: 'Codex local adapter via codex exec',
+        primary: 'openai-gpt-high',
+        oauth: 'Codex local adapter fallback via codex exec',
         ollamaDefault: 'disabled',
         publishMode: 'manual-confirm'
       },
@@ -63,8 +63,8 @@ export class V4Service {
         canAutoPost: false
       },
       usageEvidence: {
-        primaryProvider: 'codex-local',
-        evidencePolicy: 'Codex OAuth local adapter first; Ollama is opt-in low-memory fallback only.'
+        primaryProvider: 'openai-gpt-high',
+        evidencePolicy: 'OpenAI GPT high-quality models are preferred when configured; Codex local is the no-key adapter fallback; Ollama is opt-in low-memory fallback only.'
       }
     };
   }

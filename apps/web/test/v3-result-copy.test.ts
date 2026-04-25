@@ -35,7 +35,7 @@ test('summarizeWhySummary removes duplicates and empty items after normalization
 });
 
 test('normalizeStageSummary rewrites technical stage text into plainer language', () => {
-  assert.equal(normalizeStageSummary('结果包已就绪 · 质量 77.03'), '结果已准备好 · 质量 77.03');
+  assert.equal(normalizeStageSummary('结果包已就绪 · 质量 77.03'), '结果已准备好');
   assert.equal(normalizeStageSummary('Fast path：本地拼装发布包并做质量门控，必要时才触发模型重写。'), '已整理结果，并完成基础质量检查。');
   assert.equal(normalizeStageSummary('配图关键词：ai / operator / x'), '配图方向：ai / operator / x');
   assert.equal(normalizeStageSummary('已确定 hook：别再靠灵感写 ai，把流程跑顺才是增长关键。'), '开头切入点：别再靠灵感写 AI，把流程跑顺才是增长关键。');
