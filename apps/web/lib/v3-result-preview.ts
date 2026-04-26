@@ -38,9 +38,28 @@ export type QualityFailureView = {
 
 export type FreshSourceInputHint = {
   active: boolean;
+  tone: 'warning' | 'ready';
   title: string;
   description: string;
   primaryAction: string;
+};
+
+export type PrimarySourceEvidenceCard = {
+  title: string;
+  sourceTitle: string;
+  href?: string;
+  description: string;
+};
+
+export type SourceEvidenceArtifact = {
+  kind: 'url' | 'x' | 'youtube' | 'search';
+  url?: string;
+  title?: string;
+  markdownPath?: string;
+  capturedAt?: string;
+  status: 'ready' | 'failed' | 'skipped';
+  evidenceUrl?: string;
+  error?: string;
 };
 
 const SOURCE_HARD_FAILS = new Set([
@@ -54,16 +73,52 @@ const URL_HINT_PATTERN = /https?:\/\/[^\s"'，。！？）)]+/iu;
 const FRESH_SOURCE_HINT_PATTERN =
   /(?:最新|今天|刚刚|近期|昨天|昨日|新闻|融资|\blatest\b|\bcurrent\b|\bbreaking\b|\btoday\b|\byesterday\b|实时(?:价格|新闻)|价格(?:调整|上涨|下调|变化|变动)|涨价|降价)/iu;
 const NEGATED_FRESHNESS_HINT_PATTERN = /(?:不要|不用|无需|不需要|不依赖|非).{0,8}(?:最新|实时|新闻|融资|价格|联网|外部数据)/u;
+const SOURCE_URL_LINE_LABEL = '来源 URL：';
+
+export function buildSourceUrlLinePrompt(intent: string): string {
+  const trimmed = intent.trim();
+  if (!trimmed) return SOURCE_URL_LINE_LABEL;
+  return trimmed.includes(SOURCE_URL_LINE_LABEL) ? trimmed : `${trimmed}\n\n${SOURCE_URL_LINE_LABEL}`;
+}
+
+export function getSourceUrlLineSelectionRange(intent: string): { start: number; end: number } | null {
+  const start = intent.indexOf(SOURCE_URL_LINE_LABEL);
+  if (start < 0) return null;
+  return { start, end: intent.length };
+}
 
 export function buildFreshSourceInputHint(intent: string): FreshSourceInputHint | null {
   const text = intent.trim();
-  if (!text || URL_HINT_PATTERN.test(text) || NEGATED_FRESHNESS_HINT_PATTERN.test(text)) return null;
+  if (!text || NEGATED_FRESHNESS_HINT_PATTERN.test(text)) return null;
   if (!FRESH_SOURCE_HINT_PATTERN.test(text)) return null;
+  if (URL_HINT_PATTERN.test(text)) {
+    return {
+      active: true,
+      tone: 'ready',
+      title: '已检测到来源 URL，可以生成',
+      description: '这次会优先使用你粘贴的来源，生成后会在结果区显示“来源已采用”。',
+      primaryAction: '继续生成'
+    };
+  }
   return {
     active: true,
+    tone: 'warning',
     title: '这类主题建议先补来源',
     description: '涉及最新、新闻、融资或实时价格时，DraftOrbit 会先要可靠来源，避免编造事实。',
     primaryAction: '粘贴来源 URL'
+  };
+}
+
+export function buildPrimarySourceEvidenceCard(
+  artifacts?: SourceEvidenceArtifact[] | null
+): PrimarySourceEvidenceCard | null {
+  const ready = (artifacts ?? []).find((artifact) => artifact.status === 'ready' && (artifact.url || artifact.title));
+  if (!ready) return null;
+  return {
+    title: '来源已采用',
+    sourceTitle: ready.title ?? ready.url ?? ready.kind,
+    href: ready.evidenceUrl ?? ready.url,
+    description: '已抓取并清洗来源，正文和图文资产会优先依据这条材料生成。'
   };
 }
 
@@ -101,6 +156,20 @@ export function buildQualityFailureView(result: V3RunResponse['result']): Qualit
   if (buildSourceFailureView(result)) return null;
 
   const hardFails = gate.hardFails ?? [];
+  const sourceReadyEvidence =
+    gate.sourceStatus === 'ready' ||
+    hardFails.includes('source_ready_repair_failed') ||
+    Boolean(buildPrimarySourceEvidenceCard(result?.sourceArtifacts as SourceEvidenceArtifact[] | null | undefined));
+  if (sourceReadyEvidence) {
+    return {
+      active: true,
+      title: '来源已采用，但这版文案还需重写',
+      description:
+        '来源已经抓取成功，但这版正文或图文没达到发布标准。请基于同一条来源重写一版，DraftOrbit 不会展示坏稿或坏图。',
+      primaryAction: '基于该来源重写一版',
+      secondaryAction: '回到输入框调整'
+    };
+  }
   const description =
     gate.userMessage && !/[_a-z]+_[a-z_]+/iu.test(gate.userMessage)
       ? `${gate.userMessage} 建议直接再来一版，或把主题写得更具体。`
@@ -132,6 +201,7 @@ export function buildRunProgressLabel(input: {
   if (input.activeStageLabel) return input.activeStageLabel;
   if (input.runLoading) return '正在生成结果…';
   if (input.sourceFailureView) return '需要可靠来源后再生成';
+  if (input.qualityFailureView?.title.includes('来源已采用')) return '来源已采用，等待重写';
   if (input.qualityFailureView) return '需要处理后再交付';
   if (input.hasResult) return '结果已生成';
   if (input.suggestedActionTitle) return input.suggestedActionTitle;
@@ -151,6 +221,13 @@ export function buildResultDeliveryCopy(input: {
     };
   }
   if (input.qualityGateFailed || input.qualityFailureView) {
+    if (input.qualityFailureView?.title.includes('来源已采用')) {
+      return {
+        title: '来源已采用，等待重写',
+        description: '来源证据已保留；请基于同一条来源重写一版，避免把未达标文案当成成品。',
+        tone: 'danger'
+      };
+    }
     return {
       title: '需要处理后再交付',
       description: '这版未达到可发布标准，请重试或补充更具体的目标。',
@@ -167,11 +244,17 @@ export function buildResultDeliveryCopy(input: {
 export function buildRiskReminderItems(input: {
   sourceFailureView?: SourceFailureView | null;
   riskFlags?: string[] | null;
+  hasReadySource?: boolean;
+  qualityGateFailed?: boolean;
 }): string[] {
   if (input.sourceFailureView) {
     return ['缺少可靠来源。请粘贴来源 URL，或改成不依赖最新事实的运营文案。'];
   }
-  return input.riskFlags ?? [];
+  const riskFlags = input.riskFlags ?? [];
+  if (input.hasReadySource && !input.qualityGateFailed) {
+    return riskFlags.filter((flag) => !/(?:整体质量未达到推荐阈值|质量未通过|质量门未通过)/u.test(flag));
+  }
+  return riskFlags;
 }
 
 export function formatVisualAssetLabel(kind: string): string {

@@ -10,13 +10,16 @@ import {
   buildArticlePreview,
   buildFreshSourceInputHint,
   buildPrimaryResultHighlights,
+  buildPrimarySourceEvidenceCard,
   buildQualityFailureView,
   buildResultDeliveryCopy,
   buildRiskReminderItems,
   buildRunAssetsZipUrl,
   buildRunProgressLabel,
+  buildSourceUrlLinePrompt,
   buildSourceFailureView,
   buildThreadPreview,
+  getSourceUrlLineSelectionRange,
   buildVisualAnchorTags,
   buildVisualAssetCards,
   formatVisualAssetLabel,
@@ -395,9 +398,11 @@ export default function OperatorApp() {
     () =>
       buildRiskReminderItems({
         sourceFailureView,
-        riskFlags: runDetail?.result?.riskFlags ?? []
+        riskFlags: runDetail?.result?.riskFlags ?? [],
+        hasReadySource: Boolean((runDetail?.result?.sourceArtifacts ?? []).some((artifact) => artifact.status === 'ready')),
+        qualityGateFailed
       }),
-    [runDetail?.result?.riskFlags, sourceFailureView]
+    [qualityGateFailed, runDetail?.result?.riskFlags, runDetail?.result?.sourceArtifacts, sourceFailureView]
   );
   const currentStageLabel = useMemo(() => {
     const active = [...Object.values(stageEvents)].reverse().find((event) => event.status === 'running');
@@ -441,6 +446,10 @@ export default function OperatorApp() {
     () => (runDetail?.result?.sourceArtifacts ?? []).filter((artifact) => artifact.url || artifact.title).slice(0, 6),
     [runDetail?.result?.sourceArtifacts]
   );
+  const primarySourceEvidenceCard = useMemo(
+    () => buildPrimarySourceEvidenceCard(runDetail?.result?.sourceArtifacts ?? []),
+    [runDetail?.result?.sourceArtifacts]
+  );
 
   const focusIntentInput = useCallback(() => {
     requestAnimationFrame(() => {
@@ -450,10 +459,20 @@ export default function OperatorApp() {
   }, []);
 
   const handleSourceUrlRetry = useCallback(() => {
-    const trimmed = intent.trim();
-    setIntent(trimmed.includes('来源 URL：') ? trimmed : `${trimmed}\n\n来源 URL：`);
-    focusIntentInput();
-  }, [focusIntentInput, intent]);
+    const nextIntent = buildSourceUrlLinePrompt(intent);
+    setIntent(nextIntent);
+    requestAnimationFrame(() => {
+      const input = intentInputRef.current;
+      if (!input) return;
+      input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      input.focus();
+      input.scrollTop = input.scrollHeight;
+      const selection = getSourceUrlLineSelectionRange(nextIntent);
+      if (selection) {
+        input.setSelectionRange(selection.start, selection.end);
+      }
+    });
+  }, [intent]);
 
   const handleNonFreshRetry = useCallback(() => {
     const nextIntent = intent
@@ -941,6 +960,7 @@ export default function OperatorApp() {
           </div>
 
           <textarea
+            data-testid="operator-intent-input"
             ref={intentInputRef}
             value={intent}
             onChange={(event) => setIntent(event.target.value)}
@@ -949,16 +969,43 @@ export default function OperatorApp() {
           />
 
           {freshSourceInputHint ? (
-            <div role="note" className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <div
+              data-testid="fresh-source-input-hint"
+              data-tone={freshSourceInputHint.tone}
+              role="note"
+              className={cn(
+                'mt-3 rounded-2xl border px-4 py-3 text-sm',
+                freshSourceInputHint.tone === 'ready'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                  : 'border-amber-200 bg-amber-50 text-amber-900'
+              )}
+            >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="flex gap-2">
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  {freshSourceInputHint.tone === 'ready' ? (
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                  ) : (
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  )}
                   <div>
                     <p className="font-semibold">{freshSourceInputHint.title}</p>
-                    <p className="mt-1 leading-6 text-amber-800">{freshSourceInputHint.description}</p>
+                    <p className={cn('mt-1 leading-6', freshSourceInputHint.tone === 'ready' ? 'text-emerald-800' : 'text-amber-800')}>
+                      {freshSourceInputHint.description}
+                    </p>
                   </div>
                 </div>
-                <Button type="button" size="sm" variant="outline" className="shrink-0 border-amber-300 bg-white text-amber-900 hover:bg-amber-100" onClick={handleSourceUrlRetry}>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className={cn(
+                    'shrink-0 bg-white',
+                    freshSourceInputHint.tone === 'ready'
+                      ? 'border-emerald-300 text-emerald-900 hover:bg-emerald-100'
+                      : 'border-amber-300 text-amber-900 hover:bg-amber-100'
+                  )}
+                  onClick={freshSourceInputHint.tone === 'ready' ? undefined : handleSourceUrlRetry}
+                >
                   {freshSourceInputHint.primaryAction}
                 </Button>
               </div>
@@ -1194,6 +1241,25 @@ export default function OperatorApp() {
                   </div>
                 </div>
               </div>
+
+              {primarySourceEvidenceCard ? (
+                <a
+                  data-testid="primary-source-evidence-card"
+                  href={primarySourceEvidenceCard.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 transition hover:border-emerald-300 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/30"
+                >
+                  <div className="flex items-start gap-3">
+                    <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">{primarySourceEvidenceCard.title}</p>
+                      <p className="mt-1 break-words font-medium text-emerald-950">{primarySourceEvidenceCard.sourceTitle}</p>
+                      <p className="mt-1 leading-6 text-emerald-800">{primarySourceEvidenceCard.description}</p>
+                    </div>
+                  </div>
+                </a>
+              ) : null}
 
               <div className="rounded-[24px] border border-slate-900/10 bg-slate-950 p-5 text-white shadow-inner shadow-slate-900/30">
                 {qualityGateFailed ? (

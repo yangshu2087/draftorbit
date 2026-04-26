@@ -7,17 +7,21 @@ import {
   buildArticlePreview,
   buildFreshSourceInputHint,
   buildPrimaryResultHighlights,
+  buildPrimarySourceEvidenceCard,
   buildQualityFailureView,
   buildResultDeliveryCopy,
   buildRiskReminderItems,
   buildRunProgressLabel,
   buildRunAssetsZipUrl,
+  buildSourceUrlLinePrompt,
+  getSourceUrlLineSelectionRange,
   buildSourceFailureView,
   buildThreadPreview,
   buildVisualAnchorTags,
   buildVisualAssetCards,
   formatVisualAssetLabel
 } from '../lib/v3-result-preview';
+import type { V3RunResponse } from '../lib/queries';
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const webRoot = join(testDir, '..');
@@ -184,16 +188,65 @@ test('buildSourceFailureView turns source gate tags into recoverable user-facing
   assert.equal(view?.secondaryAction, '改成非最新主题再生成');
 });
 
-test('buildFreshSourceInputHint warns only for source-dependent latest intents without URL', () => {
-  assert.equal(buildFreshSourceInputHint('生成关于最新 Hermes 的文章')?.active, true);
-  assert.equal(buildFreshSourceInputHint('写一组关于某公司融资新闻的 thread')?.active, true);
-  assert.equal(
-    buildFreshSourceInputHint('根据 https://example.com/source 生成关于最新 Hermes 的文章'),
-    null
-  );
+test('buildFreshSourceInputHint warns before URL and turns ready once a source URL is pasted', () => {
+  const warning = buildFreshSourceInputHint('生成关于最新 Hermes 的文章');
+  assert.equal(warning?.active, true);
+  assert.equal(warning?.tone, 'warning');
+  assert.equal(warning?.title, '这类主题建议先补来源');
+
+  const ready = buildFreshSourceInputHint('根据 https://example.com/source 生成关于最新 Hermes 的文章');
+  assert.equal(ready?.active, true);
+  assert.equal(ready?.tone, 'ready');
+  assert.equal(ready?.title, '已检测到来源 URL，可以生成');
+
+  assert.equal(buildFreshSourceInputHint('写一组关于某公司融资新闻的 thread')?.tone, 'warning');
   assert.equal(buildFreshSourceInputHint('把 SkillTrust 的版本定位写成一条 X thread'), null);
   assert.equal(buildFreshSourceInputHint('把 SkillTrust 的发布前确认流程写成 thread'), null);
   assert.equal(buildFreshSourceInputHint('把 SkillTrust 竞品对比写成 thread，不要列实时数据'), null);
+});
+
+test('source URL line helpers append the dedicated line and select it for paste guidance', () => {
+  const nextPrompt = buildSourceUrlLinePrompt('生成关于最新 Hermes 的文章');
+  assert.equal(nextPrompt, '生成关于最新 Hermes 的文章\n\n来源 URL：');
+  assert.deepEqual(getSourceUrlLineSelectionRange(nextPrompt), {
+    start: nextPrompt.indexOf('来源 URL：'),
+    end: nextPrompt.length
+  });
+
+  const existing = '生成关于最新 Hermes 的文章\n\n来源 URL：https://example.com/source';
+  assert.equal(buildSourceUrlLinePrompt(existing), existing);
+  assert.deepEqual(getSourceUrlLineSelectionRange(existing), {
+    start: existing.indexOf('来源 URL：'),
+    end: existing.length
+  });
+});
+
+test('buildPrimarySourceEvidenceCard highlights a ready URL source used by the run', () => {
+  const card = buildPrimarySourceEvidenceCard([
+    {
+      kind: 'url',
+      url: 'https://example.com/source',
+      title: 'Example source',
+      markdownPath: '/tmp/source.md',
+      capturedAt: '2026-04-26T00:00:00.000Z',
+      status: 'ready',
+      evidenceUrl: 'https://example.com/source'
+    },
+    {
+      kind: 'search',
+      url: 'https://example.com/candidate',
+      title: 'Candidate',
+      markdownPath: '/tmp/candidate.md',
+      capturedAt: '2026-04-26T00:00:00.000Z',
+      status: 'skipped'
+    }
+  ]);
+
+  assert.equal(card?.title, '来源已采用');
+  assert.equal(card?.sourceTitle, 'Example source');
+  assert.equal(card?.href, 'https://example.com/source');
+  assert.match(card?.description ?? '', /已抓取并清洗/u);
+  assert.equal(buildPrimarySourceEvidenceCard([]), null);
 });
 
 test('buildRunProgressLabel does not call a source-blocked run generated', () => {
@@ -320,6 +373,61 @@ test('buildQualityFailureView hides raw hard fail tags from the primary user cop
   assert.equal(view?.primaryAction, '再来一版');
   assert.equal(view?.secondaryAction, '回到输入框调整');
   assert.doesNotMatch(`${view?.title}\n${view?.description}`, /article_generic_scaffold/u);
+});
+
+test('buildQualityFailureView uses source-specific recovery when a ready URL draft is still blocked', () => {
+  const result = {
+    text: '',
+    variants: [],
+    imageKeywords: [],
+    qualityScore: 44,
+    riskFlags: ['质量门未通过，坏稿已被拦截'],
+    requestCostUsd: null,
+    whySummary: [],
+    evidenceSummary: [],
+    sourceArtifacts: [
+      {
+        kind: 'url',
+        status: 'ready',
+        title: 'Example Domain',
+        url: 'https://example.com/',
+        evidenceUrl: 'https://example.com/',
+        markdownPath: 'artifacts/source/example.md',
+        capturedAt: '2026-04-26T00:00:00.000Z'
+      }
+    ],
+    qualityGate: {
+      status: 'failed',
+      safeToDisplay: false,
+      hardFails: ['source_ready_repair_failed'],
+      sourceRequired: true,
+      sourceStatus: 'ready',
+      judgeNotes: ['source_ready_repair_failed'],
+      userMessage: '来源已采用，但这版文案还需重写。'
+    }
+  } satisfies V3RunResponse['result'];
+
+  const qualityFailureView = buildQualityFailureView(result);
+  assert.equal(qualityFailureView?.title, '来源已采用，但这版文案还需重写');
+  assert.equal(qualityFailureView?.primaryAction, '基于该来源重写一版');
+  assert.doesNotMatch(`${qualityFailureView?.title}\n${qualityFailureView?.description}`, /缩小主题|source_ready_repair_failed/u);
+
+  const copy = buildResultDeliveryCopy({
+    qualityGateFailed: true,
+    qualityFailureView
+  });
+  assert.equal(copy.title, '来源已采用，等待重写');
+  assert.match(copy.description, /同一条来源/u);
+});
+
+test('buildRiskReminderItems does not scare users after a source-ready deliverable result', () => {
+  const risks = buildRiskReminderItems({
+    hasReadySource: true,
+    qualityGateFailed: false,
+    riskFlags: ['整体质量未达到推荐阈值', '发布前人工确认']
+  });
+
+  assert.deepEqual(risks, ['发布前人工确认']);
 });
 
 test('sourceReadyStageSummary stays module-scoped to avoid stale useMemo dependencies', () => {

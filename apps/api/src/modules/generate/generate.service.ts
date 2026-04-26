@@ -186,8 +186,66 @@ function buildSourceGroundedArticleFallback(input: { focus: string; sourceContex
   ].join('\n');
 }
 
+export function buildSourceGroundedTweetFallback(input: { focus: string; sourceContext?: string | null; cta?: string | null }): string {
+  const sourceContext = input.sourceContext ?? '';
+  const title = extractFirstSourceHeading(sourceContext);
+  const shortTitle = shortenSourceTitle(title);
+  const facts = extractSourceFactSnippets(sourceContext, title);
+  const firstFact = facts[0] ?? `来源标题指向的核心对象是“${shortTitle}”。`;
+  const secondFact = facts[1] ?? '这条来源只支撑它已经写明的对象、用途和边界，不支撑额外想象。';
+  const focus = input.focus.trim() || shortTitle;
+  const body = [
+    `${shortTitle} 这条来源能写，但只能写它已经说清楚的部分。`,
+    '',
+    `比如来源里的核心事实是：${firstFact} 这能支撑的内容，是解释“${focus}”具体解决什么场景，而不是泛泛说趋势。`,
+    '',
+    `我会把第二个判断落在边界上：${secondFact} 这样发出去像一条有依据的运营判断，而不是追热点。`
+  ].join('\n');
+  return enforceTweetLength(body, 280);
+}
+
+export function buildSourceGroundedThreadFallback(input: { focus: string; sourceContext?: string | null; cta?: string | null }): string[] {
+  const sourceContext = input.sourceContext ?? '';
+  const title = extractFirstSourceHeading(sourceContext);
+  const shortTitle = shortenSourceTitle(title);
+  const facts = extractSourceFactSnippets(sourceContext, title);
+  const firstFact = facts[0] ?? `来源标题指向的核心对象是“${shortTitle}”。`;
+  const secondFact = facts[1] ?? '来源没有给出的部分，不能自动补成更大的趋势判断。';
+  const cta =
+    input.cta?.trim() && !/(欢迎|评论区|你怎么看|继续扩写|读完以后)/u.test(input.cta)
+      ? input.cta.trim()
+      : '如果继续生成，我会基于同一条来源重写成更窄的判断句，再配一张“来源→正文→图文”的流程卡。';
+
+  return [
+    `1/4\n${shortTitle} 这条来源可以写，但不要把它扩成“最新大趋势”。\n它先提供的是一个可核验事实：${firstFact}`,
+    `2/4\n比如这类来源最适合先解决一个问题：让读者知道对象是什么、能用在哪、不能证明什么。可用的第二层支撑是：${secondFact}`,
+    '3/4\n先按“事实→影响→边界”重写：事实只取来源已写明的内容；影响只写能从事实推出的场景；边界明确说还不能证明更大的结论。',
+    `4/4\n${cta}`
+  ].map((post) => sanitizeGeneratedText(post, 'thread'));
+}
+
 function hasSourceBlockedQualityGate(qualityGate: ContentQualityGateResult): boolean {
   return Boolean(qualityGate.sourceRequired && qualityGate.sourceStatus && qualityGate.sourceStatus !== 'ready');
+}
+
+function markSourceReadyRepairFailed(qualityGate: ContentQualityGateResult): ContentQualityGateResult {
+  const hardFails = [...new Set([...qualityGate.hardFails, 'source_ready_repair_attempted', 'source_ready_repair_failed'])];
+  return {
+    ...qualityGate,
+    status: 'failed',
+    safeToDisplay: false,
+    hardFails,
+    userMessage: '来源已采用，但这版文案还需重写。',
+    recoveryAction: 'retry',
+    judgeNotes: [
+      ...new Set([
+        ...qualityGate.judgeNotes,
+        'source_ready_repair_attempted',
+        'source_ready_repair_failed',
+        '来源抓取成功，但自动修复后的正文仍未通过质量门；前端应提供基于同一来源重写的恢复路径。'
+      ])
+    ]
+  };
 }
 
 function hasRepairableArticleStructureFail(qualityGate: ContentQualityGateResult): boolean {
@@ -2396,6 +2454,7 @@ export class GenerateService {
             judgeNotes: this.sourceGateNotes(sourceCapture)
           });
           qualityGate = this.enforceRealModelGate({ routed: packageRouted, qualityGate });
+          let sourceGroundedFallbackUsed = false;
 
           if (!qualityGate.safeToDisplay && this.qualityRepairEnabled) {
             for (let attempt = 0; attempt < 2 && !qualityGate.safeToDisplay; attempt += 1) {
@@ -2596,6 +2655,73 @@ export class GenerateService {
               judgeNotes: this.sourceGateNotes(sourceCapture)
             });
             qualityGate = this.enforceRealModelGate({ routed: packageRouted, qualityGate });
+          }
+
+          if (
+            !qualityGate.safeToDisplay &&
+            this.qualityRepairEnabled &&
+            sourceCapture.sourceStatus === 'ready' &&
+            Boolean(sourceCapture.sourceContext) &&
+            !hasSourceBlockedQualityGate(qualityGate)
+          ) {
+            sourceGroundedFallbackUsed = true;
+            if (gen.type === GenerationType.THREAD) {
+              finalThread = buildSourceGroundedThreadFallback({
+                focus: strategyContext.focus,
+                sourceContext: sourceCapture.sourceContext,
+                cta: outlinePayload?.cta
+              });
+              finalTweet = sanitizeGeneratedText(finalThread.join('\n\n'), strategyContext.format);
+            } else if (gen.type === GenerationType.LONG) {
+              finalThread = undefined;
+              finalTweet = sanitizeGeneratedText(
+                buildSourceGroundedArticleFallback({
+                  focus: strategyContext.focus,
+                  sourceContext: sourceCapture.sourceContext,
+                  cta: outlinePayload?.cta
+                }),
+                strategyContext.format
+              );
+            } else {
+              finalThread = undefined;
+              finalTweet = buildSourceGroundedTweetFallback({
+                focus: strategyContext.focus,
+                sourceContext: sourceCapture.sourceContext,
+                cta: outlinePayload?.cta
+              });
+            }
+            quality = this.scoreGeneratedContent(finalTweet, gen.type);
+            qualitySignals = buildQualitySignalReport(finalTweet, strategyContext.format);
+            finalVisualPlan = rebuildFinalVisualPlan();
+            qualityGate = buildContentQualityGate({
+              format: strategyContext.format,
+              focus: strategyContext.focus,
+              text: finalTweet,
+              qualitySignals,
+              visualPlan: finalVisualPlan,
+              ...sourceGateInput
+            });
+            qualityGate = this.mergeGateHardFails({
+              qualityGate,
+              hardFails: sourceCapture.hardFails,
+              judgeNotes: this.sourceGateNotes(sourceCapture)
+            });
+            qualityGate = this.enforceRealModelGate({ routed: packageRouted, qualityGate });
+            if (qualityGate.safeToDisplay) {
+              qualityGate = {
+                ...qualityGate,
+                judgeNotes: [...new Set([...qualityGate.judgeNotes, 'source_grounded_fallback_used'])]
+              };
+            }
+          }
+
+          if (
+            sourceGroundedFallbackUsed &&
+            !qualityGate.safeToDisplay &&
+            sourceCapture.sourceStatus === 'ready' &&
+            Boolean(sourceCapture.sourceContext)
+          ) {
+            qualityGate = markSourceReadyRepairFailed(qualityGate);
           }
 
           const displayTweet = qualityGate.safeToDisplay ? finalTweet : '';

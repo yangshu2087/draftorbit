@@ -51,6 +51,7 @@ type SourceCaptureOptions = {
   runtime?: BaoyuRuntimeService;
   searchProvider?: SourceSearchProvider | null;
   maxSearchResults?: number;
+  fetchImpl?: typeof fetch;
 };
 
 const URL_PATTERN = /https?:\/\/[^\s"'，。！？）)]+/giu;
@@ -75,6 +76,60 @@ function slugPart(value: string): string {
     .replace(/[^a-z0-9\u4e00-\u9fa5]+/giu, '-')
     .replace(/^-+|-+$/gu, '')
     .slice(0, 48) || 'source';
+}
+
+function decodeHtmlEntities(value: string): string {
+  const named: Record<string, string> = {
+    amp: '&',
+    lt: '<',
+    gt: '>',
+    quot: '"',
+    apos: "'",
+    nbsp: ' '
+  };
+  return value.replace(/&(#x?[0-9a-f]+|[a-z]+);/giu, (match, entity: string) => {
+    const lower = entity.toLowerCase();
+    if (lower in named) return named[lower] ?? match;
+    if (lower.startsWith('#x')) {
+      const parsed = Number.parseInt(lower.slice(2), 16);
+      return Number.isFinite(parsed) ? String.fromCodePoint(parsed) : match;
+    }
+    if (lower.startsWith('#')) {
+      const parsed = Number.parseInt(lower.slice(1), 10);
+      return Number.isFinite(parsed) ? String.fromCodePoint(parsed) : match;
+    }
+    return match;
+  });
+}
+
+function extractHtmlTitle(raw: string): string | undefined {
+  const title = raw.match(/<title[^>]*>([\s\S]*?)<\/title>/iu)?.[1];
+  return title ? decodeHtmlEntities(title.replace(/<[^>]+>/gu, ' ').replace(/\s+/gu, ' ').trim()) : undefined;
+}
+
+function htmlToReadableText(raw: string): string {
+  return decodeHtmlEntities(
+    raw
+      .replace(/<!--[\s\S]*?-->/gu, ' ')
+      .replace(/<script\b[\s\S]*?<\/script>/giu, ' ')
+      .replace(/<style\b[\s\S]*?<\/style>/giu, ' ')
+      .replace(/<(?:h[1-6]|p|div|section|article|li|br)\b[^>]*>/giu, '\n')
+      .replace(/<[^>]+>/gu, ' ')
+      .replace(/[ \t\f\v]+/gu, ' ')
+      .replace(/\n\s+/gu, '\n')
+      .replace(/\n{3,}/gu, '\n\n')
+      .trim()
+  );
+}
+
+function buildFallbackMarkdown(input: { url: string; title?: string; raw: string; contentType: string }): { title?: string; markdown: string } {
+  const title = extractHtmlTitle(input.raw) ?? input.title;
+  const text = /text\/plain/iu.test(input.contentType) ? input.raw.trim() : htmlToReadableText(input.raw);
+  const body = text.slice(0, 12_000);
+  return {
+    title,
+    markdown: [`# Captured${title ? `: ${title}` : ''}`, `URL: ${input.url}`, '', body].join('\n')
+  };
 }
 
 function normalizeSearchProviderName(): 'tavily' | 'none' {
@@ -194,11 +249,13 @@ export class SourceCaptureService {
   private readonly runtime: BaoyuRuntimeService;
   private readonly searchProvider: SourceSearchProvider | null;
   private readonly maxSearchResults: number;
+  private readonly fetchImpl: typeof fetch;
 
   constructor(options: SourceCaptureOptions = {}) {
     this.runtime = options.runtime ?? new BaoyuRuntimeService();
     this.searchProvider = options.searchProvider === undefined ? createDefaultSearchProvider() : options.searchProvider;
     this.maxSearchResults = options.maxSearchResults ?? defaultMaxSearchResults();
+    this.fetchImpl = options.fetchImpl ?? fetch;
   }
 
   analyzeIntent(intent: string): SourceCaptureAnalysis {
@@ -243,6 +300,16 @@ export class SourceCaptureService {
     const skillsDirExists = await fs.access(this.runtime.getSkillsDir()).then(() => true).catch(() => false);
 
     if (!skillsDirExists) {
+      const fallback = skill === 'baoyu-url-to-markdown'
+        ? await this.captureUrlWithFetch({
+            url: input.url,
+            title: input.title,
+            outputPath,
+            capturedAt,
+            artifactKind
+          })
+        : null;
+      if (fallback) return fallback;
       return {
         artifact: {
           kind: artifactKind,
@@ -260,6 +327,16 @@ export class SourceCaptureService {
     const run = await this.runtime.runSkill(skill, this.buildCaptureArgs({ skill, url: input.url, outputPath }));
     const exists = await fs.access(outputPath).then(() => true).catch(() => false);
     if (!run.ok || !exists) {
+      const fallback = skill === 'baoyu-url-to-markdown'
+        ? await this.captureUrlWithFetch({
+            url: input.url,
+            title: input.title,
+            outputPath,
+            capturedAt,
+            artifactKind
+          })
+        : null;
+      if (fallback) return fallback;
       return {
         artifact: {
           kind: artifactKind,
@@ -287,6 +364,46 @@ export class SourceCaptureService {
       },
       markdown
     };
+  }
+
+  private async captureUrlWithFetch(input: {
+    url: string;
+    title?: string;
+    outputPath: string;
+    capturedAt: string;
+    artifactKind: SourceArtifactKind;
+  }): Promise<{ artifact: SourceArtifact; markdown?: string } | null> {
+    try {
+      const response = await this.fetchImpl(input.url, {
+        method: 'GET',
+        headers: {
+          Accept: 'text/html,text/plain,application/xhtml+xml;q=0.9,*/*;q=0.2',
+          'User-Agent': 'DraftOrbit source capture fallback'
+        }
+      });
+      if (!response.ok) return null;
+      const contentType = response.headers.get('content-type') ?? '';
+      if (!/(?:text\/html|text\/plain|application\/xhtml\+xml)/iu.test(contentType)) return null;
+      const raw = await response.text();
+      const fallback = buildFallbackMarkdown({ url: input.url, title: input.title, raw, contentType });
+      if (fallback.markdown.replace(/[#\s:/.?=&-]/gu, '').length < 40) return null;
+      await fs.mkdir(path.dirname(input.outputPath), { recursive: true });
+      await fs.writeFile(input.outputPath, fallback.markdown, 'utf8');
+      return {
+        artifact: {
+          kind: input.artifactKind,
+          url: input.url,
+          title: fallback.title ?? input.title,
+          markdownPath: input.outputPath,
+          capturedAt: input.capturedAt,
+          status: 'ready',
+          evidenceUrl: input.url
+        },
+        markdown: fallback.markdown
+      };
+    } catch {
+      return null;
+    }
   }
 
   private buildSourceContext(title: string | undefined, url: string | undefined, markdown: string): string {

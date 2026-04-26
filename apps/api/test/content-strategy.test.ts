@@ -16,7 +16,8 @@ import {
   formatThreadPosts,
   formatXArticleText,
   tightenTweetForEngagement,
-  renderStrategyPromptContext
+  renderStrategyPromptContext,
+  extractIntentFromPrompt
 } from '../src/modules/generate/content-strategy';
 
 test('detectContentAntiPatterns catches prompt leakage, random suffixes and weak CTA templates', () => {
@@ -37,6 +38,21 @@ test('extractIntentFocus separates user instructions from the cold-start writing
     extractIntentFocus('别再靠灵感写推文，给我一条更像真人的冷启动判断句。'),
     '推文写作冷启动'
   );
+});
+
+test('extractIntentFromPrompt preserves multiline source URL lines inside the V3 envelope', () => {
+  const intent = extractIntentFromPrompt([
+    '你是 DraftOrbit 的 X AI Operator。',
+    '用户意图：生成一条关于最新 Example Domain 的短推，配一张封面图',
+    '',
+    '来源 URL：https://example.com/',
+    '输出形式：tweet',
+    '需要配图：yes'
+  ].join('\n'));
+
+  assert.match(intent, /最新 Example Domain/u);
+  assert.match(intent, /https:\/\/example\.com\//u);
+  assert.doesNotMatch(intent, /输出形式|需要配图/u);
 });
 
 test('detectContentAntiPatterns catches the real browser prompt-leak regression', () => {

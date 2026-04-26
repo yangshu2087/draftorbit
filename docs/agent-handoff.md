@@ -1,3 +1,58 @@
+## 2026-04-26 Source URL quality chain final fix
+
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio`
+- Branch: `codex/project-ops-workbench-skilltrust-preset`
+- Goal:彻底解决 `/app` 中“来源已采用，但正文/图文仍被质量门拦截，用户无路可走”的割裂体验。
+- Root cause:
+  - V3 prompt envelope extraction only kept the first line after `用户意图：`, so multiline `来源 URL：https://example.com/` could be dropped before backend source capture.
+  - When a ready source draft still failed quality, UI copy remained generic and did not offer a source-specific rewrite path.
+- Product/UX lane:
+  - Source URL paste flow still scrolls/focuses/highlights `来源 URL：` and turns the hint green once a URL is present.
+  - Source-ready success now prioritizes `来源已采用` + deliverable result/visual assets.
+  - Source-ready repair failure now maps to `来源已采用，但这版文案还需重写` and CTA `基于该来源重写一版`, hiding bad draft/assets.
+- Backend/API lane:
+  - Public API contract unchanged: reused `POST /v3/chat/run`, `GET /v3/chat/runs/:id/stream`, `GET /v3/chat/runs/:id`; no new public route.
+  - `extractIntentFromPrompt` preserves multiline source URL lines inside the V3 envelope; `extractIntentFocus` excludes project metadata without dropping user source URLs.
+  - Source-ready quality failures attempt source-grounded fallback text/visual generation and add internal hard-fail flags `source_ready_repair_attempted`, `source_ready_repair_failed`, `source_grounded_fallback_used` when relevant.
+  - Quality gate rejects source metadata leakage (`URL:`, `Captured`, `markdownPath`, etc.) for tweets/threads/articles; latest-without-source still fail-closes.
+  - Permissions/data consistency: existing workspace ownership/signed asset download rules remain unchanged; large source/visual artifacts stay local ignored; DB/result surfaces metadata and checksums, not secrets or raw provider stderr.
+- Browser evidence:
+  - Browser Use (`iab`) pass on `http://127.0.0.1:3400/app`: pasted `来源 URL：https://example.com/`, generated, and observed `sourceFixOutcome=deliverable`, `hasSourceAdopted=true`, `hasDeliverable=true`, `hasGenericNoPath=false`.
+  - Screenshots: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/playwright/manual-check/source-url-deliverable-after-fix-2026-04-26.png`, `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/playwright/manual-check/source-url-result-visible-after-fix-2026-04-26.png`, `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/playwright/manual-check/source-url-assets-visible-after-fix-2026-04-26.png`.
+- Regression tests added/updated:
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/apps/api/test/content-strategy.test.ts`
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/apps/api/test/content-quality-gate.test.ts`
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/apps/api/test/generate-source-blocked-package.test.ts`
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/apps/api/test/source-capture.test.ts`
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/apps/web/test/v3-result-preview.test.ts`
+- Report: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/reports/uat-full/SOURCE-URL-UX-UAT-2026-04-26.md`
+- Verification:
+  - API test: `273/273` passed.
+  - API typecheck: passed.
+  - Web typecheck: passed.
+  - Web test: Node `43/43`, Playwright `6/6`, harness `4.29s` passed.
+  - Web build: Next `15/15` pages passed.
+- Remaining risk: none for the URL-source split-state regression. Source-ready deliverable results suppress the generic low-score warning while preserving concrete manual-publish reminders.
+
+## 2026-04-26 Source URL paste UX + source evidence
+
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio`
+- Branch: `codex/project-ops-workbench-skilltrust-preset`
+- Goal: improve the ordinary `/app` source URL recovery path after source-required prompts.
+- Product/UX lane:
+  - `粘贴来源 URL` now appends `来源 URL：`, scrolls the textarea into view, and selects that line for paste guidance.
+  - Fresh/latest prompts without URL show amber warning; after URL is present the hint turns green with `已检测到来源 URL，可以生成`.
+  - Ready source artifacts now surface a prominent `来源已采用` evidence card in the result area, including blocked-quality states where the source was valid but the draft was not publishable.
+- Backend/API lane:
+  - Existing V3 API contract is unchanged.
+  - Ordinary URL source capture now falls back from `baoyu-url-to-markdown` to direct fetch-based markdown extraction for text/html and text/plain, preserving fail-closed behavior for unsupported/bad-status sources.
+  - Dangerous X/Youtube capture paths do not use the generic fetch fallback; workspace/run asset permissions remain unchanged.
+- Browser evidence:
+  - `/app` Browser Use pass: amber source hint, selected source URL line, green ready hint, and `来源已采用` result card.
+  - Screenshots: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/playwright/manual-check/source-url-line-highlight-2026-04-26.png`, `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/playwright/manual-check/source-url-ready-hint-2026-04-26.png`, `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/playwright/manual-check/source-evidence-card-2026-04-26.png`.
+- Report: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/reports/uat-full/SOURCE-URL-UX-UAT-2026-04-26.md`
+- Verification: API test `269/269`, API typecheck, Web typecheck, Web test `42/42` + Playwright `6/6` reporter `5.6s`, Web build `15/15` pages.
+
 ## 2026-04-26 SkillTrust project content-quality UAT
 
 - Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio`

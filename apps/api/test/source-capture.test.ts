@@ -181,6 +181,34 @@ test('SourceCaptureService searches freshness prompts and captures Tavily result
   assert.match(result.sourceContext, /Captured https:\/\/example\.com\/nous-hermes-latest/u);
 });
 
+test('SourceCaptureService falls back to direct fetch markdown for ordinary URL capture when baoyu fails', async () => {
+  const runtime = await makeRuntime({ failCapture: true });
+  const service = new SourceCaptureService({
+    runtime: runtime as unknown as BaoyuRuntimeService,
+    searchProvider: null,
+    fetchImpl: async () =>
+      new Response(
+        '<html><head><title>Example Domain</title></head><body><h1>Example Domain</h1><p>This domain is for illustrative examples in documents.</p></body></html>',
+        { status: 200, headers: { 'content-type': 'text/html' } }
+      )
+  });
+
+  const result = await service.captureFromIntent({
+    runId: 'url-fetch-fallback',
+    intent: '根据 https://example.com/ 写一条介绍 Example Domain 的短推'
+  });
+
+  assert.equal(runtime.calls.length, 1);
+  assert.equal(result.sourceRequired, true);
+  assert.equal(result.sourceStatus, 'ready');
+  assert.deepEqual(result.hardFails, []);
+  assert.equal(result.artifacts[0]?.status, 'ready');
+  assert.equal(result.artifacts[0]?.url, 'https://example.com/');
+  assert.equal(result.artifacts[0]?.title, 'Example Domain');
+  assert.match(result.sourceContext, /Example Domain/u);
+  assert.match(result.sourceContext, /illustrative examples/u);
+});
+
 test('SourceCaptureService marks Hermes results ambiguous when search mixes unrelated entities', async () => {
   const runtime = await makeRuntime();
   const searchProvider = new FakeSearchProvider([
@@ -225,7 +253,8 @@ test('SourceCaptureService fails closed when search result markdown capture fail
         url: 'https://example.com/ai-product-update',
         content: 'Release notes.'
       }
-    ])
+    ]),
+    fetchImpl: async () => new Response('fallback unavailable', { status: 502 })
   });
 
   const result = await service.captureFromIntent({

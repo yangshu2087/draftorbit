@@ -247,6 +247,25 @@ test('buildContentQualityGate allows grounded text and visual cues', () => {
   assert.equal(gate.hardFails.length, 0);
 });
 
+test('buildContentQualityGate rejects source metadata leakage for tweets too', () => {
+  const text =
+    'Example Domain 可以安全拿来测试抓取链路。比如文档里只需要一个公开示例页，就不用把真实业务 URL 放进去。URL: https://example.com/';
+
+  const gate = buildContentQualityGate({
+    format: 'tweet',
+    focus: 'Example Domain',
+    text,
+    qualitySignals: buildQualitySignalReport(text, 'tweet'),
+    sourceRequired: true,
+    sourceStatus: 'ready'
+  });
+
+  assert.equal(gate.status, 'failed');
+  assert.equal(gate.safeToDisplay, false);
+  assert.ok(gate.hardFails.includes('source_metadata_leakage'));
+  assert.match(gate.userMessage ?? '', /来源元数据/u);
+});
+
 test('buildContentQualityGate allows diagram-intent tweet prompts without missing_scene hard fail', () => {
   const text =
     '把发布流程画成流程图：运营同学先写一句话，系统依次做来源核验、正文草拟、图文生成，最后由你手动确认是否发布。';

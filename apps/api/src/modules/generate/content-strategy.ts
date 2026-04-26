@@ -118,8 +118,13 @@ function normalizeWriteAsSubject(text: string): string {
 }
 
 export function extractIntentFromPrompt(prompt: string): string {
-  const matched = prompt.match(/^用户意图：(.*)$/m)?.[1]?.trim();
-  return matched && matched.length > 0 ? matched : prompt.trim();
+  const marker = '用户意图：';
+  const markerIndex = prompt.indexOf(marker);
+  if (markerIndex < 0) return prompt.trim();
+  const afterMarker = prompt.slice(markerIndex + marker.length);
+  const boundaryIndex = afterMarker.search(/\n(?:输出形式|需要配图|自动完成|用户风格摘要|已连接证据)：/u);
+  const matched = (boundaryIndex >= 0 ? afterMarker.slice(0, boundaryIndex) : afterMarker).trim();
+  return matched.length > 0 ? matched : prompt.trim();
 }
 
 export function isPromptWrapperInstruction(text = ''): boolean {
@@ -137,6 +142,10 @@ function isWritingColdStartPrompt(intent = ''): boolean {
 export function extractIntentFocus(prompt: string): string {
   const intent = extractIntentFromPrompt(prompt)
     .replace(/https?:\/\/\S+/giu, '')
+    .split(/\n+/u)
+    .map((line) => line.trim())
+    .filter((line) => !/^(?:项目|项目说明|目标|受众|内容支柱|来源|视觉风格|发布检查|默认格式|安全边界|上下文)[：:]/u.test(line))
+    .join(' ')
     .replace(/[：:]\s*$/u, '')
     .replace(/\s+/g, ' ')
     .trim();

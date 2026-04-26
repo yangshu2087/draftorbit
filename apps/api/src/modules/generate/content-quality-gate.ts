@@ -336,7 +336,7 @@ export function buildContentQualityGate(input: {
   if (input.format === 'article' && hasMalformedArticleMarkdown(text)) {
     hardFails.add('article_malformed_markdown');
   }
-  if (input.format === 'article' && hasSourceMetadataLeakage(text)) {
+  if (hasSourceMetadataLeakage(text)) {
     hardFails.add('source_metadata_leakage');
   }
   if (input.format === 'article' && countArticleSections(text) < 3) {

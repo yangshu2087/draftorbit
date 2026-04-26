@@ -719,7 +719,7 @@ async function startGenerationInOpenApp(page: Page, input: { prompt: string; for
   }
   await page.locator('textarea').first().fill(input.prompt);
   await page.getByRole('button', { name: /^开始生成$/u }).click();
-  await expect(page.getByText('结果区')).toBeVisible();
+  await expect(page.getByText('结果区', { exact: true })).toBeVisible();
 }
 
 async function runGenerationScenario(page: Page, scenario: GenerationScenario) {
