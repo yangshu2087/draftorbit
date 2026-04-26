@@ -273,6 +273,74 @@ export type PackageResult = {
   stepExplain: Record<'research' | 'outline' | 'draft' | 'humanize' | 'media' | 'package', string>;
 };
 
+export function buildSourceBlockedPackageResult(input: {
+  format: ContentFormat;
+  focus: string;
+  sourceCapture: Pick<SourceCaptureResult, 'artifacts' | 'hardFails' | 'sourceRequired' | 'sourceStatus'>;
+  routingProfile: ModelRoutingProfile;
+  trialMode: boolean;
+  budgetRatio: number;
+  conservativeMode: boolean;
+}): PackageResult {
+  const qualitySignals = buildQualitySignalReport('', input.format);
+  const qualityGate = buildContentQualityGate({
+    format: input.format,
+    focus: input.focus,
+    text: '',
+    qualitySignals,
+    visualPlan: null,
+    sourceRequired: input.sourceCapture.sourceRequired,
+    sourceStatus: input.sourceCapture.sourceStatus,
+    sourceHardFails: input.sourceCapture.hardFails
+  });
+
+  return {
+    tweet: '',
+    charCount: 0,
+    imageKeywords: [],
+    variants: [],
+    quality: {
+      readability: 0,
+      density: 0,
+      platformFit: 0,
+      aiTrace: 0,
+      total: 0
+    },
+    routing: {
+      trialMode: input.trialMode,
+      primaryModel: 'source-blocked',
+      routingTier: 'source-blocked',
+      profile: input.routingProfile
+    },
+    budget: {
+      ratio: Number(input.budgetRatio.toFixed(4)),
+      conservativeMode: input.conservativeMode
+    },
+    qualitySignals,
+    visualPlan: null,
+    visualAssets: [],
+    sourceArtifacts: input.sourceCapture.artifacts,
+    derivativeReadiness: null,
+    qualityGate,
+    stepLatencyMs: {
+      research: null,
+      outline: null,
+      draft: null,
+      humanize: null,
+      media: null,
+      package: null
+    },
+    stepExplain: {
+      research: 'Source preflight：本次请求需要可靠来源，未进入草稿生成。',
+      outline: '等待可靠来源后继续。',
+      draft: '等待可靠来源后继续。',
+      humanize: '等待可靠来源后继续。',
+      media: '等待可靠来源后继续。',
+      package: '已生成可恢复的来源拦截包，未交付坏稿。'
+    }
+  };
+}
+
 type GenerationStartInput = {
   mode: GenerateStartMode;
   brief?: BriefInputDto;
@@ -1550,6 +1618,56 @@ export class GenerateService {
       format: strategyContext.format,
       focus: strategyContext.focus
     });
+    if (sourceCapture.sourceRequired && sourceCapture.sourceStatus !== 'ready') {
+      const startedAt = new Date();
+      const researchContent = JSON.stringify({
+        researchPoints: ['需要可靠来源后再生成。'],
+        hookCandidates: [],
+        angleSummary: '这次请求涉及最新事实，但当前没有可用可靠来源。DraftOrbit 已停止生成，避免编造。',
+        sourceShape: sourceCapture.sourceStatus,
+        bestEvidenceSlot: '请粘贴来源 URL 或配置搜索 provider。',
+        visualizablePoints: [],
+        postStructureRecommendation: '补充来源后再生成。'
+      } satisfies ResearchStepPayload);
+      yield { step: StepName.HOTSPOT, status: 'running' };
+      await this.prisma.db.generationStep.update({
+        where: { generationId_step: { generationId, step: StepName.HOTSPOT } },
+        data: {
+          status: StepStatus.DONE,
+          startedAt,
+          completedAt: new Date(),
+          content: researchContent
+        }
+      });
+      yield { step: StepName.HOTSPOT, status: 'done', content: researchContent };
+
+      const pkg = buildSourceBlockedPackageResult({
+        format: strategyContext.format,
+        focus: strategyContext.focus,
+        sourceCapture,
+        routingProfile: this.routingProfile,
+        trialMode,
+        budgetRatio,
+        conservativeMode
+      });
+      const packageContent = JSON.stringify(pkg);
+      const packageStartedAt = new Date();
+      await this.prisma.db.generationStep.update({
+        where: { generationId_step: { generationId, step: StepName.PACKAGE } },
+        data: {
+          status: StepStatus.DONE,
+          startedAt: packageStartedAt,
+          completedAt: new Date(),
+          content: packageContent
+        }
+      });
+      await this.prisma.db.generation.update({
+        where: { id: generationId },
+        data: { status: GenerationStatus.DONE, result: pkg as object }
+      });
+      yield { step: StepName.PACKAGE, status: 'done', content: packageContent };
+      return;
+    }
     if (outlinePayload) {
       const restoredOutline = outlinePayload as OutlineStepPayload;
       visualPlan = this.visualPlanning.buildPlan({
