@@ -8,8 +8,11 @@ import { getToken } from '../../lib/api';
 import { fetchRunStream, type V3StreamEvent } from '../../lib/sse-stream';
 import {
   buildArticlePreview,
+  buildFreshSourceInputHint,
   buildPrimaryResultHighlights,
   buildQualityFailureView,
+  buildResultDeliveryCopy,
+  buildRiskReminderItems,
   buildRunAssetsZipUrl,
   buildRunProgressLabel,
   buildSourceFailureView,
@@ -289,6 +292,10 @@ export default function OperatorApp() {
     }),
     [exportHtml, visualAspect, visualLayout, visualMode, visualPalette, visualStyle]
   );
+  const freshSourceInputHint = useMemo(
+    () => buildFreshSourceInputHint(intent),
+    [intent]
+  );
 
   const stageProgress = useMemo(
     () =>
@@ -374,6 +381,23 @@ export default function OperatorApp() {
   const qualityFailureView = useMemo(
     () => buildQualityFailureView(runDetail?.result ?? null),
     [runDetail?.result]
+  );
+  const deliveryCopy = useMemo(
+    () =>
+      buildResultDeliveryCopy({
+        qualityGateFailed,
+        sourceFailureView,
+        qualityFailureView
+      }),
+    [qualityFailureView, qualityGateFailed, sourceFailureView]
+  );
+  const riskReminderItems = useMemo(
+    () =>
+      buildRiskReminderItems({
+        sourceFailureView,
+        riskFlags: runDetail?.result?.riskFlags ?? []
+      }),
+    [runDetail?.result?.riskFlags, sourceFailureView]
   );
   const currentStageLabel = useMemo(() => {
     const active = [...Object.values(stageEvents)].reverse().find((event) => event.status === 'running');
@@ -924,6 +948,23 @@ export default function OperatorApp() {
             className="mt-5 min-h-[180px] w-full rounded-[24px] border border-slate-900/10 bg-white px-5 py-4 text-base leading-7 text-slate-900 shadow-inner shadow-slate-100/80 placeholder:text-slate-400"
           />
 
+          {freshSourceInputHint ? (
+            <div role="note" className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <div>
+                    <p className="font-semibold">{freshSourceInputHint.title}</p>
+                    <p className="mt-1 leading-6 text-amber-800">{freshSourceInputHint.description}</p>
+                  </div>
+                </div>
+                <Button type="button" size="sm" variant="outline" className="shrink-0 border-amber-300 bg-white text-amber-900 hover:bg-amber-100" onClick={handleSourceUrlRetry}>
+                  {freshSourceInputHint.primaryAction}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
           <details className="mt-4 rounded-2xl border border-slate-900/10 bg-slate-50 p-4" open={advancedOpen} onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}>
             <summary className="cursor-pointer list-none text-sm font-medium text-slate-900">高级选项</summary>
             <div className="mt-4 grid gap-4">
@@ -1125,14 +1166,10 @@ export default function OperatorApp() {
                 <div className="rounded-2xl border border-slate-900/10 bg-slate-50 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">当前状态</p>
                   <p className="mt-2 text-lg font-semibold text-slate-950">
-                    {qualityGateFailed ? '需要处理后再交付' : '已生成，可人工确认'}
+                    {deliveryCopy.title}
                   </p>
-                  <p className={cn('mt-2 text-sm leading-6', qualityGateFailed ? 'font-medium text-red-600' : 'text-slate-500')}>
-                    {qualityGateFailed
-                      ? sourceFailureView
-                        ? '缺少可靠来源，DraftOrbit 已停止展示坏稿。'
-                        : '这版未达到可发布标准，请重试或补充更具体的目标。'
-                      : '后台已完成来源检查、正文整理、图文资产和导出包准备。'}
+                  <p className={cn('mt-2 text-sm leading-6', deliveryCopy.tone === 'danger' ? 'font-medium text-red-600' : 'text-slate-500')}>
+                    {deliveryCopy.description}
                   </p>
                 </div>
                 <div className="rounded-2xl border border-slate-900/10 bg-slate-50 p-4">
@@ -1268,11 +1305,11 @@ export default function OperatorApp() {
                 )}
               </div>
 
-              {runDetail.result.riskFlags.length ? (
+              {riskReminderItems.length ? (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">风险提醒</p>
                   <ul className="mt-3 space-y-2 text-sm text-amber-900">
-                    {runDetail.result.riskFlags.map((flag) => (
+                    {riskReminderItems.map((flag) => (
                       <li key={flag} className="flex items-start gap-2">
                         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                         <span>{flag}</span>

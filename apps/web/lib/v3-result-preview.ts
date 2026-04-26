@@ -36,6 +36,13 @@ export type QualityFailureView = {
   secondaryAction: string;
 };
 
+export type FreshSourceInputHint = {
+  active: boolean;
+  title: string;
+  description: string;
+  primaryAction: string;
+};
+
 const SOURCE_HARD_FAILS = new Set([
   'fresh_source_required',
   'source_not_configured',
@@ -43,6 +50,22 @@ const SOURCE_HARD_FAILS = new Set([
   'source_capture_failed',
   'source_ambiguous'
 ]);
+const URL_HINT_PATTERN = /https?:\/\/[^\s"'，。！？）)]+/iu;
+const FRESH_SOURCE_HINT_PATTERN =
+  /(?:最新|今天|刚刚|近期|昨天|昨日|新闻|融资|\blatest\b|\bcurrent\b|\bbreaking\b|\btoday\b|\byesterday\b|实时(?:价格|新闻)|价格(?:调整|上涨|下调|变化|变动)|涨价|降价)/iu;
+const NEGATED_FRESHNESS_HINT_PATTERN = /(?:不要|不用|无需|不需要|不依赖|非).{0,8}(?:最新|实时|新闻|融资|价格|联网|外部数据)/u;
+
+export function buildFreshSourceInputHint(intent: string): FreshSourceInputHint | null {
+  const text = intent.trim();
+  if (!text || URL_HINT_PATTERN.test(text) || NEGATED_FRESHNESS_HINT_PATTERN.test(text)) return null;
+  if (!FRESH_SOURCE_HINT_PATTERN.test(text)) return null;
+  return {
+    active: true,
+    title: '这类主题建议先补来源',
+    description: '涉及最新、新闻、融资或实时价格时，DraftOrbit 会先要可靠来源，避免编造事实。',
+    primaryAction: '粘贴来源 URL'
+  };
+}
 
 export function buildSourceFailureView(result: V3RunResponse['result']): SourceFailureView | null {
   const gate = result?.qualityGate;
@@ -113,6 +136,42 @@ export function buildRunProgressLabel(input: {
   if (input.hasResult) return '结果已生成';
   if (input.suggestedActionTitle) return input.suggestedActionTitle;
   return '写一句话，然后点击开始生成。';
+}
+
+export function buildResultDeliveryCopy(input: {
+  qualityGateFailed?: boolean;
+  sourceFailureView?: SourceFailureView | null;
+  qualityFailureView?: QualityFailureView | null;
+}): { title: string; description: string; tone: 'success' | 'danger' } {
+  if (input.sourceFailureView) {
+    return {
+      title: '等待可靠来源',
+      description: '缺少可靠来源，DraftOrbit 已停止展示坏稿。粘贴来源 URL 后可以重新生成。',
+      tone: 'danger'
+    };
+  }
+  if (input.qualityGateFailed || input.qualityFailureView) {
+    return {
+      title: '需要处理后再交付',
+      description: '这版未达到可发布标准，请重试或补充更具体的目标。',
+      tone: 'danger'
+    };
+  }
+  return {
+    title: '已生成，可人工确认',
+    description: '后台已完成来源检查、正文整理、图文资产和导出包准备。',
+    tone: 'success'
+  };
+}
+
+export function buildRiskReminderItems(input: {
+  sourceFailureView?: SourceFailureView | null;
+  riskFlags?: string[] | null;
+}): string[] {
+  if (input.sourceFailureView) {
+    return ['缺少可靠来源。请粘贴来源 URL，或改成不依赖最新事实的运营文案。'];
+  }
+  return input.riskFlags ?? [];
 }
 
 export function formatVisualAssetLabel(kind: string): string {

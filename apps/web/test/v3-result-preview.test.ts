@@ -5,8 +5,11 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   buildArticlePreview,
+  buildFreshSourceInputHint,
   buildPrimaryResultHighlights,
   buildQualityFailureView,
+  buildResultDeliveryCopy,
+  buildRiskReminderItems,
   buildRunProgressLabel,
   buildRunAssetsZipUrl,
   buildSourceFailureView,
@@ -181,6 +184,18 @@ test('buildSourceFailureView turns source gate tags into recoverable user-facing
   assert.equal(view?.secondaryAction, '改成非最新主题再生成');
 });
 
+test('buildFreshSourceInputHint warns only for source-dependent latest intents without URL', () => {
+  assert.equal(buildFreshSourceInputHint('生成关于最新 Hermes 的文章')?.active, true);
+  assert.equal(buildFreshSourceInputHint('写一组关于某公司融资新闻的 thread')?.active, true);
+  assert.equal(
+    buildFreshSourceInputHint('根据 https://example.com/source 生成关于最新 Hermes 的文章'),
+    null
+  );
+  assert.equal(buildFreshSourceInputHint('把 SkillTrust 的版本定位写成一条 X thread'), null);
+  assert.equal(buildFreshSourceInputHint('把 SkillTrust 的发布前确认流程写成 thread'), null);
+  assert.equal(buildFreshSourceInputHint('把 SkillTrust 竞品对比写成 thread，不要列实时数据'), null);
+});
+
 test('buildRunProgressLabel does not call a source-blocked run generated', () => {
   const sourceFailureView = buildSourceFailureView({
     text: '',
@@ -245,6 +260,40 @@ test('buildRunProgressLabel uses repair copy for generic quality-blocked runs', 
     }),
     '需要处理后再交付'
   );
+});
+
+test('buildResultDeliveryCopy and buildRiskReminderItems keep source-blocked copy focused on recovery', () => {
+  const sourceFailureView = buildSourceFailureView({
+    text: '',
+    variants: [],
+    imageKeywords: [],
+    qualityScore: 0,
+    riskFlags: ['AI 痕迹偏重，建议再来一版', '平台适配度偏低，建议手动编辑'],
+    requestCostUsd: null,
+    whySummary: [],
+    evidenceSummary: [],
+    qualityGate: {
+      status: 'failed',
+      safeToDisplay: false,
+      hardFails: ['source_not_configured'],
+      sourceRequired: true,
+      sourceStatus: 'not_configured',
+      judgeNotes: []
+    }
+  });
+
+  const copy = buildResultDeliveryCopy({
+    qualityGateFailed: true,
+    sourceFailureView
+  });
+  assert.equal(copy.title, '等待可靠来源');
+  assert.match(copy.description, /缺少可靠来源/u);
+
+  const risks = buildRiskReminderItems({
+    sourceFailureView,
+    riskFlags: ['AI 痕迹偏重，建议再来一版', '平台适配度偏低，建议手动编辑']
+  });
+  assert.deepEqual(risks, ['缺少可靠来源。请粘贴来源 URL，或改成不依赖最新事实的运营文案。']);
 });
 
 test('buildQualityFailureView hides raw hard fail tags from the primary user copy', () => {
