@@ -109,6 +109,41 @@ test('SourceCaptureService treats generic product update copywriting as evergree
   assert.deepEqual(analysis.hardFails, []);
 });
 
+test('SourceCaptureService treats revision and publish-safety wording as evergreen ops copy', () => {
+  const service = new SourceCaptureService({ searchProvider: null });
+
+  const evergreenOpsIntents = [
+    '请再来一版：把 SkillTrust 安装前审计写成 X thread，强调发布前人工确认。',
+    '把这版未达标的草稿改成更具体的 X thread，不要自动发布。',
+    '把 SkillTrust 的发布前人工确认流程写成一组运营 thread。',
+    '把 SkillTrust 的版本定位写成一条 X thread，强调从安装前审计开始。',
+    '把 SkillTrust 的价格锚点写成一条运营 thread。',
+    '把 SkillTrust 竞品对比的叙事角度写成 thread，不要列外部数据。'
+  ];
+
+  for (const intent of evergreenOpsIntents) {
+    const analysis = service.analyzeIntent(intent);
+    assert.equal(analysis.requiresFreshSource, false, intent);
+    assert.deepEqual(analysis.hardFails, [], intent);
+  }
+});
+
+test('SourceCaptureService still fail-closes explicit latest/news facts without source provider', () => {
+  const service = new SourceCaptureService({ searchProvider: null });
+
+  const freshnessIntents = [
+    '写一条关于今天 OpenAI 发布新模型的推文。',
+    '生成关于最新 Hermes 的文章。',
+    '写一组关于某公司融资新闻的 thread。'
+  ];
+
+  for (const intent of freshnessIntents) {
+    const analysis = service.analyzeIntent(intent);
+    assert.equal(analysis.requiresFreshSource, true, intent);
+    assert.ok(analysis.hardFails.includes('source_not_configured'), intent);
+  }
+});
+
 test('SourceCaptureService searches freshness prompts and captures Tavily results through baoyu markdown runtime', async () => {
   const runtime = await makeRuntime();
   const searchProvider = new FakeSearchProvider([

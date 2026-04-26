@@ -55,16 +55,12 @@ type SourceCaptureOptions = {
 
 const URL_PATTERN = /https?:\/\/[^\s"'，。！？）)]+/giu;
 const FRESHNESS_PATTERNS = [
-  /最新/u,
-  /今天/u,
-  /刚刚/u,
-  /((刚|新|已|正式).{0,4}发布|发布了|发布会|产品发布)/u,
-  /(?:最新|今天|刚刚|刚|新|已|正式).{0,12}(?:更新|changelog)/iu,
+  /(?:最新|今天|刚刚|实时|近期|昨天|昨日|\blatest\b|\bcurrent\b|\bbreaking\b|\btoday\b|\byesterday\b)/iu,
+  /(?:(?:刚|新|已|正式).{0,6}(?:发布|上线|推出)|发布了|上线了|推出了|发布会|产品发布|\breleased\b|\blaunched\b)/iu,
+  /(?:最新|今天|刚刚|实时|近期|昨天|昨日|\blatest\b|\bcurrent\b).{0,16}(?:更新|changelog|版本|version|release|价格|模型|model|发布|上线|推出)/iu,
   /新闻/u,
-  /价格/u,
-  /版本/u,
+  /(?:价格(?:调整|上涨|下调|变化|变动)|涨价|降价)/u,
   /融资/u,
-  /竞品/u,
   /(?:最新|今天|刚刚).{0,12}changelog/iu
 ];
 

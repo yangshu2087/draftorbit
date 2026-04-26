@@ -1241,14 +1241,16 @@ async function runCase(input: {
     Boolean(input.caseDef.acceptQualityBlocked) &&
     (finalPayload.result?.qualityGate?.safeToDisplay === false || finalPayload.result?.qualityGate?.status === 'failed');
 
-  await input.page.getByText('结果已生成').waitFor({ timeout: 360_000 });
   if (sourceBlocked) {
+    await input.page.getByText('需要可靠来源后再生成').waitFor({ timeout: 360_000 });
     await input.page.getByText('需要可靠来源，不能编造最新事实').waitFor({ timeout: 30_000 });
     await input.page.getByText('粘贴来源 URL 再生成').waitFor({ timeout: 30_000 });
   } else if (qualityBlocked) {
+    await input.page.getByText('需要处理后再交付').waitFor({ timeout: 360_000 });
     await input.page.getByText('这版还没达到可发布标准').waitFor({ timeout: 30_000 });
     await input.page.getByText('回到输入框调整').waitFor({ timeout: 30_000 });
   } else {
+    await input.page.getByText('结果已生成').waitFor({ timeout: 360_000 });
     await input.page.getByText('查看依据与配图建议').click();
     await input.page.getByText('主视觉方向').waitFor({ timeout: 30_000 });
     await input.page.getByText(/已生成|生成失败/u).first().waitFor({ timeout: 240_000 });

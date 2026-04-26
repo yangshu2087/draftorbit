@@ -7,6 +7,7 @@ import {
   buildArticlePreview,
   buildPrimaryResultHighlights,
   buildQualityFailureView,
+  buildRunProgressLabel,
   buildRunAssetsZipUrl,
   buildSourceFailureView,
   buildThreadPreview,
@@ -178,6 +179,72 @@ test('buildSourceFailureView turns source gate tags into recoverable user-facing
   assert.match(view?.description ?? '', /多个可能实体|不能替你猜/u);
   assert.equal(view?.primaryAction, '粘贴来源 URL 再生成');
   assert.equal(view?.secondaryAction, '改成非最新主题再生成');
+});
+
+test('buildRunProgressLabel does not call a source-blocked run generated', () => {
+  const sourceFailureView = buildSourceFailureView({
+    text: '',
+    variants: [],
+    imageKeywords: [],
+    qualityScore: null,
+    riskFlags: [],
+    requestCostUsd: null,
+    whySummary: [],
+    evidenceSummary: [],
+    qualityGate: {
+      status: 'failed',
+      safeToDisplay: false,
+      hardFails: ['source_not_configured'],
+      sourceRequired: true,
+      sourceStatus: 'not_configured',
+      judgeNotes: []
+    }
+  });
+
+  assert.equal(
+    buildRunProgressLabel({
+      hasResult: true,
+      runLoading: false,
+      sourceFailureView
+    }),
+    '需要可靠来源后再生成'
+  );
+  assert.notEqual(
+    buildRunProgressLabel({
+      hasResult: true,
+      runLoading: false,
+      sourceFailureView
+    }),
+    '结果已生成'
+  );
+});
+
+test('buildRunProgressLabel uses repair copy for generic quality-blocked runs', () => {
+  const qualityFailureView = buildQualityFailureView({
+    text: '',
+    variants: [],
+    imageKeywords: [],
+    qualityScore: 41,
+    riskFlags: [],
+    requestCostUsd: null,
+    whySummary: [],
+    evidenceSummary: [],
+    qualityGate: {
+      status: 'failed',
+      safeToDisplay: false,
+      hardFails: ['article_generic_scaffold'],
+      judgeNotes: []
+    }
+  });
+
+  assert.equal(
+    buildRunProgressLabel({
+      hasResult: true,
+      runLoading: false,
+      qualityFailureView
+    }),
+    '需要处理后再交付'
+  );
 });
 
 test('buildQualityFailureView hides raw hard fail tags from the primary user copy', () => {

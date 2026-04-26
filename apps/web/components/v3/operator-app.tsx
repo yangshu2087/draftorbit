@@ -11,6 +11,7 @@ import {
   buildPrimaryResultHighlights,
   buildQualityFailureView,
   buildRunAssetsZipUrl,
+  buildRunProgressLabel,
   buildSourceFailureView,
   buildThreadPreview,
   buildVisualAnchorTags,
@@ -262,17 +263,6 @@ export default function OperatorApp() {
     [profile?.xAccounts, selectedXAccountId]
   );
 
-  const currentStageLabel = useMemo(() => {
-    const active = [...Object.values(stageEvents)].reverse().find((event) => event.status === 'running');
-    if (active) return active.label;
-    if (runLoading) return '正在生成结果…';
-    if (runDetail?.result) return '结果已生成';
-    if (boot?.suggestedAction && getTaskPanelMeta(boot.suggestedAction)) {
-      return getTaskPanelMeta(boot.suggestedAction)?.title ?? '继续当前任务';
-    }
-    return '写一句话，然后点击开始生成。';
-  }, [boot?.suggestedAction, runDetail?.result, runLoading, stageEvents]);
-
   const activeFormat = useMemo(
     () => formatOptions.find((item) => item.value === format) ?? formatOptions[0],
     [format]
@@ -385,13 +375,28 @@ export default function OperatorApp() {
     () => buildQualityFailureView(runDetail?.result ?? null),
     [runDetail?.result]
   );
+  const currentStageLabel = useMemo(() => {
+    const active = [...Object.values(stageEvents)].reverse().find((event) => event.status === 'running');
+    const suggestedActionTitle =
+      boot?.suggestedAction && getTaskPanelMeta(boot.suggestedAction)
+        ? (getTaskPanelMeta(boot.suggestedAction)?.title ?? '继续当前任务')
+        : null;
+    return buildRunProgressLabel({
+      activeStageLabel: active?.label,
+      runLoading,
+      hasResult: Boolean(runDetail?.result),
+      sourceFailureView,
+      qualityFailureView,
+      suggestedActionTitle
+    });
+  }, [boot?.suggestedAction, qualityFailureView, runDetail?.result, runLoading, sourceFailureView, stageEvents]);
   const stageProgressForDisplay = useMemo(
     () =>
       sourceFailureView
         ? stageProgress.map((stage) => ({
             ...stage,
-            summary: stage.tone === 'idle' ? '等待可靠来源' : '已拦截：需要可靠来源',
-            tone: stage.tone === 'idle' ? stage.tone : 'danger'
+            summary: stage.key === 'research' ? '已拦截：需要可靠来源' : '等待可靠来源后继续',
+            tone: stage.key === 'research' ? 'danger' : 'idle'
           }))
         : runDetail?.result?.qualityGate?.sourceRequired && runDetail.result.qualityGate.sourceStatus === 'ready'
           ? stageProgress.map((stage) => ({

@@ -57,7 +57,7 @@ export function buildSourceFailureView(result: V3RunResponse['result']): SourceF
         : 'failed';
 
   const descriptionByStatus: Record<SourceFailureView['status'], string> = {
-    not_configured: '这类“最新/发布/版本/新闻”内容必须先抓到来源；当前没有可用搜索配置，请粘贴来源 URL 后再生成。',
+    not_configured: '这类“最新/今天/新闻/融资/实时价格”内容必须先抓到来源；当前没有可用搜索配置。请粘贴来源 URL，或把需求改成不依赖最新事实的运营文案。',
     ambiguous: '搜索结果指向多个可能实体，DraftOrbit 不能替你猜。请补一句限定语，或粘贴目标来源 URL。',
     failed: '搜索或来源抓取没有拿到可用 markdown。DraftOrbit 已阻止生成，避免编造最新事实。'
   };
@@ -96,6 +96,23 @@ export function buildQualityFailureView(result: V3RunResponse['result']): Qualit
     primaryAction: '再来一版',
     secondaryAction: '回到输入框调整'
   };
+}
+
+export function buildRunProgressLabel(input: {
+  activeStageLabel?: string | null;
+  runLoading?: boolean;
+  hasResult?: boolean;
+  sourceFailureView?: SourceFailureView | null;
+  qualityFailureView?: QualityFailureView | null;
+  suggestedActionTitle?: string | null;
+}): string {
+  if (input.activeStageLabel) return input.activeStageLabel;
+  if (input.runLoading) return '正在生成结果…';
+  if (input.sourceFailureView) return '需要可靠来源后再生成';
+  if (input.qualityFailureView) return '需要处理后再交付';
+  if (input.hasResult) return '结果已生成';
+  if (input.suggestedActionTitle) return input.suggestedActionTitle;
+  return '写一句话，然后点击开始生成。';
 }
 
 export function formatVisualAssetLabel(kind: string): string {

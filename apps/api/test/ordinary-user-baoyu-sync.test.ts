@@ -272,7 +272,7 @@ test('assertOrdinaryUserCaseEvidence accepts source-required failures only when 
         visualAssets: []
       }
     },
-    bodyText: '结果已生成\n需要可靠来源，不能编造最新事实\n粘贴来源 URL 再生成\n改成非最新主题再生成',
+    bodyText: '需要可靠来源后再生成\n需要可靠来源，不能编造最新事实\n粘贴来源 URL 再生成\n改成非最新主题再生成',
     consoleErrors: [],
     screenshotPath: '/tmp/source.png',
     finalJsonPath: '/tmp/source.json'
@@ -308,7 +308,7 @@ test('assertOrdinaryUserCaseEvidence accepts generic quality failures only with 
         visualAssets: []
       }
     },
-    bodyText: '结果已生成\n这版还没达到可发布标准\nDraftOrbit 已拦截坏稿\n再来一版\n回到输入框调整\n质量未通过，不能复制\n质量未通过，不能发布',
+    bodyText: '需要处理后再交付\n这版还没达到可发布标准\nDraftOrbit 已拦截坏稿\n再来一版\n回到输入框调整\n质量未通过，不能复制\n质量未通过，不能发布',
     consoleErrors: [],
     screenshotPath: '/tmp/quality.png',
     finalJsonPath: '/tmp/quality.json'
