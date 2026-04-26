@@ -39,6 +39,66 @@ test('buildContentQualityGate fails closed on prompt leakage and prompt-shaped v
   assert.equal(gate.safeToDisplay, false);
 });
 
+test('buildContentQualityGate accepts SkillTrust risk education that mentions prompt as the topic', () => {
+  const text = [
+    '1/5\nAI skill 不是 prompt 文案。\n更准确地说，它可能是一个能被 Agent 调用的工作流入口。',
+    '2/5\nPrompt 主要影响输出；skill 可能影响执行：读文件、跑命令、联网、调用 API、要求 token。风险边界完全不是一回事。',
+    '3/5\n所以安装前先问 5 件事：来源是谁、装了什么、能碰哪些文件、会不会联网、要不要长期凭据。',
+    '4/5\nSkillTrust 的价值不是替你保证安全，而是把这些证据放到同一页，降低你安装前的判断成本。',
+    '5/5\n评论区丢一个 Skill 链接或描述，我挑几个做公开审计。'
+  ].join('\n\n');
+  const visualPlan: VisualPlan = {
+    primaryAsset: 'cards',
+    visualizablePoints: ['AI skill 不是 prompt 文案', '安装前 5 问'],
+    keywords: ['prompt 文案', '工作流入口', 'token'],
+    items: [
+      {
+        kind: 'cards',
+        priority: 'primary',
+        type: 'series',
+        layout: 'flow',
+        style: 'blueprint',
+        palette: 'slate',
+        cue: 'AI skill 不是 prompt 文案',
+        reason: '解释 prompt 与 skill 执行边界不同'
+      }
+    ]
+  };
+
+  const gate = buildContentQualityGate({
+    format: 'thread',
+    focus: 'AI skill 不是 prompt 文案',
+    text,
+    qualitySignals: buildQualitySignalReport(text, 'thread'),
+    visualPlan
+  });
+
+  assert.equal(gate.status, 'passed');
+  assert.equal(gate.safeToDisplay, true);
+  assert.doesNotMatch(gate.hardFails.join(','), /prompt_leakage/u);
+});
+
+test('buildContentQualityGate accepts SkillTrust workflow third card as an action step', () => {
+  const text = [
+    '1/5\n看到一个很香的 AI skill，我现在不会先点安装。\n我会先走 SkillTrust 的 5 步：搜来源、看命令、查权限、比证据、再人工决定。',
+    '2/5\n第一步看来源：作者是谁、仓库是否公开、最近有没有维护。来源不清，功能越诱人越要慢一点。',
+    '3/5\n第二步看执行边界：install 命令、文件读写、联网外传、token/凭据。这里决定它只是辅助，还是已经能影响你的环境。',
+    '4/5\n第三步才比较功能。不是“能不能用”，而是证据够不够、风险能不能接受、要不要先沙箱试。',
+    '5/5\n评论区丢一个 Skill 链接或描述，我挑几个做公开审计。'
+  ].join('\n\n');
+
+  const gate = buildContentQualityGate({
+    format: 'thread',
+    focus: '工作流方法：从发现到人工决定',
+    text,
+    qualitySignals: buildQualitySignalReport(text, 'thread')
+  });
+
+  assert.equal(gate.status, 'passed');
+  assert.equal(gate.safeToDisplay, true);
+  assert.doesNotMatch(gate.hardFails.join(','), /thread_third_post_not_action/u);
+});
+
 test('buildContentQualityGate fails closed on malformed article markdown and dirty visual cues', () => {
   const text = `**
 

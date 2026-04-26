@@ -1,3 +1,37 @@
+## 2026-04-26 SkillTrust project content-quality UAT
+
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio`
+- Branch: `codex/project-ops-workbench-skilltrust-preset`
+- Goal: keep the current X thread + visual workflow, but harden SkillTrust project output quality for real operations content.
+- Content UAT report: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/reports/uat-full/SKILLTRUST-CONTENT-QUALITY-UAT-2026-04-26.md`
+- Browser screenshot: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/playwright/manual-check/skilltrust-project-quality-uat-2026-04-26.png` (local-only ignored artifact)
+
+### Product/UX evidence
+
+- Ordinary operator path verified on `/projects`: create/open SkillTrust project, see project context, publish-safety badge, and project-scoped generator entry.
+- The visible UX remains project-first: project goal, audience, pillars, visual style, source status, publishing checklist, and current generation prompt; model/provider internals are not shown to the operator.
+- Manual publish boundary remains explicit: `发布前人工确认`; no real X posting, scheduling, payment, or OAuth final grant was executed.
+
+### Backend/API evidence
+
+- API contract exercised by UAT: `POST /auth/local/session`, `POST /v3/projects`, `POST /v3/projects/:id/generate`, `GET /v3/chat/runs/:id/stream`, and `GET /v3/chat/runs/:id`.
+- Project generation injects SkillTrust preset quality rules while preserving workspace-scoped bearer-token access; generated runs are linked to the created project.
+- Quality gate changes distinguish legitimate SkillTrust “prompt 文案” education from prompt-wrapper leakage, and treat third-card workflow steps such as `看/查/搜/比较/决定` as action cards.
+- UAT report redacts signed asset tokens and keeps visual binaries/screenshots in ignored local artifact roots.
+
+### Verification evidence
+
+- SkillTrust content UAT: passed `3/3` scenarios, each with `4` ready SVG visual assets and a redacted signed bundle URL.
+  - `审计演示：安装前先看边界` — PASS
+  - `风险教育：Skill 不是 prompt 文案` — PASS
+  - `工作流方法：从发现到人工决定` — PASS
+- Browser visual pass: Playwright Chromium at `1440x1050`, `/projects`, console errors `[]`, screenshot path above.
+- Targeted API regressions added for SkillTrust preset intent focus, fallback thread quality, scenario variation, quality-gate prompt false positive, and workflow third-card action handling.
+
+### Remaining risk
+
+- This pass validates Codex-local quality evidence and local SVG/card assets. It does not validate real X posting, production billing, or external raster image providers.
+
 # Agent Handoff
 
 ## Project ops workbench + SkillTrust preset (2026-04-25)

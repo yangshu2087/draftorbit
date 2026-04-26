@@ -24,7 +24,20 @@ export type ContentQualityGateResult = {
 
 function hasPromptWrapperCue(text = ''): boolean {
   const normalized = text.replace(/\s+/g, ' ').trim();
-  return Boolean(normalized) && isPromptWrapperInstruction(normalized);
+  if (!normalized) return false;
+
+  // A visual cue can legitimately talk about "prompt" as a product concept
+  // (for example SkillTrust explaining that a skill is not just prompt copy).
+  // Only fail closed when the cue still contains wrapper/debug instructions.
+  if (
+    /(?:V4\s*Creator\s*Studio\s*request|userPrompt|system\s*prompt|provider\s*stderr|系统提示|原\s*prompt|复读\s*prompt|hook\s*prompt|cta\s*prompt|prompt\s*[:：])/iu.test(
+      normalized
+    )
+  ) {
+    return true;
+  }
+  if (/(^|\b)(用户意图|输出形式|需要配图|自动完成)(\b|[:：])/iu.test(normalized)) return true;
+  return isPromptWrapperInstruction(normalized.replace(/\bprompt\b/giu, ''));
 }
 
 function hasVisualPromptLeakage(visualPlan?: VisualPlan | null): boolean {
@@ -215,7 +228,7 @@ function hasThirdPostWithoutAction(text: string): boolean {
   if (/^更有效的写法是[：:]/u.test(third)) return true;
   if (/[？?]\s*$/u.test(third)) return true;
   if (/^如果/u.test(third) && /(你会|你现在最想|哪一个|哪个|哪一步)/u.test(third)) return true;
-  return !/(我会|先|改成|删掉|保留|补|换成|把|直接|只讲|动作|使用场景|固定|上传|录音|跟进清单|周会前)/u.test(third);
+  return !/(我会|先|看|查|搜|比较|决定|核对|检查|改成|删掉|保留|补|换成|把|直接|只讲|动作|使用场景|固定|上传|录音|跟进清单|周会前)/u.test(third);
 }
 
 function detectVisualAssetHardFails(input: {

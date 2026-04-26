@@ -145,6 +145,11 @@ export function extractIntentFocus(prompt: string): string {
     return '推文写作冷启动';
   }
 
+  const projectTopic = intent.match(/^本次运营主题[：:]\s*([^\n。！？；]+)/u)?.[1]?.trim();
+  if (projectTopic) {
+    return stripFormatSuffix(projectTopic) || projectTopic;
+  }
+
   const inspirationSubject = intent.match(/^别再靠灵感写\s*([^，。！？；\n]+)/u)?.[1]?.trim();
   if (inspirationSubject) {
     return stripFormatSuffix(inspirationSubject) || inspirationSubject;
@@ -707,6 +712,10 @@ function isWritingWorkflowFocus(focus = ''): boolean {
   return /推文写作冷启动|内容团队|团队工作流|固定节奏|等灵感|靠灵感写推文/u.test(focus);
 }
 
+function isSkillTrustFocus(focus = ''): boolean {
+  return /SkillTrust|#SkillTrust|安装前审计|盲装|AI\s*skill|Agent\s*skill|Codex\/Claude\s*skill|来源.*权限|token\s*风险|可执行工作流入口|安装前.*(来源|权限|命令|联网|token|凭据|文件)/iu.test(focus);
+}
+
 function buildColdStartTweetSceneFallback(): string {
   return '比如做周报助手，别先写“AI 写作平台”，直接写“贴一段口语，我帮你改成能发给老板的周报”，用户才知道第一步该怎么用。';
 }
@@ -740,6 +749,10 @@ function rewriteJudgmentHook(sentence: string, focus = ''): string {
 
   if (/^目标$|目标写作|写目标/u.test(focusLabel)) {
     return ensureSentenceEnding('目标写不清，通常不是想得不够，而是没落到下一步动作');
+  }
+
+  if (isSkillTrustFocus(focusLabel) || isSkillTrustFocus(cleaned)) {
+    return ensureSentenceEnding('装 AI skill 前，最该看的不是功能有多香，而是它会碰到哪些执行边界');
   }
 
   if (/skills|skill|什么是\s*skills?/iu.test(focusLabel)) {
@@ -801,6 +814,9 @@ function buildSceneFallback(focus = '这类内容'): string {
   }
   if (/^目标$|目标写作|写目标/u.test(subject)) {
     return '比如周一复盘会只写“提升影响力”没人知道怎么做；改成“本周先让 20 个老用户回复一个真实使用场景”，团队立刻知道下一步动作。';
+  }
+  if (isSkillTrustFocus(subject)) {
+    return '比如你看到一个 Claude/Codex skill 写着“自动整理文件”，安装前先看 sourceUrl、install 命令、文件读写范围、联网外传和 token 要求；这不是找茬，是别把执行权限交给来源不明的脚本。';
   }
   if (/skills|skill|什么是\s*skills?/iu.test(subject)) {
     return '比如“每天整理 10 条用户反馈”不是一句提示词，而是可以封装成 skill 的重复动作：固定输入、固定步骤、固定输出。';
@@ -1056,10 +1072,17 @@ function pickSceneSentence(sentences: string[], focus = ''): string {
         (hasExampleSignal(sentence) || /(比如|第一条|首页|场景|点击率|滑走|记不住|不知道|见过太多|同时塞|同时讲)/u.test(sentence))
     );
 
+  if (isSkillTrustFocus(focus)) {
+    return ensureSentenceEnding(preferred || buildSceneFallback(focus))
+      .replace(/，?读者看完还是不知道这段最想证明什么[。！？!?]?/u, '。')
+      .replace(/，?读者才知道这段到底在证明什么[。！？!?]?/u, '。');
+  }
+
   return repairSceneSentence(preferred || buildSceneFallback(focus), focus);
 }
 
 function pickActionSentence(sentences: string[], focus = ''): string {
+  if (isSkillTrustFocus(focus)) return buildActionFallback(focus);
   const candidates = sentences
     .map((sentence) => sanitizeGeneratedText(sentence, 'thread').trim())
     .filter(Boolean)
@@ -1078,6 +1101,9 @@ function pickActionSentence(sentences: string[], focus = ''): string {
 }
 
 function buildActionFallback(focus = ''): string {
+  if (isSkillTrustFocus(focus)) {
+    return '我的动作会很简单：先搜来源，再看安装命令、文件读写、联网和 token；证据不够就先不装，或者丢进 SkillTrust compare 后人工决定。';
+  }
   if (/用户反馈/u.test(focus)) {
     return '我会把第二条改成用户原话，再只写一个改法：先承认卡点，再告诉读者下一版具体改哪一处。';
   }
@@ -1116,6 +1142,9 @@ function buildQuestionCloseFallback(focus = '', format: ContentFormat = 'tweet')
   }
   if (/^目标$|目标写作|写目标/u.test(focus)) {
     return '你现在最想先把哪个目标写成一句可执行动作？';
+  }
+  if (isSkillTrustFocus(focus)) {
+    return '你现在最想先审哪一个 AI skill？';
   }
   if (/skills|skill|什么是\s*skills?/iu.test(focus)) {
     return '你现在最想把哪个重复动作做成 skill？';
@@ -1828,6 +1857,54 @@ function normalizeThreadCardForComparison(value: string): string {
     .trim();
 }
 
+
+function buildSkillTrustThreadPosts(focus = '', cta?: string | null): string[] {
+  const rawClose = cta?.trim() ?? '';
+  const safeClose = rawClose && !/(只能先改|哪一步|哪一个|欢迎留言|求赞|讨论)/u.test(rawClose)
+    ? rawClose
+    : '评论区丢一个 Skill 链接或描述，我挑几个做公开审计。';
+  const close = ensureSentenceEnding(safeClose).replace(/[。！？!?]+$/u, '。');
+
+  const normalized = focus.trim();
+  const isWorkflow = /工作流|搜索|比较|人工决定|发现到人工|看到.*很香/u.test(normalized);
+  const isRiskEducation = /不是\s*prompt|prompt 文案|可执行工作流入口|风险教育/u.test(normalized);
+  const isAuditDemo = /审计第|Codex\/Claude|安装命令|token 风险|来源、安装/u.test(normalized);
+
+  const posts = isRiskEducation
+    ? [
+          '1/5\nAI skill 不是 prompt 文案。\n更准确地说，它可能是一个能被 Agent 调用的工作流入口。',
+          '2/5\nPrompt 主要影响输出；skill 可能影响执行：读文件、跑命令、联网、调用 API、要求 token。风险边界完全不是一回事。',
+          '3/5\n所以安装前先问 5 件事：来源是谁、装了什么、能碰哪些文件、会不会联网、要不要长期凭据。',
+          '4/5\nSkillTrust 的价值不是替你保证安全，而是把这些证据放到同一页，降低你安装前的判断成本。',
+          `5/5\n${close}`
+        ]
+      : isWorkflow
+        ? [
+            '1/5\n看到一个很香的 AI skill，我现在不会先点安装。\n我会先走 SkillTrust 的 5 步：搜来源、看命令、查权限、比证据、再人工决定。',
+            '2/5\n第一步看来源：作者是谁、仓库是否公开、最近有没有维护。来源不清，功能越诱人越要慢一点。',
+            '3/5\n第二步看执行边界：install 命令、文件读写、联网外传、token/凭据。这里决定它只是辅助，还是已经能影响你的环境。',
+            '4/5\n第三步才比较功能。不是“能不能用”，而是证据够不够、风险能不能接受、要不要先沙箱试。',
+            `5/5\n${close}`
+          ]
+      : isAuditDemo
+        ? [
+            '1/5\n装 Codex/Claude skill 前，最该看的不是功能有多香。\n先看它会碰到哪些执行边界。',
+            '2/5\n真实场景：README 写“自动整理文件”，但安装命令会拉脚本、读工作区、联网请求，还可能要求 token。这里才是安装前判断的重点。',
+            '3/5\n我会按 5 个信号看：来源/作者、install 命令、文件读写、网络外传、凭据要求。少一个证据，就先降级成待核验。',
+            '4/5\nSkillTrust 不是安全担保。它做的是把来源、权限和风险信号聚在一起，让你别在兴奋时盲装。',
+            `5/5\n${close}`
+          ]
+        : [
+            '1/5\n装 AI skill 前，最该看的不是功能有多香。\n先看它会碰到哪些执行边界。',
+            '2/5\n最常见的坑，是把 skill 当成普通提示词；但它可能读文件、跑命令、联网，甚至要求 token。',
+            '3/5\n安装前先看来源、安装命令、权限范围、网络外传和凭据要求。证据不够，就先不要把执行权交出去。',
+            '4/5\nSkillTrust 的定位是安装前判断系统：降低筛选成本，不替你承诺绝对安全。',
+            `5/5\n${close}`
+          ];
+
+  return posts.map((item) => sanitizeGeneratedText(item, 'thread')).filter(Boolean);
+}
+
 export function formatThreadPosts(input: {
   focus?: string | null;
   hook?: string | null;
@@ -1844,6 +1921,11 @@ export function formatThreadPosts(input: {
   const sentences = splitSentences(cleaned);
   const focus = String(input.focus ?? '').trim();
   const opening = rewriteJudgmentHook(input.hook?.trim() || sentences[0] || cleaned, focus);
+  const skillTrustFocus = isSkillTrustFocus(focus || opening);
+  if (skillTrustFocus) {
+    return buildSkillTrustThreadPosts(focus || opening, input.cta);
+  }
+
   const promise = ensureSentenceEnding(
     sentences.find(
       (sentence) =>
