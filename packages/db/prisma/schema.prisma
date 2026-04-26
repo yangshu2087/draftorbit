@@ -378,6 +378,7 @@ model ContentProject {
   workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   topic         Topic?    @relation(fields: [topicId], references: [id], onDelete: SetNull)
   drafts        Draft[]
+  generations   Generation[]
 
   @@index([workspaceId, createdAt])
 }
@@ -630,6 +631,7 @@ model Generation {
   id          String           @id @default(uuid())
   userId      String
   workspaceId String?
+  contentProjectId String?
   prompt      String
   type        GenerationType   @default(TWEET)
   language    String           @default("zh")
@@ -642,6 +644,7 @@ model Generation {
 
   user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspace     Workspace?       @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  contentProject ContentProject?  @relation(fields: [contentProjectId], references: [id], onDelete: SetNull)
   steps         GenerationStep[]
   usageLogs     UsageLog[]
   publishRecord PublishRecord?
@@ -649,6 +652,7 @@ model Generation {
 
   @@index([userId, createdAt])
   @@index([workspaceId, createdAt])
+  @@index([workspaceId, contentProjectId, createdAt])
 }
 
 model GenerationStep {

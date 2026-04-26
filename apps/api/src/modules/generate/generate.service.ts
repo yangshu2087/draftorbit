@@ -282,6 +282,7 @@ type GenerationStartInput = {
   language?: string;
   useStyle?: boolean;
   visualRequest?: VisualRequest;
+  contentProjectId?: string;
 };
 
 type ResearchStepPayload = {
@@ -1405,6 +1406,7 @@ export class GenerateService {
       data: {
         userId,
         workspaceId: member?.workspaceId ?? null,
+        contentProjectId: input.contentProjectId ?? null,
         prompt: resolved.prompt,
         type: input.type ?? GenerationType.TWEET,
         language: input.language ?? 'zh',

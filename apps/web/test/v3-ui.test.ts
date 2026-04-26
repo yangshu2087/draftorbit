@@ -6,9 +6,10 @@ import {
   getTaskPanelMeta
 } from '../lib/v3-ui';
 
-test('signed-in shell only keeps the operator entry in main navigation', () => {
+test('signed-in shell exposes generator and project ops entries in main navigation', () => {
   assert.deepEqual(getShellNavItems({ hasToken: true, publicMode: false }), [
-    { href: '/app', label: '生成器' }
+    { href: '/app', label: '生成器' },
+    { href: '/projects', label: '项目' }
   ]);
 });
 

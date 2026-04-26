@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -8,6 +8,7 @@ import {
   LearningSourceType,
   PublishJobStatus,
   StepName,
+  type Prisma,
   SubscriptionPlan
 } from '@draftorbit/db';
 import { PrismaService } from '../../common/prisma.service';
@@ -23,15 +24,25 @@ import { LearningSourcesService } from '../learning-sources/learning-sources.ser
 import { PublishService } from '../publish/publish.service';
 import { XAccountsService } from '../x-accounts/x-accounts.service';
 import { buildV3SuggestedAction, normalizeXArticleUrl, resolveXArticlePublishCapability } from './v3.helpers';
+import {
+  buildProjectGenerationIntent,
+  getProjectMetadata,
+  mergeProjectMetadata,
+  normalizeProjectPreset,
+  summarizeProjectRun
+} from './v3-projects';
 import type {
   V3BillingCheckoutDto,
   V3ConnectLocalFilesDto,
   V3ConnectObsidianDto,
   V3ConnectTargetDto,
   V3ConnectUrlsDto,
+  V3CreateProjectDto,
+  V3ProjectGenerateDto,
   V3PublishConfirmDto,
   V3PublishPrepareDto,
-  V3RunChatDto
+  V3RunChatDto,
+  V3UpdateProjectDto
 } from './v3.dto';
 
 export type V3Stage = 'research' | 'strategy' | 'draft' | 'voice' | 'media' | 'publish_prep' | 'error';
@@ -409,6 +420,58 @@ export class V3Service {
     };
   }
 
+  private projectNotFound() {
+    return new NotFoundException({ code: 'PROJECT_NOT_FOUND', message: '项目不存在或已被删除。' });
+  }
+
+  private forbiddenProjectWorkspace() {
+    return new ForbiddenException({ code: 'FORBIDDEN_WORKSPACE', message: '无权访问其他工作区的项目。' });
+  }
+
+  private projectView(project: {
+    id: string;
+    name: string;
+    description: string | null;
+    metadata: unknown;
+    createdAt: Date;
+    updatedAt: Date;
+  }) {
+    const metadata = getProjectMetadata(project);
+    return {
+      id: project.id,
+      name: project.name,
+      description: project.description,
+      preset: metadata.preset,
+      metadata,
+      objective: metadata.objective,
+      audience: metadata.audience,
+      contentPillars: metadata.contentPillars,
+      sourceUrls: metadata.sourceUrls ?? [],
+      visualDefaults: metadata.visualDefaults,
+      publishChecklist: metadata.publishChecklist,
+      defaultFormat: metadata.defaultFormat,
+      safetyCopy: metadata.safetyCopy,
+      createdAt: project.createdAt.toISOString(),
+      updatedAt: project.updatedAt.toISOString()
+    };
+  }
+
+  private async findProjectForUser(userId: string, projectId: string) {
+    const state = await this.getWorkspaceScopedState(userId);
+    const project = await this.prisma.db.contentProject.findUnique({ where: { id: projectId } });
+    if (!project) throw this.projectNotFound();
+    if (project.workspaceId !== state.workspaceId) throw this.forbiddenProjectWorkspace();
+    return { state, project };
+  }
+
+  private async assertProjectLink(userId: string, workspaceId: string, projectId?: string | null) {
+    if (!projectId) return null;
+    const project = await this.prisma.db.contentProject.findUnique({ where: { id: projectId } });
+    if (!project) throw this.projectNotFound();
+    if (project.workspaceId !== workspaceId) throw this.forbiddenProjectWorkspace();
+    return project;
+  }
+
   private async getWorkspaceScopedState(userId: string) {
     const workspaceId = await this.workspaceContext.getDefaultWorkspaceId(userId);
     const [user, xAccounts, sources, style] = await Promise.all([
@@ -425,6 +488,130 @@ export class V3Service {
 
     const defaultXAccount = xAccounts.find((row) => row.isDefault) ?? xAccounts[0] ?? null;
     return { workspaceId, user, xAccounts, sources: sources as SourceRow[], style, defaultXAccount };
+  }
+
+  async listProjects(userId: string) {
+    const state = await this.getWorkspaceScopedState(userId);
+    const projects = await this.prisma.db.contentProject.findMany({
+      where: { workspaceId: state.workspaceId },
+      orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+      take: 50
+    });
+    return {
+      workspaceId: state.workspaceId,
+      projects: projects.map((project) => this.projectView(project))
+    };
+  }
+
+  async createProject(userId: string, input: V3CreateProjectDto) {
+    const state = await this.getWorkspaceScopedState(userId);
+    const preset = normalizeProjectPreset(input.preset);
+    const metadata = mergeProjectMetadata({ preset, metadata: input.metadata ?? null });
+    const project = await this.prisma.db.contentProject.create({
+      data: {
+        workspaceId: state.workspaceId,
+        name: input.name.trim(),
+        description: input.description?.trim() || null,
+        metadata: metadata as Prisma.InputJsonObject
+      }
+    });
+
+    await this.prisma.db.auditLog.create({
+      data: {
+        workspaceId: state.workspaceId,
+        userId,
+        action: 'CREATE',
+        resourceType: 'v3_project',
+        resourceId: project.id,
+        payload: { preset: metadata.preset, contentPillars: metadata.contentPillars }
+      }
+    });
+
+    return { project: this.projectView(project) };
+  }
+
+  async getProject(userId: string, projectId: string) {
+    const { state, project } = await this.findProjectForUser(userId, projectId);
+    const [recentRuns, draftCount] = await Promise.all([
+      this.prisma.db.generation.findMany({
+        where: { userId, workspaceId: state.workspaceId, contentProjectId: project.id },
+        include: { publishJobs: { select: { status: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: 10
+      }),
+      this.prisma.db.draft.count({ where: { workspaceId: state.workspaceId, contentProjectId: project.id } })
+    ]);
+    const summarizedRuns = recentRuns.map((run) => summarizeProjectRun(run));
+    return {
+      project: this.projectView(project),
+      recentRuns: summarizedRuns,
+      drafts: { count: draftCount },
+      assetsSummary: {
+        visualAssetCount: summarizedRuns.reduce((sum, run) => sum + run.visualAssetCount, 0),
+        bundleReadyCount: summarizedRuns.filter((run) => run.bundleReady).length
+      },
+      queueSummary: {
+        needsReview: summarizedRuns.filter((run) => run.publishPrepStatus === 'needs_review').length,
+        queued: summarizedRuns.filter((run) => run.publishPrepStatus === 'queued').length
+      }
+    };
+  }
+
+  async updateProject(userId: string, projectId: string, input: V3UpdateProjectDto) {
+    const { state, project } = await this.findProjectForUser(userId, projectId);
+    const currentMetadata = getProjectMetadata(project);
+    const metadata = input.metadata ? mergeProjectMetadata({ preset: currentMetadata.preset, metadata: { ...currentMetadata, ...input.metadata } }) : currentMetadata;
+    const updated = await this.prisma.db.contentProject.update({
+      where: { id: project.id },
+      data: {
+        name: input.name?.trim() || project.name,
+        description: input.description === undefined ? project.description : input.description?.trim() || null,
+        metadata: metadata as Prisma.InputJsonObject
+      }
+    });
+
+    await this.prisma.db.auditLog.create({
+      data: {
+        workspaceId: state.workspaceId,
+        userId,
+        action: 'UPDATE',
+        resourceType: 'v3_project',
+        resourceId: project.id,
+        payload: { changed: Object.keys(input) }
+      }
+    });
+
+    return { project: this.projectView(updated) };
+  }
+
+  async generateProjectRun(userId: string, projectId: string, input: V3ProjectGenerateDto) {
+    const { state, project } = await this.findProjectForUser(userId, projectId);
+    const metadata = getProjectMetadata(project);
+    const format = input.format ?? metadata.defaultFormat;
+    const visualRequest = input.visualRequest ?? metadata.visualDefaults;
+    const intent = buildProjectGenerationIntent({ project, userIntent: input.intent, sourceUrls: input.sourceUrls });
+    const result = await this.runChat(userId, {
+      intent,
+      format,
+      withImage: input.withImage ?? true,
+      xAccountId: input.xAccountId,
+      safeMode: input.safeMode ?? true,
+      visualRequest,
+      contentProjectId: project.id
+    });
+
+    await this.prisma.db.auditLog.create({
+      data: {
+        workspaceId: state.workspaceId,
+        userId,
+        action: 'CREATE',
+        resourceType: 'v3_project_generation',
+        resourceId: project.id,
+        payload: { runId: result.runId, format, sourceUrlCount: input.sourceUrls?.length ?? 0 }
+      }
+    });
+
+    return { ...result, projectId: project.id };
   }
 
   async bootstrapSession(userId: string) {
@@ -467,6 +654,7 @@ export class V3Service {
 
   async runChat(userId: string, input: V3RunChatDto) {
     const state = await this.getWorkspaceScopedState(userId);
+    await this.assertProjectLink(userId, state.workspaceId, input.contentProjectId ?? null);
     const styleSummary = extractStyleSummary(state.style?.analysisResult ?? null);
     const sourceEvidence = buildV3SourceEvidence(state.sources);
     const visualRequest = normalizeVisualRequest(input.visualRequest as VisualRequest | null, input.format);
@@ -484,7 +672,8 @@ export class V3Service {
       type: generationTypeFromFormat(input.format),
       language: 'zh',
       useStyle: true,
-      visualRequest
+      visualRequest,
+      contentProjectId: input.contentProjectId ?? undefined
     });
 
     await this.prisma.db.auditLog.create({
@@ -500,7 +689,8 @@ export class V3Service {
           withImage: input.withImage,
           xAccountId: input.xAccountId ?? null,
           safeMode: input.safeMode ?? true,
-          visualRequest
+          visualRequest,
+          contentProjectId: input.contentProjectId ?? null
         }
       }
     });
@@ -510,6 +700,7 @@ export class V3Service {
       stage: 'queued',
       nextAction: 'watch_generation',
       blockingReason: null,
+      projectId: input.contentProjectId ?? null,
       streamUrl: `/v3/chat/runs/${generationId}/stream`
     };
   }
@@ -584,6 +775,7 @@ export class V3Service {
 
     return {
       runId: generation.id,
+      contentProjectId: generation.contentProjectId ?? null,
       status: generation.status,
       format,
       result: pkg

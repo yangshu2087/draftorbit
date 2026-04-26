@@ -175,7 +175,7 @@ const billingPlans = {
 };
 
 type RunKind = 'tweet' | 'thread' | 'article' | 'diagram' | 'source-failed' | 'retryable-visual';
-type RunState = { runId: string; format: 'tweet' | 'thread' | 'article'; kind: RunKind; intent: string };
+type RunState = { runId: string; format: 'tweet' | 'thread' | 'article'; kind: RunKind; intent: string; contentProjectId?: string };
 
 type ApiResponse = Record<string, unknown> | string | Buffer;
 
@@ -266,6 +266,7 @@ function makeRunDetail(state: RunState, overrideReadyAsset = false) {
     return {
       requestId: `req_${runId}`,
       runId,
+      contentProjectId: state.contentProjectId ?? null,
       status: 'DONE',
       format,
       result: {
@@ -316,6 +317,7 @@ function makeRunDetail(state: RunState, overrideReadyAsset = false) {
   return {
     requestId: `req_${runId}`,
     runId,
+    contentProjectId: state.contentProjectId ?? null,
     status: 'DONE',
     format,
     result: {
@@ -402,6 +404,8 @@ function classifyRun(format: 'tweet' | 'thread' | 'article', intent: string, vis
 
 async function mockDraftOrbitApi(page: Page) {
   const runs = new Map<string, RunState>();
+  const projects: any[] = [];
+  const projectRunIds = new Map<string, string[]>();
   let runCounter = 0;
   for (const origin of new Set(['http://127.0.0.1:3300', 'http://127.0.0.1:3310', APP_ORIGIN])) {
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin });
@@ -448,6 +452,90 @@ async function mockDraftOrbitApi(page: Page) {
     }
     if (apiPath === '/v3/billing/checkout') {
       await fulfillJson(route, { url: 'https://checkout.example.test/session' });
+      return;
+    }
+    if (apiPath === '/v3/projects' && request.method() === 'GET') {
+      await fulfillJson(route, { requestId: 'req_projects_ci', workspaceId: 'workspace_ci', projects });
+      return;
+    }
+    if (apiPath === '/v3/projects' && request.method() === 'POST') {
+      const body = request.postDataJSON() as { name: string; description?: string; preset?: 'generic_x_ops' | 'skilltrust_x_ops' };
+      const preset = body.preset ?? 'generic_x_ops';
+      const isSkillTrust = preset === 'skilltrust_x_ops';
+      const project = {
+        id: `project_ci_${projects.length + 1}`,
+        name: body.name,
+        description: body.description ?? null,
+        preset,
+        metadata: {
+          preset,
+          objective: isSkillTrust ? '把 SkillTrust 做成中文 AI 用户安装 Agent skill 前的判断系统。' : '围绕一个项目持续产出可信的 X 内容。',
+          audience: isSkillTrust ? '中文 AI 用户与 Agent builders。' : '项目关注者与中文 X 用户。',
+          contentPillars: isSkillTrust ? ['审计演示', '风险教育', '工作流方法', '发布日志', '数据洞察'] : ['观点短推', '经验复盘', '产品更新'],
+          sourceUrls: [],
+          visualDefaults: { mode: isSkillTrust ? 'cards' : 'auto', style: isSkillTrust ? 'blueprint' : 'draftorbit', layout: isSkillTrust ? 'flow' : 'balanced', palette: 'draftorbit', aspect: '16:9', exportHtml: true },
+          publishChecklist: ['发布前必须人工确认', '不自动发帖', '无来源不编造最新事实']
+        },
+        objective: isSkillTrust ? '把 SkillTrust 做成中文 AI 用户安装 Agent skill 前的判断系统。' : '围绕一个项目持续产出可信的 X 内容。',
+        audience: isSkillTrust ? '中文 AI 用户与 Agent builders。' : '项目关注者与中文 X 用户。',
+        contentPillars: isSkillTrust ? ['审计演示', '风险教育', '工作流方法', '发布日志', '数据洞察'] : ['观点短推', '经验复盘', '产品更新'],
+        sourceUrls: [],
+        visualDefaults: { mode: isSkillTrust ? 'cards' : 'auto', style: isSkillTrust ? 'blueprint' : 'draftorbit', layout: isSkillTrust ? 'flow' : 'balanced', palette: 'draftorbit', aspect: '16:9', exportHtml: true },
+        publishChecklist: ['发布前必须人工确认', '不自动发帖', '无来源不编造最新事实'],
+        defaultFormat: 'thread',
+        safetyCopy: '发布前人工确认，不自动发帖。',
+        createdAt: '2026-04-25T09:00:00.000Z',
+        updatedAt: '2026-04-25T09:00:00.000Z'
+      };
+      projects.unshift(project);
+      projectRunIds.set(project.id, []);
+      await fulfillJson(route, { requestId: 'req_project_created_ci', project });
+      return;
+    }
+    const projectGenerateMatch = apiPath.match(/^\/v3\/projects\/([^/]+)\/generate$/u);
+    if (projectGenerateMatch && request.method() === 'POST') {
+      const projectId = projectGenerateMatch[1];
+      const body = request.postDataJSON() as { intent: string; format?: 'tweet' | 'thread' | 'article'; visualRequest?: { mode?: string } };
+      runCounter += 1;
+      const runId = `run_project_ci_${runCounter}`;
+      const format = body.format ?? 'thread';
+      runs.set(runId, { runId, format, kind: classifyRun(format, body.intent, body.visualRequest?.mode), intent: body.intent, contentProjectId: projectId });
+      projectRunIds.set(projectId, [runId, ...(projectRunIds.get(projectId) ?? [])]);
+      await fulfillJson(route, {
+        requestId: `req_${runId}`,
+        runId,
+        projectId,
+        stage: 'research',
+        nextAction: 'watch_generation',
+        blockingReason: null,
+        streamUrl: `${API_PREFIX}/v3/chat/runs/${runId}/stream`
+      });
+      return;
+    }
+    const projectDetailMatch = apiPath.match(/^\/v3\/projects\/([^/]+)$/u);
+    if (projectDetailMatch && request.method() === 'GET') {
+      const projectId = projectDetailMatch[1];
+      const project = projects.find((item) => item.id === projectId);
+      if (!project) {
+        await fulfillJson(route, { code: 'PROJECT_NOT_FOUND', message: '项目不存在' }, 404);
+        return;
+      }
+      const recentRuns = (projectRunIds.get(projectId) ?? []).map((runId) => {
+        const detail = makeRunDetail(runs.get(runId) ?? { runId, format: 'thread' as const, kind: 'thread' as const, intent: '' }) as any;
+        return {
+          runId,
+          status: 'DONE',
+          format: detail.format,
+          text: detail.result.text,
+          visualAssetCount: detail.result.visualAssets.length,
+          bundleReady: true,
+          qualityScore: 88,
+          publishPrepStatus: 'needs_review',
+          createdAt: '2026-04-25T09:05:00.000Z',
+          nextAction: 'confirm_publish'
+        };
+      });
+      await fulfillJson(route, { requestId: 'req_project_detail_ci', project, recentRuns, drafts: { count: 0 }, assetsSummary: { visualAssetCount: recentRuns.reduce((sum, run) => sum + run.visualAssetCount, 0), bundleReadyCount: recentRuns.length }, queueSummary: { needsReview: recentRuns.length, queued: 0 } });
       return;
     }
     if (apiPath === '/v4/studio/capabilities') {
@@ -732,6 +820,32 @@ test('app generation covers tweet and thread visual outputs with minimal page ch
       await runGenerationScenario(page, scenario);
     });
   }
+});
+
+test('project ops workbench creates SkillTrust preset and generates a linked thread with assets', async ({ page }) => {
+  await seedSession(page);
+  await page.goto('/app');
+  await expect(page.getByRole('link', { name: '项目运营工作台' })).toBeVisible();
+  await page.getByRole('link', { name: '项目运营工作台' }).click();
+
+  await expect(page).toHaveURL(/\/projects$/u);
+  await expect(page.getByRole('heading', { name: /按项目持续生成 X 线程和图文资产/u })).toBeVisible();
+  await expect(page.getByText('SkillTrust 推特/X 运营').first()).toBeVisible();
+
+  await page.locator('div').filter({ hasText: /^SkillTrustSkillTrust 推特\/X 运营/ }).getByRole('button', { name: /创建项目/u }).click();
+  await expect(page.locator('h2').filter({ hasText: 'SkillTrust 推特/X 运营' })).toBeVisible();
+  await expect(page.getByText('审计演示').first()).toBeVisible();
+  await expect(page.getByText('发布前必须人工确认').first()).toBeVisible();
+
+  await page.locator('textarea').fill('生成一组 SkillTrust 安装前审计 demo thread，强调不自动发帖。');
+  await page.getByRole('button', { name: /生成 thread \+ 图文资产/u }).click();
+
+  await expect(page.getByText(/项目内容已生成/u)).toBeVisible();
+  await expect(page.getByText('已关联到 SkillTrust 推特/X 运营')).toBeVisible();
+  await expect(page.getByText(/1\/4/u).first()).toBeVisible();
+  await expect(page.getByRole('link', { name: /下载 bundle/u })).toHaveAttribute('href', /token=ci-bundle/u);
+  await expect(page.getByRole('link', { name: /进入人工确认/u })).toHaveAttribute('href', /\/queue\?highlight=run_project_ci_/u);
+  await expect(page.getByText(/个视觉资产/u).first()).toBeVisible();
 });
 
 test('app generation covers article and diagram visual outputs with minimal page churn', async ({ page }) => {

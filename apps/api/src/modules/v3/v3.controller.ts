@@ -5,6 +5,7 @@ import {
   Inject,
   MessageEvent,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -25,11 +26,14 @@ import {
   V3ConnectObsidianDto,
   V3ConnectTargetDto,
   V3ConnectUrlsDto,
+  V3CreateProjectDto,
+  V3ProjectGenerateDto,
   V3PublishArticleCompleteDto,
   V3PublishConfirmDto,
   V3PublishPrepareDto,
   V3QueueQueryDto,
-  V3RunChatDto
+  V3RunChatDto,
+  V3UpdateProjectDto
 } from './v3.dto';
 import { V3Service } from './v3.service';
 
@@ -49,6 +53,42 @@ export class V3Controller {
   @UseGuards(AuthGuard)
   async bootstrap(@Req() req: RequestWithUser) {
     const result = await this.v3.bootstrapSession((req.user as AuthUser).userId);
+    return withRequestId(req, result);
+  }
+
+  @Get('projects')
+  @UseGuards(AuthGuard)
+  async listProjects(@Req() req: RequestWithUser) {
+    const result = await this.v3.listProjects((req.user as AuthUser).userId);
+    return withRequestId(req, result);
+  }
+
+  @Post('projects')
+  @UseGuards(AuthGuard)
+  async createProject(@Req() req: RequestWithUser, @Body() body: V3CreateProjectDto) {
+    const result = await this.v3.createProject((req.user as AuthUser).userId, body);
+    return withRequestId(req, result);
+  }
+
+  @Get('projects/:id')
+  @UseGuards(AuthGuard)
+  async getProject(@Req() req: RequestWithUser, @Param('id') id: string) {
+    const result = await this.v3.getProject((req.user as AuthUser).userId, id);
+    return withRequestId(req, result);
+  }
+
+  @Patch('projects/:id')
+  @UseGuards(AuthGuard)
+  async updateProject(@Req() req: RequestWithUser, @Param('id') id: string, @Body() body: V3UpdateProjectDto) {
+    const result = await this.v3.updateProject((req.user as AuthUser).userId, id, body);
+    return withRequestId(req, result);
+  }
+
+  @Post('projects/:id/generate')
+  @UseGuards(AuthGuard)
+  async generateProjectRun(@Req() req: RequestWithUser, @Param('id') id: string, @Body() body: V3ProjectGenerateDto) {
+    await this.subscriptionGuard.assertCanGenerate(req.user as AuthUser);
+    const result = await this.v3.generateProjectRun((req.user as AuthUser).userId, id, body);
     return withRequestId(req, result);
   }
 

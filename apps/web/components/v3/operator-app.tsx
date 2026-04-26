@@ -726,6 +726,11 @@ export default function OperatorApp() {
       eyebrow="生成器"
       title="你说一句话，DraftOrbit 帮你产出可发的 X 内容"
       description="写一句话即可。默认先生成，再由你决定是否发出去。"
+      actions={
+        <Button asChild variant="outline">
+          <Link href="/projects">项目运营工作台</Link>
+        </Button>
+      }
     >
       {entryNotice ? <SuccessNotice message={entryNotice} /> : null}
 

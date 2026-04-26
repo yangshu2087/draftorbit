@@ -1,5 +1,40 @@
 # Agent Handoff
 
+## Project ops workbench + SkillTrust preset (2026-04-25)
+
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio`
+- Branch: `codex/project-ops-workbench-skilltrust-preset`
+- Goal: keep the current satisfactory `/app` X thread / visual generation flow, and add a project-based operations layer for reusable context, presets, sources, visual defaults, publish checklists, and linked run history.
+- Architecture lane:
+  - Chosen: additive `/projects` workbench plus protected `/v3/projects*` APIs, reusing the existing V3 generation pipeline instead of rewriting V3/V4 generation.
+  - Tradeoff: faster and safer; project context is injected into existing `POST /v3/chat/run` through `contentProjectId` and enriched intent, while `/app` stays stable.
+  - Rollout: enable `/projects` as a signed-in nav entry and `/app` action; generic projects and SkillTrust preset are available immediately.
+  - Rollback: remove `/projects` route/nav and stop passing `contentProjectId`; existing `/app`, `/v3/chat/run`, queue, connect, and pricing continue to work.
+  - Risk: project generation can duplicate too much context in prompts; mitigated by compact preset metadata and tests that block provider/fallback/internal routing words from project intent.
+- Backend/API lane:
+  - New protected contract: `GET /v3/projects`, `POST /v3/projects`, `GET /v3/projects/:id`, `PATCH /v3/projects/:id`, `POST /v3/projects/:id/generate`.
+  - Existing `POST /v3/chat/run` now accepts optional `contentProjectId`; workspace ownership is checked before linking.
+  - Error semantics: `401 UNAUTHORIZED` without auth; `400 INVALID_PROJECT_REQUEST` for invalid preset; `403 FORBIDDEN_WORKSPACE` for workspace mismatch; `404 PROJECT_NOT_FOUND` for missing project.
+  - Permissions/data consistency: `ContentProject` remains workspace-scoped; `Generation.contentProjectId` links generated runs to projects; large visual artifacts remain in ignored artifact roots; project metadata only stores compact playbook/settings/checklists.
+  - Observability: audit logs are written for project create/update and project generation.
+- Frontend/UX lane:
+  - New route: `/projects` with generic and SkillTrust quick-start cards.
+  - `/app` now exposes `项目运营工作台` as a secondary action without disrupting one-off generation.
+  - Project detail shows objective, audience, content pillars, sources, visual defaults, publish checklist, recent linked runs, visual asset counts, bundle/export and queue/manual-confirm entry.
+  - State coverage: unauthenticated error, loading, empty projects, creating preset, selected project, generating, result, error/retry, hover/focus/disabled controls.
+- Verification in this pass:
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 db:generate` ✅
+  - `DATABASE_URL=postgresql://draftorbit:draftorbit@localhost:5433/draftorbit npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 db:push` ✅ local UAT schema sync
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/api test` ✅ `259/259`
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/api typecheck` ✅
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web typecheck` ✅
+  - `npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web test` ✅ node `36/36`, Playwright `6/6`, harness `9.21s`
+  - `NEXT_PUBLIC_API_URL=http://127.0.0.1:4311 npm_config_cache=/tmp/draftorbit-npm-cache npx pnpm@10.23.0 --filter @draftorbit/web build` ✅ `/projects` included
+  - API smoke: `/health` 200 ready; unauthenticated `/v3/projects` 401; authenticated project create/detail succeeded.
+  - Browser/visual: Playwright real browser opened `http://127.0.0.1:3400/projects`, verified `SkillTrust 推特/X 运营 UAT`, console errors `0`, screenshot `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/playwright/manual-check/project-ops-skilltrust-2026-04-25.png`.
+- Report:
+  - `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/reports/uat-full/PROJECT-OPS-WORKBENCH-UAT-2026-04-25.md`
+
 ## Simple login home polish (2026-04-25)
 
 - Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio`

@@ -100,6 +100,7 @@ export type UsageSummaryResponse = {
 export type V3RunStartResponse = {
   requestId?: string;
   runId: string;
+  projectId?: string | null;
   stage: string;
   nextAction: string;
   blockingReason: string | null;
@@ -109,6 +110,7 @@ export type V3RunStartResponse = {
 export type V3RunResponse = {
   requestId?: string;
   runId: string;
+  contentProjectId?: string | null;
   status: string;
   format: V3Format;
   result: {
@@ -351,8 +353,99 @@ export async function runChat(input: {
   xAccountId?: string;
   safeMode?: boolean;
   visualRequest?: V3VisualRequest;
+  contentProjectId?: string;
 }) {
   return apiFetch<V3RunStartResponse>('/v3/chat/run', {
+    method: 'POST',
+    body: JSON.stringify(input)
+  });
+}
+
+export type V3ProjectPreset = 'generic_x_ops' | 'skilltrust_x_ops';
+
+export type V3ProjectView = {
+  id: string;
+  name: string;
+  description: string | null;
+  preset: V3ProjectPreset;
+  metadata: Record<string, unknown>;
+  objective: string;
+  audience: string;
+  contentPillars: string[];
+  sourceUrls: string[];
+  visualDefaults: V3VisualRequest;
+  publishChecklist: string[];
+  defaultFormat: V3Format;
+  safetyCopy: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type V3ProjectRunSummary = {
+  runId: string;
+  status: string;
+  format: V3Format;
+  text: string | null;
+  visualAssetCount: number;
+  bundleReady: boolean;
+  qualityScore: number | null;
+  publishPrepStatus: 'needs_review' | 'queued';
+  createdAt: string;
+  nextAction: string;
+};
+
+export type V3ProjectsResponse = {
+  requestId?: string;
+  workspaceId: string;
+  projects: V3ProjectView[];
+};
+
+export type V3ProjectDetailResponse = {
+  requestId?: string;
+  project: V3ProjectView;
+  recentRuns: V3ProjectRunSummary[];
+  drafts: { count: number };
+  assetsSummary: { visualAssetCount: number; bundleReadyCount: number };
+  queueSummary: { needsReview: number; queued: number };
+};
+
+export async function fetchProjects() {
+  return apiFetch<V3ProjectsResponse>('/v3/projects');
+}
+
+export async function createProject(input: {
+  name: string;
+  description?: string;
+  preset?: V3ProjectPreset;
+  metadata?: Record<string, unknown>;
+}) {
+  return apiFetch<{ requestId?: string; project: V3ProjectView }>('/v3/projects', {
+    method: 'POST',
+    body: JSON.stringify(input)
+  });
+}
+
+export async function fetchProject(projectId: string) {
+  return apiFetch<V3ProjectDetailResponse>(`/v3/projects/${encodeURIComponent(projectId)}`);
+}
+
+export async function updateProject(projectId: string, input: { name?: string; description?: string; metadata?: Record<string, unknown> }) {
+  return apiFetch<{ requestId?: string; project: V3ProjectView }>(`/v3/projects/${encodeURIComponent(projectId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input)
+  });
+}
+
+export async function generateProjectRun(projectId: string, input: {
+  intent: string;
+  format?: V3Format;
+  withImage?: boolean;
+  xAccountId?: string;
+  safeMode?: boolean;
+  visualRequest?: V3VisualRequest;
+  sourceUrls?: string[];
+}) {
+  return apiFetch<V3RunStartResponse & { projectId: string }>(`/v3/projects/${encodeURIComponent(projectId)}/generate`, {
     method: 'POST',
     body: JSON.stringify(input)
   });

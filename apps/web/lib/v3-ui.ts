@@ -17,7 +17,10 @@ type ShellNavInput = {
   publicMode: boolean;
 };
 
-const SIGNED_IN_NAV: ShellNavItem[] = [{ href: '/app', label: '生成器' }];
+const SIGNED_IN_NAV: ShellNavItem[] = [
+  { href: '/app', label: '生成器' },
+  { href: '/projects', label: '项目' }
+];
 
 const TASK_PANEL_META: Record<string, TaskPanelMeta> = {
   connect_x_self: {

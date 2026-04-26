@@ -72,6 +72,76 @@ export class V3RunChatDto {
   @ValidateNested()
   @Type(() => V3VisualRequestDto)
   visualRequest?: V3VisualRequestDto;
+
+  @IsOptional()
+  @IsString()
+  contentProjectId?: string;
+}
+
+export class V3CreateProjectDto {
+  @IsString()
+  @MinLength(1)
+  name!: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsIn(['generic_x_ops', 'skilltrust_x_ops'])
+  preset?: 'generic_x_ops' | 'skilltrust_x_ops';
+
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, unknown>;
+}
+
+export class V3UpdateProjectDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, unknown>;
+}
+
+export class V3ProjectGenerateDto {
+  @IsString()
+  @MinLength(1)
+  intent!: string;
+
+  @IsOptional()
+  @IsIn(['tweet', 'thread', 'article'])
+  format?: 'tweet' | 'thread' | 'article';
+
+  @IsOptional()
+  @IsBoolean()
+  withImage?: boolean;
+
+  @IsOptional()
+  @IsString()
+  xAccountId?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  safeMode?: boolean;
+
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => V3VisualRequestDto)
+  visualRequest?: V3VisualRequestDto;
+
+  @IsOptional()
+  @IsArray()
+  @IsUrl(undefined, { each: true })
+  sourceUrls?: string[];
 }
 
 export class V3ConnectTargetDto {
