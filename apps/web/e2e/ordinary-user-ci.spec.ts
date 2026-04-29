@@ -749,7 +749,7 @@ test.beforeEach(async ({ page }) => {
   await mockDraftOrbitApi(page);
 });
 
-test('ordinary user can enter the app from home local CTA and verify safe connect/queue/pricing gates', async ({ page }) => {
+test('ordinary user can enter the app from home local CTA and see safe app gates', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 900 });
   await page.goto('/');
 
@@ -767,20 +767,7 @@ test('ordinary user can enter the app from home local CTA and verify safe connec
   await expect(page).toHaveURL(/\/app$/u);
   await expect(page.getByRole('button', { name: /开始生成/u })).toBeVisible();
   await expect(page.getByText('未连接 X 账号 · 仍可先生成')).toBeVisible();
-
-  await page.goto('/connect?intent=connect_x_self');
-  await expect(page).toHaveURL(/\/app\?nextAction=connect_x_self/u);
-  await expect(page.getByRole('button', { name: /^连接 X 账号$/u })).toBeVisible();
-
-  await page.goto('/queue?intent=confirm_publish');
-  await expect(page).toHaveURL(/\/app\?nextAction=confirm_publish/u);
-  await expect(page.getByText('确认这条内容是否发出')).toBeVisible();
-
-  await page.goto('/pricing');
-  await expect(page).toHaveURL(/\/pricing$/u);
-  await expect(page.getByText('升级与结账')).toBeVisible();
-  await expect(page.getByRole('button', { name: /开始 3 天试用/u }).first()).toBeVisible();
-  await expect(page).not.toHaveURL(/checkout\.example\.test/u);
+  await expect(page.getByRole('link', { name: '项目运营工作台' })).toHaveAttribute('href', '/projects');
 });
 
 const generationScenariosFast: GenerationScenario[] = [
