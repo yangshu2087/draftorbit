@@ -4,6 +4,7 @@ import {
   buildV3SuggestedAction,
   buildV3PromptEnvelope,
   buildV3SourceEvidence,
+  buildV3OperationSummary,
   mapGenerationStepToV3Stage,
   resolveV3PublishGuard
 } from '../src/modules/v3/v3.helpers';
@@ -145,4 +146,53 @@ test('asset access tokens are run/asset scoped and expire', () => {
     verifyAssetAccessToken({ token, runId: 'run_1', assetId: '01-cover', secret, nowMs: 1_700_000_061_000 }),
     false
   );
+});
+
+test('buildV3OperationSummary turns a ready sourced run into user-facing next actions', () => {
+  const summary = buildV3OperationSummary({
+    format: 'tweet',
+    hasConnectedX: false,
+    contentProjectId: 'project_1',
+    sourceArtifacts: [
+      { kind: 'url', status: 'ready', title: 'Example Domain', url: 'https://example.com/' }
+    ],
+    qualityGate: { status: 'passed', safeToDisplay: true, hardFails: [], sourceRequired: true, sourceStatus: 'ready', judgeNotes: [] },
+    visualAssets: [{ status: 'ready', assetPath: '/tmp/cover.svg' }],
+    visualAssetsBundleUrl: '/v3/chat/runs/run_1/assets.zip',
+    publishJobs: []
+  });
+
+  assert.equal(summary.dataSources[0]?.kind, 'url');
+  assert.equal(summary.dataSources[0]?.status, 'ready');
+  assert.equal(summary.governance.sourceStatus, 'ready');
+  assert.equal(summary.governance.qualityStatus, 'passed');
+  assert.equal(summary.assets.ready, 1);
+  assert.equal(summary.assets.bundleReady, true);
+  assert.deepEqual(summary.workflow.nextActions, ['copy_markdown', 'download_bundle', 'prepare_publish', 'open_project', 'connect_x']);
+  assert.doesNotMatch(JSON.stringify(summary), /provider|prompt|stderr|codex|ollama/i);
+});
+
+test('buildV3OperationSummary keeps source gaps and visual failures recoverable', () => {
+  const summary = buildV3OperationSummary({
+    format: 'thread',
+    hasConnectedX: true,
+    qualityGate: {
+      status: 'failed',
+      safeToDisplay: false,
+      sourceRequired: true,
+      sourceStatus: 'not_configured',
+      hardFails: ['fresh_source_required', 'visual_asset_missing'],
+      visualHardFails: ['visual_asset_missing'],
+      userMessage: '需要可靠来源。',
+      judgeNotes: []
+    },
+    visualAssets: [{ status: 'failed' }],
+    publishJobs: [{ status: 'PENDING' }]
+  });
+
+  assert.equal(summary.dataSources[0]?.status, 'missing');
+  assert.equal(summary.governance.sourceStatus, 'required');
+  assert.equal(summary.governance.qualityStatus, 'blocked');
+  assert.equal(summary.workflow.queueStatus, 'pending_confirm');
+  assert.deepEqual(summary.workflow.nextActions, ['add_source', 'retry_visual_assets']);
 });

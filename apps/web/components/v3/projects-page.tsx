@@ -7,8 +7,10 @@ import { getToken } from '../../lib/api';
 import { fetchRunStream, type V3StreamEvent } from '../../lib/sse-stream';
 import { hydrateRunDetailUntilReady, shouldHydrateRunDetail } from '../../lib/v3-run-hydration';
 import {
+  buildOperationHubCards,
   buildRunAssetsZipUrl,
   buildVisualAssetCards,
+  formatOperationNextAction,
   normalizeVisualAssetUrl
 } from '../../lib/v3-result-preview';
 import { normalizeResultText } from '../../lib/v3-result-copy';
@@ -126,6 +128,52 @@ export default function ProjectsPage() {
   const selectedProject = detail?.project ?? projects.find((project) => project.id === selectedId) ?? null;
   const summary = useMemo(() => summarizeProjectMetadata(selectedProject?.metadata), [selectedProject?.metadata]);
   const visualCards = useMemo(() => buildVisualAssetCards(activeRun?.result?.visualAssets ?? []), [activeRun?.result?.visualAssets]);
+  const operationHubCards = useMemo(
+    () => buildOperationHubCards(activeRun?.result?.operationSummary ?? null),
+    [activeRun?.result?.operationSummary]
+  );
+  const operationNextActions = useMemo(
+    () => (activeRun?.result?.operationSummary?.workflow.nextActions ?? []).map(formatOperationNextAction),
+    [activeRun?.result?.operationSummary?.workflow.nextActions]
+  );
+  const projectHubCards = useMemo(
+    () =>
+      operationHubCards.length
+        ? operationHubCards
+        : [
+            {
+              title: '数据源',
+              value: summary.sources.length ? `${summary.sources.length} 个固定来源` : '按需补来源',
+              description: summary.sources.length ? summary.sources.slice(0, 2).join(' / ') : '涉及最新事实时会要求粘贴 URL，不编造。',
+              tone: summary.sources.length ? 'ready' : 'neutral'
+            },
+            {
+              title: '项目上下文',
+              value: selectedProject ? '已加载' : '待选择',
+              description: selectedProject ? `${summary.audience} · ${summary.pillars.slice(0, 2).join(' / ')}` : '选择项目后注入目标、受众和内容支柱。',
+              tone: selectedProject ? 'ready' : 'neutral'
+            },
+            {
+              title: '智能生成',
+              value: activeRun?.result ? '本轮已完成' : runLoading ? '生成中' : '待启动',
+              description: activeRun?.result ? '已完成策略、正文、视觉规划和发布前检查。' : '点击生成后后台完成推理链路。',
+              tone: activeRun?.result ? 'ready' : runLoading ? 'warning' : 'neutral'
+            },
+            {
+              title: '工作流',
+              value: '人工确认',
+              description: '可复制、下载 bundle，或进入发布队列人工确认。',
+              tone: 'neutral'
+            },
+            {
+              title: '监控',
+              value: detail?.recentRuns.length ? `${detail.recentRuns.length} 条记录` : '暂无记录',
+              description: '最近生成、视觉资产数和发布准备状态会保留在项目里。',
+              tone: detail?.recentRuns.length ? 'ready' : 'neutral'
+            }
+          ],
+    [activeRun?.result, detail?.recentRuns.length, operationHubCards, runLoading, selectedProject, summary.audience, summary.pillars, summary.sources]
+  );
   const bundleUrl = useMemo(() => {
     if (!activeRun?.runId) return null;
     return activeRun.result?.visualAssetsBundleUrl
@@ -345,6 +393,46 @@ export default function ProjectsPage() {
                     </div>
                   </div>
                 </div>
+
+                <section
+                  data-testid="project-operation-hub"
+                  className="rounded-[32px] border border-slate-200 bg-white/90 p-6 shadow-sm"
+                >
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">全景中枢概览</p>
+                      <h3 className="mt-2 text-xl font-semibold text-slate-950">从数据源到人工确认，一眼看清本项目链路</h3>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">
+                        这里把项目上下文、来源治理、智能生成、图文资产和队列状态合成运营摘要；普通用户无需理解模型路由细节。
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 lg:max-w-sm lg:justify-end">
+                      {(operationNextActions.length ? operationNextActions : ['生成本轮内容', '下载图文包', '进入人工确认']).slice(0, 4).map((label) => (
+                        <span key={label} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                    {projectHubCards.map((card) => (
+                      <div
+                        key={card.title}
+                        className={cn(
+                          'rounded-2xl border p-4',
+                          card.tone === 'ready' && 'border-emerald-200 bg-emerald-50 text-emerald-900',
+                          card.tone === 'warning' && 'border-amber-200 bg-amber-50 text-amber-900',
+                          card.tone === 'blocked' && 'border-red-200 bg-red-50 text-red-800',
+                          card.tone === 'neutral' && 'border-slate-200 bg-slate-50 text-slate-700'
+                        )}
+                      >
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] opacity-70">{card.title}</p>
+                        <p className="mt-2 text-sm font-semibold">{card.value}</p>
+                        <p className="mt-1 line-clamp-3 text-xs leading-5 opacity-80">{card.description}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
 
                 <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
                   <div className="rounded-[32px] border border-slate-200 bg-white/90 p-6 shadow-sm">

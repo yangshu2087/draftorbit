@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import {
   buildArticlePreview,
   buildFreshSourceInputHint,
+  buildOperationHubCards,
   buildPrimaryResultHighlights,
   buildPrimarySourceEvidenceCard,
   buildQualityFailureView,
@@ -19,6 +20,7 @@ import {
   buildThreadPreview,
   buildVisualAnchorTags,
   buildVisualAssetCards,
+  formatOperationNextAction,
   formatVisualAssetLabel
 } from '../lib/v3-result-preview';
 import type { V3RunResponse } from '../lib/queries';
@@ -89,6 +91,86 @@ test('buildPrimaryResultHighlights surfaces the strongest quality signals for th
   assert.equal(highlights.length, 3);
   assert.match(highlights[0] ?? '', /(开头有抓手|证据更清楚|场景更具体)/u);
   assert.ok(highlights.every((item) => !/\d/u.test(item)), 'ordinary users should not see raw quality scores');
+});
+
+test('buildOperationHubCards turns operation summary into user-facing panoramic status cards', () => {
+  const cards = buildOperationHubCards({
+    dataSources: [
+      { kind: 'url', status: 'ready', label: 'Example source' }
+    ],
+    governance: {
+      sourceStatus: 'ready',
+      qualityStatus: 'passed',
+      hardFails: [],
+      userMessage: '来源、质量门和发布前检查已完成。'
+    },
+    intelligence: {
+      stage: 'done',
+      userFacingSummary: '智能中枢已完成内容策略、正文整理、视觉规划和发布前检查。'
+    },
+    workflow: {
+      publishMode: 'manual_confirm',
+      queueStatus: 'not_queued',
+      nextActions: ['copy_markdown', 'download_bundle', 'prepare_publish']
+    },
+    assets: {
+      ready: 2,
+      failed: 0,
+      bundleReady: true
+    }
+  });
+
+  assert.deepEqual(cards.map((card) => card.title), ['数据源', '治理', '智能中枢', '工作流', '图文资产']);
+  assert.equal(cards[0]?.value, '1 个已采用');
+  assert.equal(cards[1]?.value, '质量门通过');
+  assert.match(cards[3]?.description ?? '', /复制 Markdown|下载图文包|准备发布/u);
+  assert.equal(cards[4]?.tone, 'ready');
+  assert.doesNotMatch(JSON.stringify(cards), /provider|stderr|prompt|codex|ollama|routing/iu);
+});
+
+test('buildOperationHubCards keeps missing source and visual retry states recoverable', () => {
+  const cards = buildOperationHubCards({
+    dataSources: [
+      { kind: 'manual', status: 'missing', label: '需要补充可靠来源' }
+    ],
+    governance: {
+      sourceStatus: 'required',
+      qualityStatus: 'blocked',
+      hardFails: ['fresh_source_required', 'visual_asset_missing'],
+      userMessage: '需要可靠来源，不能编造最新事实。'
+    },
+    intelligence: {
+      stage: 'generation',
+      userFacingSummary: '智能中枢已拦截未达标结果，并给出下一步恢复动作。'
+    },
+    workflow: {
+      publishMode: 'manual_confirm',
+      queueStatus: 'pending_confirm',
+      nextActions: ['add_source', 'retry_visual_assets']
+    },
+    assets: {
+      ready: 0,
+      failed: 1,
+      bundleReady: false
+    }
+  });
+
+  assert.equal(cards[0]?.value, '待补来源');
+  assert.equal(cards[0]?.tone, 'blocked');
+  assert.equal(cards[1]?.value, '已拦截坏稿');
+  assert.match(cards[3]?.description ?? '', /补充来源|重试图文资产/u);
+  assert.equal(cards[4]?.value, '待重试');
+});
+
+test('formatOperationNextAction keeps workflow actions stable for app and project views', () => {
+  assert.equal(formatOperationNextAction('add_source'), '补充来源');
+  assert.equal(formatOperationNextAction('rewrite_from_source'), '基于来源重写');
+  assert.equal(formatOperationNextAction('retry_visual_assets'), '重试图文资产');
+  assert.equal(formatOperationNextAction('copy_markdown'), '复制 Markdown');
+  assert.equal(formatOperationNextAction('download_bundle'), '下载图文包');
+  assert.equal(formatOperationNextAction('prepare_publish'), '准备发布');
+  assert.equal(formatOperationNextAction('open_project'), '打开项目');
+  assert.equal(formatOperationNextAction('connect_x'), '连接 X');
 });
 
 test('visual asset helpers prefer human-readable visual anchors over noisy keyword piles', () => {
@@ -438,6 +520,18 @@ test('sourceReadyStageSummary stays module-scoped to avoid stale useMemo depende
   assert.ok(summaryIndex > 0, 'sourceReadyStageSummary must exist');
   assert.ok(componentIndex > 0, 'OperatorApp component must exist');
   assert.ok(summaryIndex < componentIndex, 'sourceReadyStageSummary should stay outside OperatorApp render scope');
+});
+
+test('Operator and project pages expose operation hub summaries without debug/provider copy', () => {
+  const operatorSource = readFileSync(join(webRoot, 'components/v3/operator-app.tsx'), 'utf8');
+  const projectsSource = readFileSync(join(webRoot, 'components/v3/projects-page.tsx'), 'utf8');
+
+  assert.match(operatorSource, /operation-hub-overview/u);
+  assert.match(operatorSource, /智能中枢概览/u);
+  assert.match(operatorSource, /结果已生成，查看下方结果/u);
+  assert.match(projectsSource, /project-operation-hub/u);
+  assert.match(projectsSource, /全景中枢概览/u);
+  assert.match(`${operatorSource}\n${projectsSource}`, /不暴露模型路由|无需理解模型路由细节/u);
 });
 
 test('HomePage ordinary auth CTAs expose X and local testing but not Google login', () => {

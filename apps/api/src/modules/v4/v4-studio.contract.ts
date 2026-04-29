@@ -1,4 +1,5 @@
 import type { V3RunChatDto } from '../v3/v3.dto';
+import type { V3OperationSummary } from '../v3/v3.helpers';
 import { normalizeVisualRequest, type VisualRequest, type VisualRequestMode } from '../generate/visual-request';
 
 export const V4_STUDIO_FORMATS = ['tweet', 'thread', 'article', 'diagram', 'social_pack'] as const;
@@ -78,6 +79,7 @@ export type V4StudioPreview = {
   textResult: { format: V4StudioFormat | 'tweet' | 'thread' | 'article'; content: string; variants: unknown[] };
   visualAssets: V4VisualAssetPreview[];
   sourceArtifacts: unknown[];
+  operationSummary?: V3OperationSummary;
   qualityGate: {
     status: 'passed' | 'failed' | 'unknown';
     safeToDisplay: boolean;
@@ -253,6 +255,7 @@ export function buildV4PreviewFromV3Run(v3Run: {
       visualAssets?: Array<Record<string, unknown>>;
       visualAssetsBundleUrl?: string | null;
       sourceArtifacts?: unknown[];
+      operationSummary?: V3OperationSummary;
       qualityGate?: { status?: string; safeToDisplay?: boolean; hardFails?: string[] } | null;
       usage?: unknown[];
   };
@@ -284,6 +287,7 @@ export function buildV4PreviewFromV3Run(v3Run: {
       provenanceLabel: v4ProviderLabel(typeof asset.provider === 'string' ? asset.provider : null)
     })),
     sourceArtifacts: v3Run.result?.sourceArtifacts ?? [],
+    operationSummary: v3Run.result?.operationSummary,
     qualityGate: {
       status: gate?.status === 'failed' ? 'failed' : gate?.status === 'passed' ? 'passed' : 'unknown',
       safeToDisplay: gate?.safeToDisplay !== false,

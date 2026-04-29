@@ -1,4 +1,4 @@
-import type { V3Format, V3RunResponse } from './queries';
+import type { OperationNextAction, OperationSummary, V3Format, V3RunResponse } from './queries';
 import { API_BASE_URL } from './api';
 
 export type ThreadPreviewItem = {
@@ -62,6 +62,13 @@ export type SourceEvidenceArtifact = {
   error?: string;
 };
 
+export type OperationHubCard = {
+  title: string;
+  value: string;
+  description: string;
+  tone: 'ready' | 'warning' | 'blocked' | 'neutral';
+};
+
 const SOURCE_HARD_FAILS = new Set([
   'fresh_source_required',
   'source_not_configured',
@@ -74,6 +81,93 @@ const FRESH_SOURCE_HINT_PATTERN =
   /(?:最新|今天|刚刚|近期|昨天|昨日|新闻|融资|\blatest\b|\bcurrent\b|\bbreaking\b|\btoday\b|\byesterday\b|实时(?:价格|新闻)|价格(?:调整|上涨|下调|变化|变动)|涨价|降价)/iu;
 const NEGATED_FRESHNESS_HINT_PATTERN = /(?:不要|不用|无需|不需要|不依赖|非).{0,8}(?:最新|实时|新闻|融资|价格|联网|外部数据)/u;
 const SOURCE_URL_LINE_LABEL = '来源 URL：';
+
+function countByStatus(summary: OperationSummary | null | undefined, status: OperationSummary['dataSources'][number]['status']) {
+  return summary?.dataSources.filter((source) => source.status === status).length ?? 0;
+}
+
+export function formatOperationNextAction(action: OperationNextAction): string {
+  switch (action) {
+    case 'add_source':
+      return '补充来源';
+    case 'rewrite_from_source':
+      return '基于来源重写';
+    case 'retry_visual_assets':
+      return '重试图文资产';
+    case 'copy_markdown':
+      return '复制 Markdown';
+    case 'download_bundle':
+      return '下载图文包';
+    case 'prepare_publish':
+      return '准备发布';
+    case 'open_project':
+      return '打开项目';
+    case 'connect_x':
+      return '连接 X';
+    default:
+      return '下一步';
+  }
+}
+
+export function buildOperationHubCards(summary?: OperationSummary | null): OperationHubCard[] {
+  if (!summary) return [];
+
+  const readySources = countByStatus(summary, 'ready');
+  const missingSources = countByStatus(summary, 'missing') + countByStatus(summary, 'failed');
+  const qualityTone =
+    summary.governance.qualityStatus === 'blocked'
+      ? 'blocked'
+      : summary.governance.qualityStatus === 'warning'
+        ? 'warning'
+        : 'ready';
+  const sourceTone =
+    summary.governance.sourceStatus === 'required' || summary.governance.sourceStatus === 'failed'
+      ? 'blocked'
+      : readySources > 0
+        ? 'ready'
+        : 'neutral';
+  const assetTone = summary.assets.failed > 0 ? 'warning' : summary.assets.ready > 0 || summary.assets.bundleReady ? 'ready' : 'neutral';
+  const queueCopy: Record<OperationSummary['workflow']['queueStatus'], string> = {
+    not_queued: '待人工确认',
+    pending_confirm: '待确认',
+    queued: '已入队'
+  };
+
+  return [
+    {
+      title: '数据源',
+      value: readySources > 0 ? `${readySources} 个已采用` : missingSources > 0 ? '待补来源' : '无需外部来源',
+      description: summary.dataSources.map((source) => source.label).slice(0, 2).join(' / '),
+      tone: sourceTone
+    },
+    {
+      title: '治理',
+      value: summary.governance.qualityStatus === 'passed' ? '质量门通过' : summary.governance.qualityStatus === 'warning' ? '需人工留意' : '已拦截坏稿',
+      description: summary.governance.userMessage,
+      tone: qualityTone
+    },
+    {
+      title: '智能中枢',
+      value: summary.intelligence.stage === 'done' ? '已完成编排' : summary.intelligence.stage === 'repair' ? '正在修复' : '已规划下一步',
+      description: summary.intelligence.userFacingSummary,
+      tone: summary.intelligence.stage === 'repair' ? 'warning' : 'neutral'
+    },
+    {
+      title: '工作流',
+      value: queueCopy[summary.workflow.queueStatus],
+      description: summary.workflow.nextActions.length
+        ? `下一步：${summary.workflow.nextActions.map(formatOperationNextAction).slice(0, 3).join('、')}`
+        : '等待下一次生成或人工确认。',
+      tone: summary.workflow.queueStatus === 'queued' ? 'ready' : 'neutral'
+    },
+    {
+      title: '图文资产',
+      value: summary.assets.ready > 0 ? `${summary.assets.ready} 个 ready` : summary.assets.failed > 0 ? '待重试' : '待生成',
+      description: summary.assets.bundleReady ? '导出包已准备好，可以下载归档。' : summary.assets.failed > 0 ? `${summary.assets.failed} 个资产需要重试。` : '生成通过后会展示 SVG / Markdown / HTML。',
+      tone: assetTone
+    }
+  ];
+}
 
 export function buildSourceUrlLinePrompt(intent: string): string {
   const trimmed = intent.trim();

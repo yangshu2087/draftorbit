@@ -23,7 +23,7 @@ import { HistoryService } from '../history/history.service';
 import { LearningSourcesService } from '../learning-sources/learning-sources.service';
 import { PublishService } from '../publish/publish.service';
 import { XAccountsService } from '../x-accounts/x-accounts.service';
-import { buildV3SuggestedAction, normalizeXArticleUrl, resolveXArticlePublishCapability } from './v3.helpers';
+import { buildV3OperationSummary, buildV3SuggestedAction, normalizeXArticleUrl, resolveXArticlePublishCapability } from './v3.helpers';
 import {
   buildProjectGenerationIntent,
   getProjectMetadata,
@@ -824,7 +824,20 @@ export class V3Service {
                 .map((artifact) => artifact.title || artifact.url || artifact.kind)
                 .filter(Boolean)
             ],
-            stepLatencyMs: pkg.stepLatencyMs ?? null
+            stepLatencyMs: pkg.stepLatencyMs ?? null,
+            operationSummary: buildV3OperationSummary({
+              format,
+              sources: state.sources,
+              sourceArtifacts: pkg.sourceArtifacts ?? [],
+              qualityGate: pkg.qualityGate ?? null,
+              visualAssets: pkg.visualAssets ?? [],
+              visualAssetsBundleUrl: (pkg.visualAssets ?? []).some((asset) => asset.status === 'ready' && asset.assetPath)
+                ? this.buildSignedZipPath(generation.id)
+                : null,
+              publishJobs: generation.publishJobs,
+              contentProjectId: generation.contentProjectId ?? null,
+              hasConnectedX: Boolean(state.defaultXAccount)
+            })
           }
         : null,
       publish: generation.publishJobs.map((job) => ({

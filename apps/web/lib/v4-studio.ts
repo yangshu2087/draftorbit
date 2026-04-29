@@ -4,7 +4,8 @@ import type {
   VisualRequestLayout,
   VisualRequestMode,
   VisualRequestPalette,
-  VisualRequestStyle
+  VisualRequestStyle,
+  OperationSummary
 } from './queries';
 import type { V3StreamEvent } from './sse-stream';
 
@@ -84,6 +85,7 @@ export type V4StudioPreviewContract = {
     provenanceLabel?: string;
   }>;
   sourceArtifacts: unknown[];
+  operationSummary?: OperationSummary;
   qualityGate: { status: 'passed' | 'failed' | 'unknown'; safeToDisplay: boolean; hardFails: string[] };
   publishPreparation: { mode: string; label: string; canAutoPost: boolean };
   usageEvidence: { primaryProvider: string; model?: string | null; fallbackDepth?: number };

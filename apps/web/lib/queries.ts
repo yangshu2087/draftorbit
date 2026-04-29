@@ -107,6 +107,44 @@ export type V3RunStartResponse = {
   streamUrl: string;
 };
 
+export type OperationNextAction =
+  | 'add_source'
+  | 'rewrite_from_source'
+  | 'retry_visual_assets'
+  | 'copy_markdown'
+  | 'download_bundle'
+  | 'prepare_publish'
+  | 'open_project'
+  | 'connect_x';
+
+export type OperationSummary = {
+  dataSources: Array<{
+    kind: 'url' | 'x' | 'local_file' | 'search' | 'manual';
+    status: 'ready' | 'missing' | 'failed' | 'skipped';
+    label: string;
+  }>;
+  governance: {
+    sourceStatus: 'ready' | 'required' | 'failed' | 'not_required';
+    qualityStatus: 'passed' | 'blocked' | 'warning';
+    hardFails: string[];
+    userMessage: string;
+  };
+  intelligence: {
+    stage: 'strategy' | 'generation' | 'visual_planning' | 'repair' | 'done';
+    userFacingSummary: string;
+  };
+  workflow: {
+    publishMode: 'manual_confirm';
+    queueStatus: 'not_queued' | 'pending_confirm' | 'queued';
+    nextActions: OperationNextAction[];
+  };
+  assets: {
+    ready: number;
+    failed: number;
+    bundleReady: boolean;
+  };
+};
+
 export type V3RunResponse = {
   requestId?: string;
   runId: string;
@@ -221,6 +259,7 @@ export type V3RunResponse = {
     whySummary: string[];
     evidenceSummary: string[];
     stepLatencyMs?: Record<string, number> | null;
+    operationSummary?: OperationSummary;
   } | null;
   publish: Array<{
     id: string;
