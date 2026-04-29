@@ -18,7 +18,7 @@ const warmupPaths = (process.env.WEB_PLAYWRIGHT_WARMUP_PATHS ?? '/,/app,/pricing
   .split(',')
   .map((item) => item.trim())
   .filter(Boolean);
-const defaultPlaywrightWorkers = process.env.WEB_PLAYWRIGHT_WORKERS ?? (isCi ? '4' : '2');
+const defaultPlaywrightWorkers = process.env.WEB_PLAYWRIGHT_WORKERS ?? '2';
 const defaultFullyParallel = process.env.WEB_PLAYWRIGHT_FULLY_PARALLEL ?? '1';
 
 const timings = [];
