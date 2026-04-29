@@ -813,13 +813,14 @@ const generationScenariosRich: GenerationScenario[] = [
   }
 ];
 
-test('app generation covers tweet and thread visual outputs with minimal page churn', async ({ page }) => {
+test('app generation covers tweet cover output with minimal page churn', async ({ page }) => {
   await openApp(page, { assertRoutingPanelHidden: true });
-  for (const scenario of generationScenariosFast) {
-    await test.step(scenario.name, async () => {
-      await runGenerationScenario(page, scenario);
-    });
-  }
+  await runGenerationScenario(page, generationScenariosFast[0]);
+});
+
+test('app generation covers thread card output with minimal page churn', async ({ page }) => {
+  await openApp(page, { assertRoutingPanelHidden: true });
+  await runGenerationScenario(page, generationScenariosFast[1]);
 });
 
 test('project ops workbench creates SkillTrust preset and generates a linked thread with assets', async ({ page }) => {
