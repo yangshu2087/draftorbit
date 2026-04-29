@@ -90,6 +90,29 @@ test('buildV4PreviewFromV3Run returns V4 result preview contract with provenance
       ],
       visualAssetsBundleUrl: '/v3/chat/runs/run_test/assets.zip?token=signed-zip',
       sourceArtifacts: [],
+      operationSummary: {
+        dataSources: [{ kind: 'manual', status: 'skipped', label: '本轮不依赖外部来源' }],
+        governance: {
+          sourceStatus: 'not_required',
+          qualityStatus: 'passed',
+          hardFails: [],
+          userMessage: '来源、质量门和发布前检查已完成。'
+        },
+        intelligence: {
+          stage: 'done',
+          userFacingSummary: '智能中枢已完成内容策略、正文整理、视觉规划和发布前检查。'
+        },
+        workflow: {
+          publishMode: 'manual_confirm',
+          queueStatus: 'not_queued',
+          nextActions: ['copy_markdown', 'download_bundle', 'prepare_publish']
+        },
+        assets: {
+          ready: 1,
+          failed: 0,
+          bundleReady: true
+        }
+      },
       qualityGate: { status: 'passed', safeToDisplay: true, hardFails: [], judgeNotes: [] },
       usage: [{ model: 'CODEX_LOCAL', modelUsed: 'codex-local/quick', routingTier: 'high', costUsd: 0 }]
     },
@@ -101,6 +124,7 @@ test('buildV4PreviewFromV3Run returns V4 result preview contract with provenance
   assert.equal(preview.visualAssets[0]?.provider, 'codex-local-svg');
   assert.equal(preview.visualAssets[0]?.provenanceLabel, 'SVG 图文资产');
   assert.equal(preview.visualAssetsBundleUrl, '/v3/chat/runs/run_test/assets.zip?token=signed-zip');
+  assert.equal(preview.operationSummary?.workflow.nextActions.includes('prepare_publish'), true);
   assert.equal(preview.qualityGate.safeToDisplay, true);
   assert.equal(preview.publishPreparation.mode, 'manual-confirm');
   assert.equal(preview.usageEvidence.primaryProvider, 'codex-local');

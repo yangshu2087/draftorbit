@@ -1,3 +1,40 @@
+## 2026-04-29 Panoramic content automation hub refactor
+
+- Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio`
+- Branch: `codex/panoramic-content-automation-refactor`
+- Goal: map the uploaded “智能内容与自动化平台全景结构图” into DraftOrbit's first-stage platform architecture without breaking the existing `/app` one-sentence generator and `/projects` project operations flow.
+- Architecture lane:
+  - Chosen option: additive `operationSummary` + lightweight operation hub UI over the current V3/V4 generation pipeline.
+  - Tradeoff: lower risk than building an enterprise dashboard; enough structure to unify data source, governance, intelligence, workflow and asset status now.
+  - Rollout: V3 `GET /v3/chat/runs/:id` and V4 preview now carry the run summary; `/app` and `/projects` consume it as user-facing hub cards.
+  - Rollback: ignore/remove `operationSummary` consumption; existing text preview, visual assets, queue/connect/pricing and V3/V4 APIs continue to work.
+  - Risk: over-enterprise copy could hurt ordinary-user clarity; mitigated by using concise status cards and next-action labels instead of BI jargon.
+- Backend/API lane:
+  - Public route surface unchanged. Existing V3/V4 contracts are extended with optional `operationSummary` metadata.
+  - Error semantics preserved: `SOURCE_REQUIRED`, `QUALITY_GATE_BLOCKED`, `MODEL_PROVIDER_UNAVAILABLE`, `FORBIDDEN_WORKSPACE`, `ASSET_NOT_FOUND` remain the user/API boundary.
+  - Permissions/data consistency unchanged: workspace-scoped runs/projects; signed asset URLs or workspace ownership; large artifacts stay in ignored local roots.
+  - Regression coverage: `buildV3OperationSummary` ready-source and source-gap/visual-failure tests; V4 preview test now carries operation summary.
+  - API smoke: `/health` 200 ready with DB/Redis true; unauthenticated `/v3/projects` 401 `UNAUTHORIZED`; authenticated `/v3/projects` 200.
+- Frontend/UX lane:
+  - `/app` keeps the one-sentence generator, auto-scrolls to the result after completion, and shows `结果已生成，查看下方结果` when a run finishes.
+  - `/app` result area now includes `智能中枢概览` with five cards: 数据源、治理、智能中枢、工作流、图文资产.
+  - `/projects` now includes `全景中枢概览`, using live `operationSummary` after a run and project-context fallback before a run.
+  - Ordinary UI hides provider/model/fallback/prompt/debug details; next actions are user-facing: 补充来源、基于来源重写、重试图文资产、复制 Markdown、下载图文包、准备发布、连接 X.
+- Browser evidence:
+  - Browser Use (`iab`) `/app` normal generation pass: operation hub visible, ready assets and next actions visible, no provider/prompt/debug leakage. Screenshot: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/playwright/manual-check/panoramic-app-operation-hub-visible-2026-04-29.png`.
+  - Browser Use `/projects` pass: project hub visible with project context and manual-confirm boundary. Screenshot: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/playwright/manual-check/panoramic-projects-operation-hub-2026-04-29.png`.
+  - Browser Use URL-source pass: `https://example.com/` produced `来源已采用`, deliverable result, operation hub and ready assets. Screenshot: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/playwright/manual-check/panoramic-url-source-operation-hub-visible-2026-04-29.png`.
+- Reports/docs:
+  - Architecture map: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/docs/architecture/panoramic-content-automation-map.md`
+  - UAT report: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio/output/reports/uat-full/PANORAMIC-CONTENT-AUTOMATION-UAT-2026-04-29.md`
+- Verification:
+  - API test: `275/275` passed.
+  - API typecheck: passed.
+  - Web typecheck: passed.
+  - Web test: Node `48/48`, Playwright `6/6`, harness `7.63s` passed.
+  - Web build: Next `15/15` pages passed.
+- Remaining risk: this is the first platformization slice, not a full enterprise BI/CRM/IAM rebuild. Future trend analytics should use `UsageLog` / `AuditLog` while keeping ordinary UI free of model/provider internals.
+
 ## 2026-04-26 Source URL quality chain final fix
 
 - Worktree: `/Users/yangshu/.config/superpowers/worktrees/002-draftorbit.io/draftorbit-v4-creator-studio`

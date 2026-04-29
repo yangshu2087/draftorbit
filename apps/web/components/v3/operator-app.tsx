@@ -9,6 +9,7 @@ import { fetchRunStream, type V3StreamEvent } from '../../lib/sse-stream';
 import {
   buildArticlePreview,
   buildFreshSourceInputHint,
+  buildOperationHubCards,
   buildPrimaryResultHighlights,
   buildPrimarySourceEvidenceCard,
   buildQualityFailureView,
@@ -22,6 +23,7 @@ import {
   getSourceUrlLineSelectionRange,
   buildVisualAnchorTags,
   buildVisualAssetCards,
+  formatOperationNextAction,
   formatVisualAssetLabel,
   getResultPreviewMode,
   normalizeVisualAssetUrl
@@ -219,6 +221,7 @@ export default function OperatorApp() {
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const hydrationPromiseRef = useRef<Promise<V3RunResponse | null> | null>(null);
   const intentInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const resultSectionRef = useRef<HTMLElement | null>(null);
 
   const loadPage = useCallback(async () => {
     if (!getToken()) {
@@ -450,6 +453,14 @@ export default function OperatorApp() {
     () => buildPrimarySourceEvidenceCard(runDetail?.result?.sourceArtifacts ?? []),
     [runDetail?.result?.sourceArtifacts]
   );
+  const operationHubCards = useMemo(
+    () => buildOperationHubCards(runDetail?.result?.operationSummary ?? null),
+    [runDetail?.result?.operationSummary]
+  );
+  const operationNextActionLabels = useMemo(
+    () => (runDetail?.result?.operationSummary?.workflow.nextActions ?? []).map(formatOperationNextAction),
+    [runDetail?.result?.operationSummary?.workflow.nextActions]
+  );
 
   const focusIntentInput = useCallback(() => {
     requestAnimationFrame(() => {
@@ -473,6 +484,17 @@ export default function OperatorApp() {
       }
     });
   }, [intent]);
+
+  const scrollToResultSection = useCallback(() => {
+    requestAnimationFrame(() => {
+      resultSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!runDetail?.result) return;
+    scrollToResultSection();
+  }, [runDetail?.runId, runDetail?.result, scrollToResultSection]);
 
   const handleNonFreshRetry = useCallback(() => {
     const nextIntent = intent
@@ -911,7 +933,7 @@ export default function OperatorApp() {
         </article>
         ) : null}
 
-        <article className="do-panel p-6 sm:p-8">
+        <article ref={resultSectionRef} className="do-panel scroll-mt-24 p-6 sm:p-8">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">创作目标</p>
@@ -1167,6 +1189,17 @@ export default function OperatorApp() {
             现在：{currentStageLabel}
           </div>
 
+          {runDetail?.result ? (
+            <button
+              type="button"
+              onClick={scrollToResultSection}
+              className="mt-3 inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/30"
+            >
+              <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
+              结果已生成，查看下方结果
+            </button>
+          ) : null}
+
           {(runLoading || Object.keys(stageEvents).length > 0) ? (
             <div className="mt-4 grid gap-2 sm:grid-cols-3">
               {stageProgressForDisplay.map((stage) => (
@@ -1241,6 +1274,50 @@ export default function OperatorApp() {
                   </div>
                 </div>
               </div>
+
+              {operationHubCards.length ? (
+                <section
+                  data-testid="operation-hub-overview"
+                  className="rounded-[24px] border border-slate-900/10 bg-white p-4"
+                >
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">智能中枢概览</p>
+                      <h3 className="mt-1 text-lg font-semibold text-slate-950">数据、治理、生成、资产和人工确认在同一条链路里</h3>
+                      <p className="mt-1 text-sm leading-6 text-slate-500">
+                        后台已完成阶段编排，前台只展示可操作状态和下一步，不暴露模型路由或调试细节。
+                      </p>
+                    </div>
+                    {operationNextActionLabels.length ? (
+                      <div className="flex flex-wrap gap-2 sm:max-w-sm sm:justify-end">
+                        {operationNextActionLabels.slice(0, 4).map((label) => (
+                          <span key={label} className="rounded-full border border-slate-900/10 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">
+                            {label}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                    {operationHubCards.map((card) => (
+                      <div
+                        key={card.title}
+                        className={cn(
+                          'rounded-2xl border p-3',
+                          card.tone === 'ready' && 'border-emerald-200 bg-emerald-50 text-emerald-900',
+                          card.tone === 'warning' && 'border-amber-200 bg-amber-50 text-amber-900',
+                          card.tone === 'blocked' && 'border-red-200 bg-red-50 text-red-800',
+                          card.tone === 'neutral' && 'border-slate-900/10 bg-slate-50 text-slate-700'
+                        )}
+                      >
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] opacity-70">{card.title}</p>
+                        <p className="mt-2 text-sm font-semibold">{card.value}</p>
+                        <p className="mt-1 line-clamp-3 text-xs leading-5 opacity-80">{card.description}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
 
               {primarySourceEvidenceCard ? (
                 <a
