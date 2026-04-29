@@ -14,11 +14,13 @@ const appBootstrapTargetSeconds = Number(process.env.WEB_PLAYWRIGHT_APP_BOOTSTRA
 const enforceBudget = process.env.WEB_PLAYWRIGHT_ENFORCE_BUDGET === '1';
 const trendFile = process.env.WEB_PLAYWRIGHT_TREND_FILE;
 const trendHistoryLimit = Number(process.env.WEB_PLAYWRIGHT_TREND_HISTORY_LIMIT ?? 12);
-const warmupPaths = (process.env.WEB_PLAYWRIGHT_WARMUP_PATHS ?? '/,/app,/pricing,/connect?intent=connect_x_self,/queue?intent=confirm_publish')
+const warmupPaths = (
+  process.env.WEB_PLAYWRIGHT_WARMUP_PATHS ?? '/,/app,/projects,/v4,/pricing,/connect?intent=connect_x_self,/queue?intent=confirm_publish'
+)
   .split(',')
   .map((item) => item.trim())
   .filter(Boolean);
-const defaultPlaywrightWorkers = process.env.WEB_PLAYWRIGHT_WORKERS ?? '2';
+const defaultPlaywrightWorkers = process.env.WEB_PLAYWRIGHT_WORKERS ?? (isCi ? '3' : '2');
 const defaultFullyParallel = process.env.WEB_PLAYWRIGHT_FULLY_PARALLEL ?? '1';
 
 const timings = [];
